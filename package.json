@@ -1,0 +1,79 @@
+{
+  "name": "bilit-event-esign",
+  "version": "1.0.0",
+  "description": "Bilit.event E-Sign",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts",
+    "worker": "tsx --env-file-if-exists=.env src/server/jobs/worker.ts",
+    "openapi": "tsx scripts/gen-openapi.ts",
+    "bootstrap": "tsx --env-file-if-exists=.env scripts/bootstrap-admin.ts",
+    "seed:test": "tsx --env-file-if-exists=.env scripts/seed-test-data.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Abyys001/E-sign.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/Abyys001/E-sign/issues"
+  },
+  "homepage": "https://github.com/Abyys001/E-sign#readme",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1142.0",
+    "@aws-sdk/s3-request-presigner": "^3.1142.0",
+    "@cantoo/pdf-lib": "^2.11.1",
+    "@node-rs/argon2": "^2.2.1",
+    "@tailwindcss/postcss": "^4.3.3",
+    "clsx": "^2.1.1",
+    "drizzle-orm": "^0.45.3",
+    "jose": "^6.2.12",
+    "lucide-react": "^1.48.0",
+    "next": "^16.3.7",
+    "next-intl": "^4.14.8",
+    "nodemailer": "^10.0.12",
+    "otplib": "^13.5.0",
+    "pdfjs-dist": "^6.3.289",
+    "pdfkit": "^0.20.2",
+    "pg": "^8.23.0",
+    "pg-boss": "^12.35.0",
+    "postcss": "^8.5.28",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "sanitize-html": "^2.17.7",
+    "signature_pad": "^5.1.4",
+    "tailwindcss": "^4.3.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.3",
+    "@types/nodemailer": "^8.0.2",
+    "@types/pdfkit": "^0.17.6",
+    "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/sanitize-html": "^2.16.2",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.7",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.2"
+  },
+  "private": true
+}

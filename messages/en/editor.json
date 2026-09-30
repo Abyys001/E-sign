@@ -1,0 +1,11 @@
+{
+  "title": "Prepare document", "back": "Back to contract", "saved": "All changes saved", "unsaved": "Unsaved changes", "saving": "Saving…", "save": "Save", "undo": "Undo", "redo": "Redo", "zoomIn": "Zoom in", "zoomOut": "Zoom out", "fit": "Fit width",
+  "recipients": "Recipients", "addRecipient": "Add recipient", "noRecipients": "Add the people who will sign, then place their fields.", "active": "Placing fields for", "pages": "Pages", "page": "Page {n}",
+  "palette": "Fields", "paletteHint": "Choose a field, then click on the page to place it. Drag to move, use the corner handle to resize.", "placing": "Click on the page to place a {type} field. Press Esc to cancel.",
+  "types": { "signature": "Signature", "initials": "Initials", "text": "Text", "long_text": "Long text", "email": "Email", "phone": "Phone", "date": "Date", "datetime": "Date & time", "checkbox": "Checkbox", "radio": "Radio group", "dropdown": "Dropdown", "number": "Number", "currency": "Currency", "company": "Company", "job_title": "Job title", "attachment": "Attachment" },
+  "props": { "title": "Field properties", "none": "Select a field to edit it.", "label": "Label", "required": "Required", "recipient": "Assigned to", "options": "Options (one per line)", "maxLength": "Maximum length", "min": "Minimum", "max": "Maximum", "decimals": "Decimal places", "currency": "Currency code", "default": "Default value", "duplicate": "Duplicate", "everyPage": "Repeat on every page", "delete": "Delete", "position": "Position", "maxBytes": "Max file size (MB)", "pattern": "Pattern (regular expression)" },
+  "shortcuts": "Arrow keys move the selected field (Shift = larger step). Delete removes it. Ctrl/⌘+D duplicates. Ctrl/⌘+Z undoes.",
+  "readiness": "Readiness", "ready": "Ready to send", "notReady": "Not ready yet", "check": "Check", "markReady": "Mark ready", "fieldCount": "{count, plural, one {# field} other {# fields}}",
+  "saveFailed": "Could not save the fields", "noDoc": "Upload a document first", "noDocDesc": "Upload the PDF you want signed, then come back to place fields.", "upload": "Upload PDF", "uploading": "Uploading…", "locked": "This contract has been sent, so its fields can no longer be changed.",
+  "conflictEmail": "Placed on page {n}"
+}

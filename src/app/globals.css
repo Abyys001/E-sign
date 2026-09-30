@@ -1,0 +1,75 @@
+@import "tailwindcss";
+/* Only scan application code; logs and tool output can contain escaped class text that corrupts generated CSS. */
+@source "../";
+@source not "../../.playwright-mcp";
+
+/* Palette supplied for this product. These 13 values are the only colours used anywhere in the UI. */
+:root {
+  --color-1: #f5f5f7;
+  --color-2: #98989d;
+  --color-3: #000000;
+  --color-4: #0d0d12;
+  --color-5: #20ac6a;
+  --color-6: #ffffff;
+  --color-7: #6e6e73;
+  --color-8: #1e1e2a;
+  --color-9: #222228;
+  --color-10: #1c1c23;
+  --color-11: #808080;
+  --color-12: #14141e;
+  --color-13: #2c2c32;
+
+  /* Semantic roles (light) */
+  --bg: var(--color-1);
+  --surface: var(--color-6);
+  --surface-2: var(--color-1);
+  --fg: var(--color-4);
+  --muted: var(--color-7);
+  --line: color-mix(in srgb, var(--color-2) 40%, transparent);
+  --line-strong: var(--color-2);
+  --accent: var(--color-5);
+  --accent-fg: var(--color-4); /* white on #20ac6a is below 4.5:1, so accent surfaces carry dark text */
+  --accent-soft: color-mix(in srgb, var(--color-5) 14%, transparent);
+  --ring: var(--color-4);
+  --shadow: 0 1px 2px color-mix(in srgb, var(--color-3) 6%, transparent), 0 8px 24px -12px color-mix(in srgb, var(--color-3) 18%, transparent);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: var(--color-4); --surface: var(--color-12); --surface-2: var(--color-10); --fg: var(--color-1); --muted: var(--color-2); --line: var(--color-13); --line-strong: var(--color-11); --ring: var(--color-1); --shadow: 0 1px 2px color-mix(in srgb, var(--color-3) 40%, transparent), 0 12px 32px -12px color-mix(in srgb, var(--color-3) 70%, transparent); color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: var(--color-4); --surface: var(--color-12); --surface-2: var(--color-10); --fg: var(--color-1); --muted: var(--color-2); --line: var(--color-13); --line-strong: var(--color-11); --ring: var(--color-1); --shadow: 0 1px 2px color-mix(in srgb, var(--color-3) 40%, transparent), 0 12px 32px -12px color-mix(in srgb, var(--color-3) 70%, transparent); color-scheme: dark; }
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --font-sans: var(--font-gsf), var(--font-vazir), sans-serif;
+  --shadow-card: var(--shadow);
+  --radius-card: 14px;
+}
+
+html { font-family: var(--font-gsf), var(--font-vazir), sans-serif; font-size: 16px; font-weight: 400; }
+body { background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+:lang(fa) { font-family: var(--font-vazir), var(--font-gsf), sans-serif; }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 6px; }
+::selection { background: var(--accent-soft); }
+.num { font-variant-numeric: tabular-nums; }
+.scroll-thin { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes pop { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+.rise { animation: rise .35s cubic-bezier(.2,.7,.2,1) both; }
+.pop { animation: pop .18s ease-out both; }
+.skeleton { background: linear-gradient(90deg, var(--line) 25%, color-mix(in srgb, var(--line) 40%, transparent) 50%, var(--line) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; border-radius: 8px; }
+
+@media (prefers-reduced-motion: reduce) { *, ::before, ::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; } }
+@media print { .no-print { display: none !important; } }

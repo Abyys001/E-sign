@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: esign
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-esign_dev_only}
+      POSTGRES_DB: esign
+    ports: ["5433:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: {test: ["CMD-SHELL","pg_isready -U esign"], interval: 5s, retries: 10}
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-esign_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-esign_minio_dev_only}
+    ports: ["9000:9000","9001:9001"]
+    volumes: [miniodata:/data]
+  mailpit:
+    image: axllent/mailpit
+    ports: ["1025:1025","8025:8025"]
+volumes: {pgdata: {}, miniodata: {}}

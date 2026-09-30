@@ -1,0 +1,6 @@
+{
+  "title": "Verify a signed document", "sub": "Check that a PDF is exactly the document that was signed. Your file never leaves your device.", "loading": "Looking up this document…", "notFound": "We couldn't find a completed document for this code.", "valid": "Verified record found",
+  "org": "Issued by", "contract": "Document", "reference": "Reference", "completed": "Completed", "certificate": "Certificate ID", "signers": "Signers", "hash": "Final document SHA-256", "chain": "Audit trail", "chainOk": "Audit trail is intact", "chainBad": "Audit trail integrity check failed",
+  "check": "Check your copy", "checkDesc": "Choose the PDF you received. We compute its SHA-256 in your browser and compare it with the recorded value.", "choose": "Choose PDF", "computing": "Computing…", "match": "Match — this file is identical to the signed document.", "mismatch": "No match — this file is different from the signed document.", "yourHash": "Your file's SHA-256",
+  "note": "This page shows evidence recorded by Bilit.event E-Sign. It does not by itself establish legal validity, which depends on the law that applies to the agreement."
+}
