@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { use, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { ArrowLeft, Banknote, CheckCircle2, Download, Eye, FilePlus2, HandCoins, Paperclip, Pencil, Percent, PiggyBank, Plus, Receipt, Scale, Trash2, Wallet } from "lucide-react";
+import { ArrowLeft, Banknote, CheckCircle2, Download, Eye, FileDown, FilePlus2, HandCoins, Paperclip, Pencil, Percent, PiggyBank, Plus, Receipt, Scale, Trash2, Wallet } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { AmountCard, Badge, Money, RangePicker, rangeFor, rangeQuery, useExport, useMode, type RangeKey } from "@/components/accounting/kit";
@@ -198,6 +198,7 @@ function PaymentsTab({ e, onPay, onChanged }: { e: Ev; onPay: () => void; onChan
             <Td className="text-end"><Money v={p.amount} c={p.currency} strong /></Td><Td>{tp(`m.${p.method}`)}</Td><Td><code className="text-xs">{p.bankReference ?? "—"}</code></Td>
             <Td><Badge s={p.status} />{p.voidReason && <span className="block text-xs">{p.voidReason}</span>}</Td>
             <Td className="text-end"><div className="flex justify-end gap-1">
+<a href={`/api/accounting/organiser-payments/${p.id}/receipt`} className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-sm hover:bg-surface-2" title={t("receipt")}><FileDown className="size-3.5" aria-hidden />{t("receipt")}</a>
               <Button size="sm" variant="ghost" onClick={() => setView(p.id)} aria-label={t("view")}><Eye className="size-3.5" aria-hidden /></Button>
               {manage && p.status === "PENDING" && <Button size="sm" onClick={() => markPaid(p)}><CheckCircle2 className="size-3.5" aria-hidden />{tp("markPaid")}</Button>}
               {manage && p.status !== "VOIDED" && <><Button size="sm" variant="ghost" onClick={() => setEdit(p)} aria-label={t("editItem")}><Pencil className="size-3.5" aria-hidden /></Button>

@@ -1217,7 +1217,8 @@
       "nonRefundable": "The booking fee is non-refundable",
       "nonRefundableHelp": "Refunds never reduce Bilit's booking fee. If a booking fee is refunded to a customer, the organiser is charged for it (shown as “booking fee to recover from organiser”).",
       "note": "Changing this re-calculates all existing refunds (old postings are reversed, never edited)."
-    }
+    },
+    "receipt": "Receipt"
   },
   "books": {
     "nav": {

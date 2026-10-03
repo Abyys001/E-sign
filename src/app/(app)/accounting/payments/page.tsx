@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Banknote, CheckCircle2, Download, Eye, Pencil, Trash2 } from "lucide-react";
+import { Banknote, CheckCircle2, Download, Eye, FileDown, Pencil, Trash2 } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { Badge, Money, useExport, useMode } from "@/components/accounting/kit";
@@ -49,6 +49,7 @@ export default function PaymentsPage() {
               <Td>{p.eventName ? <>{p.eventName} <code className="text-xs text-muted">{p.eventCode}</code></> : "—"}</Td><Td><code className="text-xs">{p.bankReference ?? "—"}</code></Td><Td className="text-sm">{t(`m.${p.method}`)}</Td>
               <Td className="text-end"><Money v={p.amount} c={p.currency} strong /></Td><Td><Badge s={p.status} />{p.voidReason && <span className="block text-xs text-muted">{p.voidReason}</span>}</Td>
               <Td className="text-end"><div className="flex justify-end gap-1">
+                <a href={`/api/accounting/organiser-payments/${p.id}/receipt`} className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-sm hover:bg-surface-2" title={tf("receipt")}><FileDown className="size-3.5" aria-hidden />{tf("receipt")}</a>
                 <Button size="sm" variant="ghost" onClick={() => setView(p.id)} aria-label={tf("view")}><Eye className="size-3.5" aria-hidden /></Button>
                 {can("accounting.manage") && p.status !== "VOIDED" && <>
                 {p.status === "PENDING" && <Button size="sm" onClick={() => markPaid(p)}><CheckCircle2 className="size-3.5" aria-hidden />{t("markPaid")}</Button>}

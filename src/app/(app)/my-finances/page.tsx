@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { HandCoins, Percent, Receipt, Scale, Wallet } from "lucide-react";
+import { FileDown, HandCoins, Percent, Receipt, Scale, Wallet } from "lucide-react";
 import { AmountCard, Money } from "@/components/accounting/kit";
 import { pct, SettlementBadge, type Settlement } from "@/components/accounting/finance";
 import { Card, CardHeader, PageHeader } from "@/components/ui/card";
@@ -52,8 +52,8 @@ export default function MyFinances() {
       </>}
       <Card><CardHeader title={t("payments")} />
         {(() => { const ps = data.payments.filter((p) => p.organiserId === o.id); return !ps.length ? <EmptyState title={tp("empty")} /> : (
-          <TableWrap><Table><thead><tr><Th>{tp("date")}</Th><Th>{tp("event")}</Th><Th className="text-end">{tp("amount")}</Th><Th>{tp("method")}</Th><Th>{tp("reference")}</Th><Th>{tp("status")}</Th></tr></thead>
-            <tbody>{ps.map((p) => <Tr key={p.id}><Td>{p.paymentDate}</Td><Td>{p.eventName ?? tp("noEvent")}</Td><Td className="text-end"><Money v={p.amount} c={p.currency} strong /></Td><Td>{tp(`m.${p.method}`)}</Td><Td><code className="text-xs">{p.reference ?? "—"}</code></Td><Td>{tp(`st.${p.status}`)}</Td></Tr>)}</tbody></Table></TableWrap>); })()}
+          <TableWrap><Table><thead><tr><Th>{tp("date")}</Th><Th>{tp("event")}</Th><Th className="text-end">{tp("amount")}</Th><Th>{tp("method")}</Th><Th>{tp("reference")}</Th><Th>{tp("status")}</Th><Th><span className="sr-only">{tf("receipt")}</span></Th></tr></thead>
+            <tbody>{ps.map((p) => <Tr key={p.id}><Td>{p.paymentDate}</Td><Td>{p.eventName ?? tp("noEvent")}</Td><Td className="text-end"><Money v={p.amount} c={p.currency} strong /></Td><Td>{tp(`m.${p.method}`)}</Td><Td><code className="text-xs">{p.reference ?? "—"}</code></Td><Td>{tp(`st.${p.status}`)}</Td><Td><a href={`/api/my-finances/payments/${p.id}/receipt`} className="inline-flex items-center gap-1 text-sm underline underline-offset-4"><FileDown className="size-3.5" aria-hidden />{tf("receipt")}</a></Td></Tr>)}</tbody></Table></TableWrap>); })()}
       </Card>
     </div>
   );

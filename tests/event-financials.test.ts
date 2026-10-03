@@ -108,6 +108,10 @@ describe("event financials, settlement and profitability", () => {
     expect(await fig(e)).toMatchObject({ organiserPaid: 12090, remaining: 0, settlement: "FULLY_PAID" });
     const entries = await db.select().from(schema.acctJournalEntries).where(and(eq(schema.acctJournalEntries.sourceType, "organiser_payment"), eq(schema.acctJournalEntries.sourceId, p.id)));
     expect(entries.map((x) => `${x.entryType}:${x.status}`).sort()).toEqual(["ORGANISER_PAYMENT:POSTED", "ORGANISER_PAYMENT:REVERSED", "REVERSAL:POSTED"]);
+    const { remittancePdf } = await import("@/server/accounting/remittance");
+    const rc = await remittancePdf(e.org.id, p.id);
+    expect(rc.bytes.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(rc.name).toMatch(/^RA-\d{4}-[0-9A-F]{8}-Persian-Concerts-Ltd\.pdf$/);
     const extra = await recordOrganiserPayment(e.actor, { mode: "test", organiserId: e.organiser.id, eventId: e.event.id, amount: 300, currency: "gbp", paymentDate: today, bankReference: "INV-1034", method: "BANK_TRANSFER", notes: null, status: "PAID" });
     expect((await fig(e)).settlement).toBe("OVERPAID");
     await voidOrganiserPayment(e.actor, extra.id, "Duplicate");
