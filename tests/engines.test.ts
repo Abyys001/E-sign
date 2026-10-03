@@ -48,7 +48,7 @@ describe("clause library", () => {
       for (const k of ks) expect(keys.has(k), `${t.key} -> ${k}`).toBe(true);
     }
   });
-  it("defines the five agreement types", () => expect(AGREEMENT_TYPES.map((t) => t.key)).toEqual(["ticketing_distribution", "venue_production", "marketing_promotional", "full_event_management", "cancellation_refund"]));
+  it("defines the five agreement types plus the promoter master + event schedule", () => expect(AGREEMENT_TYPES.map((t) => t.key)).toEqual(["ticketing_distribution", "venue_production", "marketing_promotional", "full_event_management", "cancellation_refund", "promoter_master", "promoter_event_schedule"]));
   it("does not duplicate clause text across agreements (modules compose shared clauses)", () => {
     const full = new Set(AGREEMENT_TYPES.find((t) => t.key === "full_event_management")!.clauses.map((c) => c.clauseKey));
     for (const k of ["ticketing.rights", "venue.sourcing", "marketing.social", "artist.rider"]) expect(full.has(k)).toBe(true);

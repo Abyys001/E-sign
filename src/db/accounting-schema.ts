@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { pgTable, uuid, text, timestamp, integer, boolean, jsonb, index, uniqueIndex, bigserial, bigint, date, check } from "drizzle-orm/pg-core";
-import { organisations, storageObjects, users } from "./schema";
+import { contracts, organisations, storageObjects, users } from "./schema";
 
 /**
  * Accounting & Stripe finance. Money is always integer minor units (bigint, JS number: exact to 2^53) next to a lowercase
@@ -433,6 +433,19 @@ export const acctOrganiserUsers = pgTable("acct_organiser_users", {
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("acct_organiser_users_uq").on(t.organiserId, t.userId), index("acct_organiser_users_user_idx").on(t.userId)]);
+
+/** A signed (or in-progress) contract linked to an organiser, optionally for one event (e.g. an Event Schedule). */
+export const acctOrganiserContracts = pgTable("acct_organiser_contracts", {
+  id: id(),
+  organisationId: org(),
+  organiserId: uuid("organiser_id").notNull().references(() => acctOrganisers.id),
+  contractId: uuid("contract_id").notNull().references(() => contracts.id),
+  eventId: uuid("event_id").references(() => acctEvents.id),
+  role: text("role").notNull().default("OTHER"), // MASTER | EVENT_SCHEDULE | OTHER
+  note: text("note"),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("acct_organiser_contracts_uq").on(t.organiserId, t.contractId), index("acct_organiser_contracts_event_idx").on(t.eventId), index("acct_organiser_contracts_contract_idx").on(t.contractId)]);
 
 /** Every manual (re)assignment of a Stripe transaction, kept forever. */
 export const acctMatchHistory = pgTable("acct_match_history", {

@@ -92,6 +92,13 @@
       "when": 1790726034374,
       "tag": "0012_payments_refunds_invoices",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790812434374,
+      "tag": "0013_organiser_contracts",
+      "breakpoints": true
     }
   ]
 }

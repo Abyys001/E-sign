@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { CalendarDays, Coins, HandCoins, Percent, PiggyBank, Receipt, Scale, Undo2, UserPlus, Wallet, X } from "lucide-react";
+import { CalendarDays, Coins, FileDown, FileText, HandCoins, Percent, PiggyBank, Receipt, Scale, Undo2, UserPlus, Wallet, X } from "lucide-react";
 import { useMe } from "@/components/app/me";
 import { AmountCard, Money, useMode } from "@/components/accounting/kit";
 import { pct, SettlementBadge, type Fig } from "@/components/accounting/finance";
@@ -29,7 +29,9 @@ export function OrganiserFinance({ id, refresh }: { id: string; refresh: number 
     <section aria-label={t("orgFin.title")} className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">{t("orgFin.title")}</h2>
-        <div className="flex items-center gap-3">{f && <SettlementBadge s={f.settlement} />}
+        <div className="flex flex-wrap items-center gap-3">{f && <SettlementBadge s={f.settlement} />}
+          <a href={q(`/api/accounting/organisers/${id}/report?format=pdf`)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-line-strong px-3 text-sm font-medium hover:bg-surface-2"><FileDown className="size-4" aria-hidden />{t("orgFin.reportPdf")}</a>
+          <Link href={`/accounting/organisers/${id}?tab=reports`} className="inline-flex h-9 items-center gap-2 rounded-xl border border-line-strong px-3 text-sm font-medium hover:bg-surface-2"><FileText className="size-4" aria-hidden />{t("orgFin.allReports")}</Link>
           {data.totals.length > 1 && <Select aria-label={t("currency")} value={f?.currency} onChange={(e) => setCur(e.target.value)} className="w-auto font-semibold uppercase">{data.totals.map((x) => <option key={x.currency} value={x.currency}>{x.currency.toUpperCase()}</option>)}</Select>}</div>
       </div>
       {!f ? <Card><EmptyState title={t("orgFin.empty")} /></Card> : <>

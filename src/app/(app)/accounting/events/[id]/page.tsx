@@ -8,6 +8,7 @@ import { useMe } from "@/components/app/me";
 import { AmountCard, Badge, Money, RangePicker, rangeFor, rangeQuery, useExport, useMode, type RangeKey } from "@/components/accounting/kit";
 import { AgreementFields, agreementFrom, agreementPayload, emptyAgreement, EventDialog, type AgreementValue } from "@/components/accounting/forms";
 import { AuditList, BookingFeeDialog, ExpenseDialog, moneyFlow, PayOrganiserDialog, PaymentEditDialog, PaymentViewDialog, pct, profitAndLoss, SettlementBadge, SettlementSummary, Statement, type AuditItem, type ExpenseRow, type Fig, type PaymentRow } from "@/components/accounting/finance";
+import { EventContractStatus } from "@/components/accounting/organiser-tabs";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardHeader, PageHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm";
@@ -63,6 +64,7 @@ function EventFinance({ id }: { id: string }) {
         <div className="flex items-center gap-2"><span className="text-sm text-muted">{t("k.bookingFeePct")}</span><span className="rounded-lg bg-surface-2 px-2 py-0.5 text-base font-semibold tabular-nums">{pct(bps)}</span>{data.agreement && <span className="text-xs text-muted">{t(`fee.basisShort.${data.agreement.percentBasis}`)}</span>}
           {manage && <Button size="sm" variant="ghost" onClick={() => setFee(true)}><Percent className="size-3.5" aria-hidden />{t("changeFee")}</Button>}</div>
         <div className="text-sm"><span className="text-muted">{t("organiser")}: </span>{e.organiserId ? <Link href={`/accounting/organisers/${e.organiserId}`} className="font-medium underline-offset-4 hover:underline">{e.organiserName}</Link> : <span className="font-medium text-fin-warn">{te("noOrganiserWarn")}</span>}</div>
+        <EventContractStatus eventId={id} organiserId={e.organiserId} />
         <div className="text-sm"><span className="text-muted">{t("k.tickets")}: </span><span className="font-semibold tabular-nums">{f.tickets.toLocaleString(locale)}</span><span className="text-muted"> · {t("k.orders")}: </span><span className="tabular-nums">{f.orders.toLocaleString(locale)}</span></div>
         <div className="ms-auto flex flex-wrap items-center gap-2">
           {data.figures.length > 1 && <Select aria-label={t("currency")} value={f.currency} onChange={(x) => setCur(x.target.value)} className="w-auto font-semibold uppercase">{data.figures.map((x) => <option key={x.currency} value={x.currency}>{x.currency.toUpperCase()}</option>)}</Select>}

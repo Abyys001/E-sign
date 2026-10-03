@@ -1,5 +1,6 @@
 import type { Condition } from "../clauses/condition";
 import type { Module } from "../clauses/types";
+import { PROMOTER_MASTER, PROMOTER_SCHEDULE } from "../clauses/library/promoter";
 
 export type AgreementSelection = { clauseKey: string; required?: boolean; condition?: Condition };
 export type AgreementTypeDef = {
@@ -56,5 +57,9 @@ export const AGREEMENT_TYPES: AgreementTypeDef[] = [
     clauses: [...CORE_HEAD, ...TICKETING, ...REFUNDS, ...VENUE, ...PRODUCTION, ...MARKETING, ...ARTIST, ...CORE_TAIL] },
   { key: "cancellation_refund", name: "Organizer – Bilit Event Cancellation, Refund & Rescheduling Agreement", purpose: "Event cancellation, postponement, rescheduling, customer refunds, refund eligibility, booking-fee treatment, payment-processing fees, chargebacks, organiser liabilities, force majeure, refund deadlines and the process for communicating cancellations or changes to ticket holders.",
     modules: ["core", "ticketing"], clauses: [...CORE_HEAD, ...REFUNDS, { clauseKey: "financial.money_flow", required: true }, { clauseKey: "financial.chargebacks" }, { clauseKey: "financial.reserve" }, { clauseKey: "financial.withheld" }, { clauseKey: "financial.booking_fee" }, { clauseKey: "financial.processing_fee" }, { clauseKey: "obligations.organiser" }, { clauseKey: "obligations.bilit" }, ...CORE_TAIL] },
+  { key: "promoter_master", name: "Bilit.Events Promoter & Event Services Master Agreement", purpose: "Master terms for every event a promoter sells through Bilit: Bilit's role, promoter warranties, ticketing, booking fees, payment processing, settlement, advance payments, cancellation, refunds, chargebacks, liability, data protection, compliance and termination. Each event is added by an Event Schedule.",
+    modules: ["core", "ticketing", "venue", "production", "marketing", "artist"], clauses: PROMOTER_MASTER.map((c) => ({ clauseKey: c.key, required: true })) },
+  { key: "promoter_event_schedule", name: "Bilit.Events Event Schedule (under the Promoter Master Agreement)", purpose: "Per-event commercial terms that form part of the Promoter & Event Services Master Agreement: event details, ticket prices, booking fee, commission, settlement, advance, reserve, refund and cancellation terms, local law and special conditions.",
+    modules: ["core", "ticketing"], clauses: PROMOTER_SCHEDULE.map((c) => ({ clauseKey: c.key, required: true })) },
 ];
 export const agreementType = (key: string) => AGREEMENT_TYPES.find((a) => a.key === key);

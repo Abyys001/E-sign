@@ -33,7 +33,7 @@ export default function OrganisersPage() {
       <Card>
         {loading && !data ? <div className="space-y-3 p-4">{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-10" />)}</div> : !data?.items.length ? <EmptyState title={t("empty")} description={t("emptyDesc")} /> : <>
           <TableWrap><Table><thead><tr><Th>{t("name")}</Th><Th>{t("internalRef")}</Th><Th>{t("email")}</Th><Th className="text-end">{t("events")}</Th><Th className="text-end">{t("profit")}</Th><Th className="text-end">{t("remaining")}</Th><Th>{t("bank")}</Th><Th>{t("status")}</Th></tr></thead>
-            <tbody>{data.items.map((o) => <Tr key={o.id}>
+            <tbody>{data.items.map((o) => <Tr key={o.id} className="cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("a,button")) router.push(`/accounting/organisers/${o.id}`); }}>
               <Td><Link href={`/accounting/organisers/${o.id}`} className="font-medium underline-offset-4 hover:underline">{o.name}</Link>{o.companyName && o.companyName !== o.name && <span className="block text-xs text-muted">{o.companyName}</span>}</Td>
               <Td><code className="text-xs">{o.internalRef ?? "—"}</code></Td><Td>{o.email ?? "—"}</Td><Td className="num text-end">{o.eventCount}</Td>
               <Td className="text-end">{o.money.length ? o.money.map((m) => <span key={m.currency} className="block"><Money v={m.profit} c={m.currency} strong className={m.profit < 0 ? "text-fin-neg" : "text-fin-pos"} /></span>) : <span className="text-muted">—</span>}</Td>

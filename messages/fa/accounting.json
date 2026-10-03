@@ -408,7 +408,102 @@
     },
     "linkEvents": "Link events",
     "profit": "Bilit profit (after Stripe)",
-    "remaining": "Remaining to pay"
+    "remaining": "Remaining to pay",
+    "tabs": {
+      "label": "Organiser sections",
+      "overview": "Overview",
+      "events": "Events",
+      "payments": "Payments",
+      "refunds": "Refunds",
+      "statement": "Statement",
+      "contracts": "Contracts",
+      "reports": "Reports",
+      "details": "Details"
+    },
+    "openPage": "Open organiser",
+    "pay": {
+      "title": "Payments to this organiser",
+      "desc": "Every payment made to the organiser, with receipts. Voided payments are kept for the audit trail.",
+      "event": "Event",
+      "notEvent": "Not event-specific",
+      "total": "Total paid"
+    },
+    "ref": {
+      "title": "Refunds & chargebacks",
+      "desc": "Refunds on this organiser's events. The booking-fee part is charged to the organiser.",
+      "date": "Date",
+      "event": "Event",
+      "order": "Order",
+      "customer": "Customer",
+      "type": "Type",
+      "refund": "Refund",
+      "chargeback": "Chargeback",
+      "amount": "Refunded",
+      "fee": "Of which booking fee",
+      "empty": "No refunds",
+      "pdf": "Refunds PDF"
+    },
+    "rep": {
+      "title": "Reports",
+      "desc": "Download reports for this organiser. Choose a period first; all reports use the same period.",
+      "account": {
+        "title": "Account report (PDF) — organiser copy",
+        "desc": "Summary, settlement by event, all payments and refunds. Ticket sales shown net of booking fees — ready to send to the organiser."
+      },
+      "internal": {
+        "title": "Account report (PDF) — internal",
+        "desc": "Same report with booking fees and Bilit profit. Not for the organiser."
+      },
+      "refunds": {
+        "title": "Refunds statement (PDF)",
+        "desc": "Every refund and chargeback with the booking fee to recover."
+      },
+      "statement": {
+        "title": "Account statement (CSV)",
+        "desc": "Running balance of every ledger line, for the selected currency."
+      },
+      "payments": {
+        "title": "Payments (CSV)",
+        "desc": "All payments made to this organiser."
+      },
+      "pdf": "Download PDF",
+      "csv": "Download CSV"
+    },
+    "con": {
+      "title": "Contracts",
+      "desc": "Contracts linked to this organiser — master agreement and event schedules. An event should not go live until its contract is signed by both parties.",
+      "link": "Link contract",
+      "empty": "No contracts linked",
+      "emptyDesc": "Link the signed Promoter Master Agreement and each Event Schedule.",
+      "reference": "Reference",
+      "name": "Contract",
+      "role": "Type",
+      "event": "Event",
+      "status": "Status",
+      "active": "Active (signed)",
+      "notActive": "Not active",
+      "roles": {
+        "MASTER": "Master agreement",
+        "EVENT_SCHEDULE": "Event schedule",
+        "OTHER": "Other"
+      },
+      "unlink": "Unlink",
+      "unlinked": "Contract unlinked",
+      "linked": "Contract linked",
+      "dialogTitle": "Link a contract",
+      "dialogDesc": "Search contracts by reference, name or recipient.",
+      "search": "Search contracts",
+      "pick": "Contract",
+      "choose": "Choose a contract…",
+      "noEvent": "No specific event",
+      "note": "Note",
+      "open": "Open contract",
+      "eventStatus": "Contract",
+      "goLive": "Contract active — event can go live",
+      "notLive": "No active contract — do not put this event live",
+      "manage": "Manage contracts",
+      "cancel": "Cancel"
+    }
   },
   "payments": {
     "title": "Organiser payments",
@@ -1205,7 +1300,9 @@
       "profitHint": "Booking fees − Stripe fees and costs borne by Bilit",
       "stripeFees": "Stripe fees borne by Bilit",
       "recharged": "Charged to organiser:",
-      "margin": "Profit margin on gross"
+      "margin": "Profit margin on gross",
+      "reportPdf": "Account report (PDF)",
+      "allReports": "All reports"
     },
     "portalUsers": {
       "title": "Organiser portal access",
