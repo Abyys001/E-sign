@@ -4,7 +4,8 @@ import { db, schema } from "@/db";
 import { makeOrg, makePdf, ctxFor, pngDataUrl } from "./helpers";
 import { addRecipient, createContract, saveFields, sendContract, uploadVersion, readiness } from "@/server/contracts/service";
 import { bindSession, loadByToken, markViewed, submitSigning } from "@/server/signing/service";
-import { finalizeContract } from "@/server/signing/finalize";
+import { finalizeContract, inProgressPdf } from "@/server/signing/finalize";
+import { loadVersionBytes } from "@/server/documents";
 import { verifyAuditChain } from "@/server/audit";
 import { deriveSigningToken } from "@/server/crypto";
 import { stopBoss } from "@/server/jobs";
@@ -71,6 +72,17 @@ describe("full signing flow (two sequential signers)", () => {
     expect(r.next).toEqual(["Bob Booker"]);
     // token is single-use
     await expect(submitSigning(t1, s1.sessionValue, { consent: true, locale: "en", fields: {} }, ctx)).rejects.toMatchObject({ status: 409 });
+
+    // The next signer's document shows what Alice completed (her signature image and typed name), the frozen version does not.
+    {
+      const [c1] = await db.select().from(schema.contracts).where(eq(schema.contracts.id, contract.id));
+      const source = await loadVersionBytes(org.id, c1!.signingVersionId!);
+      const aliceFields = (await db.select().from(schema.recipientFields).where(eq(schema.recipientFields.contractId, contract.id))).filter((f) => f.recipientId !== r2.id);
+      const shown = await inProgressPdf(org.id, source, aliceFields);
+      expect(shown.length).toBeGreaterThan(source.length);
+      expect((await PDFDocument.load(shown)).getPageCount()).toBe((await PDFDocument.load(source)).getPageCount());
+      expect(await inProgressPdf(org.id, source, [])).toBe(source);
+    }
 
     const t2 = (await tokenFor(contract.id, r2.id))!;
     expect(t2).toBeTruthy();
