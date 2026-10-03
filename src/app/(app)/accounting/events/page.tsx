@@ -56,12 +56,16 @@ export default function EventsPage() {
         <Select aria-label={tf("filters.payments")} value={f.payments} onChange={(e) => set("payments", e.target.value)} className="w-auto"><option value="">{tf("filters.anyPayments")}</option><option value="PENDING">{tf("filters.pendingPayments")}</option><option value="NONE">{tf("filters.noPending")}</option></Select>
       </div>
 
-      {data && data.totals.length > 0 && <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{data.totals.map((x) => (
+      {data && data.totals.length > 0 && <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">{data.totals.map((x) => (
         <Card key={x.currency} className="p-4 text-sm">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">{tf("events.totals", { c: x.currency.toUpperCase() })}</p>
           <dl className="grid grid-cols-2 gap-x-3 gap-y-1">
             <dt className="text-muted">{tf("k.grossSales")}</dt><dd className="text-end"><Money v={x.grossSales} c={x.currency} /></dd>
             <dt className="text-muted">{tf("k.bookingFees")}</dt><dd className="text-end text-fin-pos"><Money v={x.bookingFees} c={x.currency} /></dd>
+            <dt className="text-muted">{tf("k.refunds")}</dt><dd className="text-end text-fin-neg"><Money v={x.refunds + x.chargebacks} c={x.currency} /></dd>
+            <dt className="text-muted">{tf("k.processingFees")}</dt><dd className="text-end"><Money v={x.processingFees} c={x.currency} /></dd>
+            <dt className="text-muted">{tf("k.organiserDue")}</dt><dd className="text-end"><Money v={x.organiserDue} c={x.currency} /></dd>
+            <dt className="text-muted">{tf("k.organiserPaid")}</dt><dd className="text-end"><Money v={x.organiserPaid} c={x.currency} /></dd>
             <dt className="text-muted">{tf("k.remaining")}</dt><dd className="text-end text-fin-warn"><Money v={x.remaining} c={x.currency} /></dd>
             <dt className="text-muted">{tf("k.bilitProfit")}</dt><dd className="text-end font-semibold"><Money v={x.bilitProfit} c={x.currency} /></dd>
           </dl>
@@ -69,20 +73,27 @@ export default function EventsPage() {
 
       <Card>
         {loading && !data ? <div className="space-y-3 p-4">{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-10" />)}</div> : !data?.items.length ? <EmptyState title={t("empty")} description={t("emptyDesc")} action={can("accounting.manage") && <Button variant="primary" onClick={() => setImp(true)}><Import className="size-4" aria-hidden />{t("importTx")}</Button>} /> : <>
-          <TableWrap><Table><thead><tr>
-            <Th>{tf("events.event")}</Th><Th className="text-end">{tf("events.tickets")}</Th><Th className="text-end">{tf("events.gross")}</Th><Th className="text-end">{tf("events.fee")}</Th>
-            <Th className="text-end">{tf("events.due")}</Th><Th className="text-end">{tf("events.paid")}</Th><Th className="text-end">{tf("events.remaining")}</Th><Th className="text-end">{tf("events.profit")}</Th><Th>{tf("settlement.label")}</Th>
+          <TableWrap><Table className="text-[13px] [&_td]:px-3 [&_th]:px-3"><thead><tr>
+            <Th className="sticky start-0 z-10">{tf("events.event")}</Th><Th>{tf("organiser")}</Th><Th className="text-end">{tf("events.tickets")}</Th><Th className="text-end">{tf("events.gross")}</Th>
+            <Th className="text-end">{tf("k.refunds")}</Th><Th className="text-end">{tf("k.netSales")}</Th><Th className="text-end">{tf("events.fee")}</Th><Th className="text-end">{tf("events.processing")}</Th>
+            <Th className="text-end">{tf("events.expenses")}</Th><Th className="text-end">{tf("events.due")}</Th><Th className="text-end">{tf("events.paid")}</Th><Th className="text-end">{tf("events.remaining")}</Th>
+            <Th className="text-end">{tf("events.profit")}</Th><Th>{tf("settlement.label")}</Th>
           </tr></thead>
-            <tbody>{data.items.map((e) => <Tr key={`${e.eventId}|${e.currency}`}>
-              <Td className="min-w-52"><Link href={`/accounting/events/${e.eventId}`} className="font-medium underline-offset-4 hover:underline">{e.eventName}</Link>
-                <span className="block text-xs text-muted"><code>{e.eventCode}</code>{e.startsOn ? ` · ${e.startsOn}` : ""}{e.organiserName ? ` · ${e.organiserName}` : ""}{e.eventStatus !== "ACTIVE" ? <> · <Badge s={e.eventStatus} /></> : null}</span></Td>
+            <tbody>{data.items.map((e) => <Tr key={`${e.eventId}|${e.currency}`} className="group">
+              <Td className="sticky start-0 z-10 min-w-56 bg-surface group-hover:bg-surface-2"><Link href={`/accounting/events/${e.eventId}`} className="font-medium underline-offset-4 hover:underline">{e.eventName}</Link>
+                <span className="block text-xs text-muted"><code>{e.eventCode}</code>{e.startsOn ? ` · ${e.startsOn}` : ""} · <span className="uppercase">{e.currency}</span>{e.eventStatus !== "ACTIVE" ? <> · <Badge s={e.eventStatus} /></> : null}</span></Td>
+              <Td className="whitespace-nowrap">{e.organiserId ? <Link href={`/accounting/organisers/${e.organiserId}`} className="underline-offset-4 hover:underline">{e.organiserName}</Link> : <span className="text-muted">—</span>}</Td>
               <Td className="text-end tabular-nums">{e.tickets.toLocaleString(locale)}</Td>
               <Td className="text-end"><Money v={e.grossSales} c={e.currency} /></Td>
-              <Td className="text-end"><Money v={e.bookingFees} c={e.currency} /><span className="block text-xs text-muted">{pct(e.bookingFeeBps)}</span></Td>
+              <Td className="text-end">{e.refunds + e.chargebacks ? <Money v={-(e.refunds + e.chargebacks)} c={e.currency} className="text-fin-neg" /> : <span className="text-muted">—</span>}</Td>
+              <Td className="text-end"><Money v={e.netSales} c={e.currency} /></Td>
+              <Td className="text-end"><Money v={e.bookingFees} c={e.currency} className="text-fin-pos" /><span className="block text-xs text-muted">{pct(e.bookingFeeBps)}</span></Td>
+              <Td className="text-end"><Money v={e.processingFees} c={e.currency} />{e.feesRecharged > 0 && <span className="block text-xs text-muted">{tf("events.recharged")}</span>}</Td>
+              <Td className="text-end">{e.expensesBilit + e.expensesOrganiser ? <Money v={e.expensesBilit + e.expensesOrganiser} c={e.currency} /> : <span className="text-muted">—</span>}</Td>
               <Td className="text-end"><Money v={e.organiserDue} c={e.currency} /></Td>
               <Td className="text-end"><Money v={e.organiserPaid} c={e.currency} /></Td>
-              <Td className="text-end"><Money v={e.remaining} c={e.currency} strong /></Td>
-              <Td className="text-end"><Money v={e.bilitProfit} c={e.currency} strong className={e.bilitProfit < 0 ? "text-fin-neg" : ""} /></Td>
+              <Td className="text-end"><Money v={e.remaining} c={e.currency} strong className={e.remaining > 0 ? "text-fin-warn" : e.remaining < 0 ? "text-fin-neg" : ""} /></Td>
+              <Td className="text-end"><Money v={e.bilitProfit} c={e.currency} strong className={e.bilitProfit < 0 ? "text-fin-neg" : "text-fin-pos"} /></Td>
               <Td><SettlementBadge s={e.settlement} /></Td></Tr>)}</tbody></Table></TableWrap>
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPage={setPage} /></>}
       </Card>

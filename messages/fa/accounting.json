@@ -1085,7 +1085,10 @@
       "due": "Organiser due",
       "paid": "Organiser paid",
       "remaining": "Remaining",
-      "profit": "Bilit profit"
+      "profit": "Bilit profit",
+      "processing": "Stripe fees",
+      "expenses": "Expenses",
+      "recharged": "charged to organiser"
     },
     "filters": {
       "allOrganisers": "All organisers",

@@ -118,7 +118,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const t = useTranslations("common");
   useEffect(() => setDrawer(false), [path]);
   // The prepare editor needs the full width for the page canvas.
-  const wide = /\/contracts\/[^/]+\/prepare$/.test(path) || /\/templates\/[^/]+$/.test(path);
+  const wide = /\/contracts\/[^/]+\/prepare$/.test(path) || /\/templates\/[^/]+$/.test(path) || path.startsWith("/accounting") || path.startsWith("/my-finances");
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[264px_1fr]">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:start-3 focus:top-3 focus:z-[200] focus:rounded-lg focus:bg-fg focus:px-3 focus:py-2 focus:text-bg">{t("skip")}</a>
