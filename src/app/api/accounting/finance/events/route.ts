@@ -9,7 +9,7 @@ import { eventFinancials, SETTLEMENT_STATUSES, totalsByCurrency, type EventFinan
 
 const Q = Pagination.extend({
   from: IsoDate.optional(), to: IsoDate.optional(), q: z.string().trim().max(120).optional(), organiserId: z.string().uuid().optional(), currency: Currency.optional(),
-  status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(), settlement: z.enum(SETTLEMENT_STATUSES as [SettlementStatus, ...SettlementStatus[]]).optional(),
+  status: z.enum(["ACTIVE", "INACTIVE", "CANCELLED", "ARCHIVED"]).optional(), settlement: z.enum(SETTLEMENT_STATUSES as [SettlementStatus, ...SettlementStatus[]]).optional(),
   payments: z.enum(["PENDING", "NONE"]).optional(), eventId: z.string().uuid().optional(), format: z.enum(["csv"]).optional(),
 }).passthrough();
 

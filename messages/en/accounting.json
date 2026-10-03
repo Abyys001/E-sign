@@ -78,7 +78,8 @@
     "pending": "Pending",
     "in_transit": "In transit",
     "canceled": "Cancelled",
-    "failed": "Failed"
+    "failed": "Failed",
+    "CANCELLED": "Cancelled"
   },
   "kind": {
     "SALE": "Sale",
@@ -284,7 +285,8 @@
     "st": {
       "ACTIVE": "Active",
       "INACTIVE": "Inactive",
-      "ARCHIVED": "Archived"
+      "ARCHIVED": "Archived",
+      "CANCELLED": "Cancelled"
     },
     "notes": "Notes",
     "changeReason": "Reason for the change",
@@ -1765,6 +1767,21 @@
     "chargeback": "Chargeback",
     "notLinked": "Not linked",
     "link": "Link to event",
-    "help": "Linking a refund whose sale is not linked links the sale too (the refund follows its sale). Under the platform policy the booking fee is non-refundable: if a refund includes it, the organiser is charged for it."
+    "help": "Linking a refund whose sale is not linked links the sale too (the refund follows its sale). Under the platform policy the booking fee is non-refundable: if a refund includes it, the organiser is charged for it.",
+    "recover": {
+      "title": "Booking fees to recover from organisers",
+      "desc": "Booking fees refunded to customers (e.g. cancelled events). Under the platform policy the organiser pays them back: the amount is deducted from what you owe them, and if their balance goes negative they owe Bilit the difference.",
+      "none": "No booking fees to recover.",
+      "event": "Event",
+      "status": "Event status",
+      "refunded": "Refunded to customers",
+      "fee": "Booking fee to recover",
+      "stripe": "Stripe fees charged",
+      "balance": "Organiser balance",
+      "owes": "owes Bilit",
+      "owed": "Bilit still owes",
+      "total": "Total for {name}",
+      "settled": "recovered by deduction"
+    }
   }
 }
