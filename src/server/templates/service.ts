@@ -25,6 +25,9 @@ export const RoleDef = z.object({
   role: z.enum(["SIGNER", "CC", "WITNESS", "APPROVER"]).default("SIGNER"),
   order: z.number().int().min(1).max(50).default(1),
   required: z.boolean().default(true),
+  /** Who normally fills this role (e.g. the Bilit signer). Pre-filled when a contract is created; can be changed per contract. */
+  defaultName: z.string().trim().max(200).optional(),
+  defaultEmail: z.email().max(254).optional(),
 });
 export type RoleDef = z.infer<typeof RoleDef>;
 
@@ -198,7 +201,7 @@ export async function createFromTemplate(tx: Tx, a: Actor, templateVersionId: st
   await tx.update(schema.contracts).set({ currentVersionId: ver.id }).where(eq(schema.contracts.id, c.id));
   const byRole = new Map<string, string>();
   for (const role of roles) {
-    const who = input.recipients?.find((r) => r.roleKey === role.key);
+    const who = input.recipients?.find((r) => r.roleKey === role.key) ?? (role.defaultName && role.defaultEmail ? { roleKey: role.key, name: role.defaultName, email: role.defaultEmail } : undefined);
     if (!who) { if (role.required && role.role !== "CC") throw new AppError("validation_failed", `Choose who fills the “${role.name}” role.`); continue; }
     const r = await addRecipient(tx, a, c.id, { ...who, role: role.role, signingOrder: role.order, required: role.required });
     byRole.set(role.key, r.id);

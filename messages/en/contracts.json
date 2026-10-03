@@ -309,7 +309,9 @@
       "clean": "All changes saved",
       "rolesMissing": "Add at least one role first.",
       "keyHint": "lowercase letters, numbers, underscore",
-      "done": "Done"
+      "done": "Done",
+      "roleDefaultName": "Usual signer — name",
+      "roleDefaultEmail": "Usual signer — email"
     }
   }
 }

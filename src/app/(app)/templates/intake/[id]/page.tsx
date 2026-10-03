@@ -77,7 +77,7 @@ export default function IntakeFormPage({ params }: { params: Promise<{ id: strin
           {(data.validation?.warnings ?? []).length > 0 && <Callout tone="info"><ul className="list-disc ps-5">{data.validation!.warnings.map((e, i) => <li key={i}>{e}</li>)}</ul></Callout>}
           <FormBuilder schema={schema} settings={settings} coverage={data.validation?.coverage ?? null} presets={meta.fieldPresets} fieldTypes={meta.fieldTypes} readOnly={locked} onSchema={(s) => { setSchema(s); setDirty(true); }} onSettings={(s) => { setSettings(s); setDirty(true); }} />
         </div>)}
-        {tab === "invitations" && <InvitationsPanel formId={id} publishedVersionId={publishedId} />}
+        {tab === "invitations" && <InvitationsPanel formId={id} publishedVersionId={publishedId} defaultBilit={data.latest.settings.signers?.bilit} />}
         {tab === "access" && <FormAccess formId={id} />}
       </div>
       <Modal open={!!preview} onClose={() => setPreview(null)} size="xl" title={t("summaryTitle")} description={t("summaryDesc")} footer={<Button onClick={() => setPreview(null)}>{c("close")}</Button>}>

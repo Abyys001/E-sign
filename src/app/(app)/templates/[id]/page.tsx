@@ -13,7 +13,7 @@ import { useToast } from "@/components/ui/toast";
 import { api, errMsg, useApi } from "@/lib/api";
 
 type Variable = { key: string; label: string; type: string; required: boolean; default?: string };
-type Role = { key: string; name: string; role: string; order: number; required: boolean };
+type Role = { key: string; name: string; role: string; order: number; required: boolean; defaultName?: string; defaultEmail?: string };
 type Version = { id: string; version: number; published: boolean; variables: Variable[]; recipientRoles: Role[]; fields: Array<Parameters<typeof fromKit>[0]>; storageObjectId: string | null };
 type Detail = { template: { id: string; name: string; contractType: string; status: string }; versions: Version[] };
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace(/^(\d)/, "r$1").slice(0, 30);
@@ -95,12 +95,14 @@ export default function TemplateEditor({ params }: { params: Promise<{ id: strin
       </Modal>
       <Modal open={dlg === "roles"} onClose={() => setDlg(null)} title={t("roles")} description={t("rolesHelp")} size="xl" footer={<Button variant="primary" onClick={() => setDlg(null)}>{t("done")}</Button>}>
         <div className="space-y-3">{roles.map((r, i) => (
-          <div key={i} className="grid items-end gap-3 rounded-xl border border-line p-3 sm:grid-cols-[1fr_1fr_150px_90px_auto_auto]">
+          <div key={i} className="grid items-end gap-3 rounded-xl border border-line p-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_150px_90px_1fr_1fr_auto_auto]">
             <Field label={t("roleName")}>{(p) => <Input {...p} value={r.name} onChange={(e) => mark(setRoles)(roles.map((x, j) => (j === i ? { ...x, name: e.target.value, key: x.key && x.key !== slug(x.name) ? x.key : slug(e.target.value) } : x)))} />}</Field>
             <Field label={t("roleKey")} hint={t("keyHint")}>{(p) => <Input {...p} dir="ltr" value={r.key} onChange={(e) => mark(setRoles)(roles.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))} />}</Field>
             <Field label={t("roleType")}>{(p) => <Select {...p} value={r.role} onChange={(e) => mark(setRoles)(roles.map((x, j) => (j === i ? { ...x, role: e.target.value } : x)))}>{["SIGNER", "WITNESS", "APPROVER", "CC"].map((k) => <option key={k} value={k}>{c(`roles.${k}`)}</option>)}</Select>}</Field>
             <Field label={t("roleOrder")}>{(p) => <Input {...p} type="number" min={1} max={50} value={r.order} onChange={(e) => mark(setRoles)(roles.map((x, j) => (j === i ? { ...x, order: Math.max(1, Number(e.target.value) || 1) } : x)))} />}</Field>
             <Checkbox label={t("roleRequired")} checked={r.required} onChange={(e) => mark(setRoles)(roles.map((x, j) => (j === i ? { ...x, required: e.target.checked } : x)))} />
+            <Field label={t("roleDefaultName")}>{(p) => <Input {...p} value={r.defaultName ?? ""} onChange={(e) => mark(setRoles)(roles.map((x, j) => (j === i ? { ...x, defaultName: e.target.value || undefined } : x)))} />}</Field>
+            <Field label={t("roleDefaultEmail")}>{(p) => <Input {...p} type="email" dir="ltr" value={r.defaultEmail ?? ""} onChange={(e) => mark(setRoles)(roles.map((x, j) => (j === i ? { ...x, defaultEmail: e.target.value || undefined } : x)))} />}</Field>
             <Button size="icon" aria-label={c("remove")} onClick={() => { mark(setRoles)(roles.filter((_, j) => j !== i)); mark(setFields)(fields.filter((f) => f.partyId !== r.key)); }}><Trash2 className="size-4" /></Button></div>))}
           <Button onClick={() => mark(setRoles)([...roles, { key: `signer_${roles.length + 1}`, name: t("roleName", { n: roles.length + 1 }), role: "SIGNER", order: roles.length + 1, required: true }])}><Plus className="size-4" aria-hidden />{t("addRole")}</Button></div>
       </Modal>

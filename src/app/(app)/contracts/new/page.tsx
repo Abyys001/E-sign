@@ -1,6 +1,6 @@
 "use client";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Copy, FileUp, LayoutTemplate, UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import { api, errMsg, useApi } from "@/lib/api";
 type Source = "pdf" | "template" | "duplicate";
 type TemplateRow = { id: string; name: string; publishedVersion: number | null; contractType: string };
 type Variable = { key: string; label: string; type: string; required: boolean; default?: string };
-type Role = { key: string; name: string; role: string; required: boolean };
+type Role = { key: string; name: string; role: string; required: boolean; defaultName?: string; defaultEmail?: string };
 type TemplateDetail = { versions: Array<{ id: string; version: number; published: boolean; variables: Variable[]; recipientRoles: Role[] }> };
 type ContractRow = { id: string; name: string; reference: string };
 
@@ -47,6 +47,11 @@ function Wizard() {
   const detail = useApi<TemplateDetail>(source === "template" && templateId ? `/api/templates/${templateId}` : null);
   const contracts = useApi<{ items: ContractRow[] }>(source === "duplicate" ? "/api/contracts?pageSize=100" : null);
   const version = detail.data?.versions.filter((v) => v.published).at(-1);
+  // Roles with a usual person (e.g. the Bilit signer) start pre-filled; the sender can still change them.
+  useEffect(() => {
+    const defaults = Object.fromEntries((version?.recipientRoles ?? []).filter((r) => r.defaultName && r.defaultEmail).map((r) => [r.key, { name: r.defaultName!, email: r.defaultEmail! }]));
+    if (Object.keys(defaults).length) setPeople((s) => ({ ...defaults, ...s }));
+  }, [version?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pickFile = (f: File | undefined) => { if (f) { setFile(f); if (!name) setName(f.name.replace(/\.pdf$/i, "")); } };
   const ready = name.trim() && (source === "pdf" ? !!file : source === "template" ? !!version && (version.variables ?? []).every((v) => !v.required || vars[v.key]?.trim()) && (version.recipientRoles ?? []).every((r) => !r.required || (people[r.key]?.name && people[r.key]?.email)) : !!dupId);

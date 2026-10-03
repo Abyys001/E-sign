@@ -57,7 +57,8 @@ function useRevealLink(set: (l: { url: string; name: string; expiresAt?: string 
   };
 }
 
-export function InvitationsPanel({ formId, publishedVersionId }: { formId: string; publishedVersionId: string | null }) {
+type Signer = { name: string; email: string } | undefined;
+export function InvitationsPanel({ formId, publishedVersionId, defaultBilit }: { formId: string; publishedVersionId: string | null; defaultBilit?: Signer }) {
   const t = useTranslations("intake.invitations");
   const c = useTranslations("common");
   const locale = useLocale();
@@ -105,13 +106,13 @@ export function InvitationsPanel({ formId, publishedVersionId }: { formId: strin
           <Field label={t("message")}>{(p) => <Textarea {...p} value={f.message} onChange={(e) => setF({ ...f, message: e.target.value })} maxLength={2000} />}</Field>
         </div>
       </Modal>
-      {open && <InvitationDetail id={open} onClose={() => setOpen(null)} onChanged={reload} />}
+      {open && <InvitationDetail id={open} onClose={() => setOpen(null)} onChanged={reload} defaultBilit={defaultBilit} />}
       <LinkModal link={link} onClose={() => setLink(null)} />
     </div>
   );
 }
 
-function InvitationDetail({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
+function InvitationDetail({ id, onClose, onChanged, defaultBilit }: { id: string; onClose: () => void; onChanged: () => void; defaultBilit?: Signer }) {
   const t = useTranslations("intake.detail");
   const c = useTranslations("common");
   const locale = useLocale();
@@ -122,7 +123,7 @@ function InvitationDetail({ id, onClose, onChanged }: { id: string; onClose: () 
   const sub = useApi<Submission>(submitted ? `/api/invitations/${id}/submission` : null);
   const [tab, setTab] = useState<"activity" | "answers">("activity");
   const [approve, setApprove] = useState(false);
-  const [signers, setSigners] = useState({ bilitName: "", bilitEmail: "" });
+  const [signers, setSigners] = useState({ bilitName: defaultBilit?.name ?? "", bilitEmail: defaultBilit?.email ?? "" });
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const inv = act.data?.invitation;

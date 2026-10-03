@@ -31,6 +31,11 @@ if (!org) throw new Error("Bilit organisation not found");
 const co = await getInvoiceSettings(org.id);
 const legal = co.legalName ?? "Bilit Platform FZ-LLC";
 const reg = registrationLines(co);
+/** Sina Najafi always signs for Bilit (owner instruction); pre-filled on every contract from this template. */
+const BILIT_ROLES = () => [
+  { key: "bilit", name: `Bilit (${legal})`, role: "SIGNER", order: 1, required: true, defaultName: "Sina Najafi", defaultEmail: "info@bilit.events" },
+  { key: "promoter", name: "Promoter / Organiser", role: "SIGNER", order: 2, required: true },
+];
 
 const md = readFileSync(join(import.meta.dirname, "agreement.md"), "utf8");
 const fnt = load();
@@ -189,7 +194,7 @@ console.log(`PDF ${outPath}: ${range.count} pages, ${fields.length} fields (bili
 if (publish) {
   const [m] = await db.select().from(schema.memberships).where(eq(schema.memberships.organisationId, org.id)).limit(1);
   const a = { orgId: org.id, userId: m!.userId, ctx: { ip: "127.0.0.1", userAgent: "admin-script", correlationId: "promoter-agreement-template" } };
-  const roles = [{ key: "bilit", name: `Bilit (${legal})`, role: "SIGNER", order: 1, required: true }, { key: "promoter", name: "Promoter / Organiser", role: "SIGNER", order: 2, required: true }];
+  const roles = BILIT_ROLES();
   const payload = fields.map(({ defaultValue, ...f }) => ({ ...f, ...(defaultValue ? { defaultValue } : {}) }));
   const t = await db.transaction(async (tx) => {
     const { template, version } = await createTemplate(tx as never, a as never, { name: "Bilit.Events Promoter & Event Services Agreement", contractType: "promoter_agreement", pdf });
@@ -200,12 +205,13 @@ if (publish) {
   console.log("published template", t.id);
 }
 if (updateId) {
+  const roles = BILIT_ROLES();
   const [m] = await db.select().from(schema.memberships).where(eq(schema.memberships.organisationId, org.id)).limit(1);
   const a = { orgId: org.id, userId: m!.userId, ctx: { ip: "127.0.0.1", userAgent: "admin-script", correlationId: "promoter-agreement-template" } };
   const payload = fields.map(({ defaultValue, ...f }) => ({ ...f, ...(defaultValue ? { defaultValue } : {}) }));
   const v = await db.transaction(async (tx) => {
     const d = await createDraftVersion(tx as never, a as never, updateId);
-    await updateDraftVersion(tx as never, a as never, updateId, d.version, { pdf, fields: payload });
+    await updateDraftVersion(tx as never, a as never, updateId, d.version, { pdf, fields: payload, recipientRoles: roles });
     return publishVersion(tx as never, a as never, updateId, d.version);
   });
   console.log("published new version", v.version, "of template", updateId);
