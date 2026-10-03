@@ -13,8 +13,8 @@ type FieldErrors = Record<string, string>;
 const fieldErrors = (e: unknown): FieldErrors => (e instanceof ApiError && Array.isArray(e.details) ? Object.fromEntries((e.details as Array<{ path: string; message: string }>).map((d) => [d.path, d.message])) : {});
 
 // ---------- agreement (commission model) ----------
-export type AgreementValue = { percent: string; percentBasis: "GROSS" | "NET"; fixedPerTicket: string; fixedEventFee: string; stripeFeesBorneBy: "ORGANISER" | "BILIT"; chargebacksBorneBy: "ORGANISER" | "BILIT"; refundsReverseCommission: boolean; notes: string };
-export const emptyAgreement = (): AgreementValue => ({ percent: "0", percentBasis: "GROSS", fixedPerTicket: "0", fixedEventFee: "0", stripeFeesBorneBy: "ORGANISER", chargebacksBorneBy: "ORGANISER", refundsReverseCommission: true, notes: "" });
+export type AgreementValue = { percent: string; percentBasis: "ADDED" | "GROSS" | "NET"; fixedPerTicket: string; fixedEventFee: string; stripeFeesBorneBy: "ORGANISER" | "BILIT"; chargebacksBorneBy: "ORGANISER" | "BILIT"; refundsReverseCommission: boolean; notes: string };
+export const emptyAgreement = (): AgreementValue => ({ percent: "0", percentBasis: "ADDED", fixedPerTicket: "0", fixedEventFee: "0", stripeFeesBorneBy: "ORGANISER", chargebacksBorneBy: "ORGANISER", refundsReverseCommission: true, notes: "" });
 export const agreementFrom = (a: { percentBps: number; percentBasis: string; fixedPerTicket: number; fixedEventFee: number; stripeFeesBorneBy: string; chargebacksBorneBy: string; refundsReverseCommission: boolean; notes: string | null }, currency: string): AgreementValue => ({
   percent: bpsToPercent(a.percentBps), percentBasis: a.percentBasis as "GROSS", fixedPerTicket: toDecimalString(a.fixedPerTicket, currency), fixedEventFee: toDecimalString(a.fixedEventFee, currency),
   stripeFeesBorneBy: a.stripeFeesBorneBy as "ORGANISER", chargebacksBorneBy: a.chargebacksBorneBy as "ORGANISER", refundsReverseCommission: a.refundsReverseCommission, notes: a.notes ?? "",
@@ -33,7 +33,7 @@ export function AgreementFields({ v, onChange, currency }: { v: AgreementValue; 
       <p className="text-xs text-muted">{t("help")}</p>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label={t("percent")} hint={t("percentHint")}>{(p) => <Input {...p} inputMode="decimal" value={v.percent} onChange={(e) => set("percent", e.target.value)} />}</Field>
-        <Field label={t("basis")}>{(p) => <Select {...p} value={v.percentBasis} onChange={(e) => set("percentBasis", e.target.value as "GROSS")}><option value="GROSS">{t("gross")}</option><option value="NET">{t("net")}</option></Select>}</Field>
+        <Field label={t("basis")}>{(p) => <Select {...p} value={v.percentBasis} onChange={(e) => set("percentBasis", e.target.value as "GROSS")}><option value="ADDED">{t("added")}</option><option value="GROSS">{t("gross")}</option><option value="NET">{t("net")}</option></Select>}</Field>
         <Field label={`${t("perTicket")} (${cur})`} hint={t("perTicketHint")}>{(p) => <Input {...p} inputMode="decimal" value={v.fixedPerTicket} onChange={(e) => set("fixedPerTicket", e.target.value)} />}</Field>
         <Field label={`${t("eventFee")} (${cur})`} hint={t("eventFeeHint")}>{(p) => <Input {...p} inputMode="decimal" value={v.fixedEventFee} onChange={(e) => set("fixedEventFee", e.target.value)} />}</Field>
         <Field label={t("feesBy")}>{(p) => <Select {...p} value={v.stripeFeesBorneBy} onChange={(e) => set("stripeFeesBorneBy", e.target.value as "ORGANISER")}><option value="ORGANISER">{t("organiser")}</option><option value="BILIT">{t("bilit")}</option></Select>}</Field>

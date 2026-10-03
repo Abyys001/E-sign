@@ -108,8 +108,8 @@
     "percent": "Commission %",
     "percentHint": "e.g. 5 or 2.75",
     "basis": "Percentage of",
-    "gross": "Gross (what the customer paid)",
-    "net": "Net (gross − Stripe fee)",
+    "gross": "Percentage of what the customer paid",
+    "net": "Percentage of what the customer paid − Stripe fee",
     "perTicket": "Fixed per ticket",
     "perTicketHint": "Ticket count from Stripe metadata (default 1 per payment)",
     "eventFee": "Fixed event fee",
@@ -119,7 +119,8 @@
     "organiser": "Organiser",
     "bilit": "Bilit",
     "reverse": "Refunds reverse the commission pro rata",
-    "notes": "Agreement notes"
+    "notes": "Agreement notes",
+    "added": "Added on top of the ticket price (customer pays ticket + fee)"
   },
   "dashboard": {
     "title": "Finance dashboard",
@@ -236,7 +237,8 @@
     "system": "System",
     "unmatchTitle": "Unassign this transaction?",
     "unmatchDesc": "The ledger posting is reversed and the money moves to unallocated receipts. Automatic matching will not reassign it.",
-    "unmatched": "Transaction unassigned"
+    "unmatched": "Transaction unassigned",
+    "onTop": "added on top of ticket price"
   },
   "match": {
     "title": "Assign to event",
@@ -332,7 +334,8 @@
     },
     "created": "Created",
     "cancel": "Cancel",
-    "importTx": "Import from transactions"
+    "importTx": "Import from transactions",
+    "onTop": "added on top of ticket price"
   },
   "organisers": {
     "title": "Organisers",
@@ -939,6 +942,22 @@
         "future": "Future sales only",
         "futureHelp": "Booked sales keep the rate they were calculated with.",
         "date": "From date"
+      },
+      "basis": "How the booking fee is charged",
+      "bases": {
+        "ADDED": "Added on top of the ticket price",
+        "GROSS": "Included — % of what the customer paid",
+        "NET": "Included — % of paid amount after Stripe fee"
+      },
+      "basisHelp": {
+        "ADDED": "Customer pays ticket + fee. €35 ticket + 10 % = €38.50 paid → booking fee €3.50, organiser €35.00.",
+        "GROSS": "Fee is a share of the amount paid. €38.50 paid at 10 % → fee €3.85.",
+        "NET": "Fee is a share of the amount paid after Stripe's fee."
+      },
+      "basisShort": {
+        "ADDED": "on top of ticket price",
+        "GROSS": "of amount paid",
+        "NET": "of amount paid after Stripe fee"
       }
     },
     "pay": {

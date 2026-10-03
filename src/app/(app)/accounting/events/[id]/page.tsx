@@ -60,7 +60,7 @@ function EventFinance({ id }: { id: string }) {
 
       <Card className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4">
         <div className="flex items-center gap-2"><span className="text-sm text-muted">{t("financialStatus")}</span><SettlementBadge s={f.settlement} /></div>
-        <div className="flex items-center gap-2"><span className="text-sm text-muted">{t("k.bookingFeePct")}</span><span className="rounded-lg bg-surface-2 px-2 py-0.5 text-base font-semibold tabular-nums">{pct(bps)}</span>
+        <div className="flex items-center gap-2"><span className="text-sm text-muted">{t("k.bookingFeePct")}</span><span className="rounded-lg bg-surface-2 px-2 py-0.5 text-base font-semibold tabular-nums">{pct(bps)}</span>{data.agreement && <span className="text-xs text-muted">{t(`fee.basisShort.${data.agreement.percentBasis}`)}</span>}
           {manage && <Button size="sm" variant="ghost" onClick={() => setFee(true)}><Percent className="size-3.5" aria-hidden />{t("changeFee")}</Button>}</div>
         <div className="text-sm"><span className="text-muted">{t("organiser")}: </span>{e.organiserId ? <Link href={`/accounting/organisers/${e.organiserId}`} className="font-medium underline-offset-4 hover:underline">{e.organiserName}</Link> : <span className="font-medium text-fin-warn">{te("noOrganiserWarn")}</span>}</div>
         <div className="text-sm"><span className="text-muted">{t("k.tickets")}: </span><span className="font-semibold tabular-nums">{f.tickets.toLocaleString(locale)}</span><span className="text-muted"> · {t("k.orders")}: </span><span className="tabular-nums">{f.orders.toLocaleString(locale)}</span></div>
@@ -73,7 +73,7 @@ function EventFinance({ id }: { id: string }) {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <AmountCard label={t("kpi.gross")} v={f.grossSales} c={f.currency} tone="pos" icon={Receipt} hint={<>{t("k.netSales")}: <Money v={f.netSales} c={f.currency} className="font-medium text-fg" /></>} />
-        <AmountCard label={t("kpi.bookingFees")} v={f.bookingFees} c={f.currency} tone="pos" icon={Percent} hint={`${pct(bps)} ${t("ofGross")}`} />
+        <AmountCard label={t("kpi.bookingFees")} v={f.bookingFees} c={f.currency} tone="pos" icon={Percent} hint={`${pct(bps)} · ${t(`fee.basisShort.${data.agreement?.percentBasis ?? "ADDED"}`)}`} />
         <AmountCard label={t("kpi.due")} v={f.organiserDue} c={f.currency} tone="info" icon={Scale} hint={t("kpi.dueHint")} />
         <AmountCard label={t("kpi.paid")} v={f.organiserPaid} c={f.currency} tone="bal" icon={Wallet} hint={f.pendingPayments ? <>{t("pendingNote")}: <Money v={f.pendingPayments} c={f.currency} /></> : undefined} />
         <AmountCard label={t("kpi.remaining")} v={f.remaining} c={f.currency} tone={f.remaining === 0 ? "pos" : "warn"} icon={HandCoins} hint={<SettlementBadge s={f.settlement} />} />
@@ -95,7 +95,7 @@ function EventFinance({ id }: { id: string }) {
       </div>
 
       {edit && <EventDialog open={edit} onClose={() => setEdit(false)} onSaved={() => void reload()} eventId={id} initial={{ name: e.name, code: e.code, currency: e.currency, organiserId: e.organiserId ?? "", startsOn: e.startsOn ?? "", status: e.status, notes: e.notes ?? "" }} />}
-      {fee && <BookingFeeDialog eventId={id} currentBps={bps} onClose={() => setFee(false)} onSaved={() => void reload()} />}
+      {fee && <BookingFeeDialog eventId={id} currentBps={bps} currentBasis={data.agreement?.percentBasis} onClose={() => setFee(false)} onSaved={() => void reload()} />}
       {pay && e.organiserId && <PayOrganiserDialog event={{ id, name: e.name, organiserId: e.organiserId, organiserName: e.organiserName }} f={f} bookingFeeBps={bps} mode={mode} onClose={() => setPay(false)} onSaved={() => void reload()} />}
     </div>
   );
@@ -137,7 +137,7 @@ function Overview({ e, f, agreement, reload }: { e: Ev; f: Fig; agreement: Ag | 
           {agreement && agreement.fixedEventFee > 0 && <Button size="sm" onClick={postFee}>{te("postFee", { amount: formatMoney(agreement.fixedEventFee, e.currency, locale) })}</Button>}
           <Button size="sm" onClick={() => { setAg(agreement ? agreementFrom(agreement, e.currency) : emptyAgreement()); setAgOpen(true); }}><FilePlus2 className="size-4" aria-hidden />{te("newAgreement")}</Button></div>} />
         <TableWrap><Table><thead><tr><Th>{te("version")}</Th><Th>{t("k.bookingFeePct")}</Th><Th>{te("perTicket")}</Th><Th>{te("eventFee")}</Th><Th>{te("feesBy")}</Th><Th>{te("chargebacksBy")}</Th><Th>{te("created")}</Th></tr></thead>
-          <tbody>{(ags?.agreements ?? []).map((a) => <Tr key={a.id} className={a.id === e.currentAgreementId ? "font-medium" : "text-muted"}><Td>v{a.version}{a.id === e.currentAgreementId && <span className="ms-2"><Badge s="ACTIVE" /></span>}{a.notes && <span className="block max-w-xs truncate text-xs font-normal text-muted" title={a.notes}>{a.notes}</span>}</Td><Td>{bpsToPercent(a.percentBps)} % {a.percentBasis === "NET" ? te("ofNet") : te("ofGross")}</Td><Td><Money v={a.fixedPerTicket} c={e.currency} /></Td><Td><Money v={a.fixedEventFee} c={e.currency} /></Td><Td>{te(`by.${a.stripeFeesBorneBy}`)}</Td><Td>{te(`by.${a.chargebacksBorneBy}`)}</Td><Td>{fmtDate(a.createdAt, locale)}</Td></Tr>)}</tbody></Table></TableWrap>
+          <tbody>{(ags?.agreements ?? []).map((a) => <Tr key={a.id} className={a.id === e.currentAgreementId ? "font-medium" : "text-muted"}><Td>v{a.version}{a.id === e.currentAgreementId && <span className="ms-2"><Badge s="ACTIVE" /></span>}{a.notes && <span className="block max-w-xs truncate text-xs font-normal text-muted" title={a.notes}>{a.notes}</span>}</Td><Td>{bpsToPercent(a.percentBps)} % <span className="text-xs text-muted">{t(`fee.basisShort.${a.percentBasis}`)}</span></Td><Td><Money v={a.fixedPerTicket} c={e.currency} /></Td><Td><Money v={a.fixedEventFee} c={e.currency} /></Td><Td>{te(`by.${a.stripeFeesBorneBy}`)}</Td><Td>{te(`by.${a.chargebacksBorneBy}`)}</Td><Td>{fmtDate(a.createdAt, locale)}</Td></Tr>)}</tbody></Table></TableWrap>
       </Card>
       <Modal open={agOpen} onClose={() => setAgOpen(false)} size="lg" title={te("newAgreement")} description={te("newAgreementDesc")}
         footer={<><Button onClick={() => setAgOpen(false)}>{te("cancel")}</Button><Button variant="primary" loading={busy} disabled={reason.trim().length < 3} onClick={saveAg}>{te("saveAgreement")}</Button></>}>

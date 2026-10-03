@@ -25,6 +25,7 @@ export const SETTLEMENTS: Settlement[] = ["NOT_SETTLED", "PARTIALLY_PAID", "FULL
 type FieldErrors = Record<string, string>;
 const fieldErrors = (e: unknown): FieldErrors => (e instanceof ApiError && Array.isArray(e.details) ? Object.fromEntries((e.details as Array<{ path: string; message: string }>).map((d) => [d.path, d.message])) : {});
 export const pct = (bps: number | null | undefined) => (bps == null ? "—" : `${bpsToPercent(bps)} %`);
+export const BASES = ["ADDED", "GROSS", "NET"] as const;
 
 // ---------- settlement status ----------
 const ST: Record<Settlement, { cls: string; Icon: typeof CheckCircle2 }> = {
@@ -177,12 +178,13 @@ export function BarList({ data, currency, caption, href }: { data: Datum[]; curr
 }
 
 // ---------- booking fee ----------
-export function BookingFeeDialog({ eventId, currentBps, onClose, onSaved }: { eventId: string; currentBps: number | null; onClose: () => void; onSaved: () => void }) {
+export function BookingFeeDialog({ eventId, currentBps, currentBasis, onClose, onSaved }: { eventId: string; currentBps: number | null; currentBasis?: string | null; onClose: () => void; onSaved: () => void }) {
   const t = useTranslations("accounting.fin.fee");
   const c = useTranslations("common");
   const toast = useToast();
   const [v, setV] = useState(currentBps == null ? "" : bpsToPercent(currentBps));
   const [scope, setScope] = useState<"all" | "from" | "future">("all");
+  const [basis, setBasis] = useState<string>(currentBasis ?? "ADDED");
   const [from, setFrom] = useState(new Date().toISOString().slice(0, 10));
   const [reason, setReason] = useState("");
   const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
@@ -190,7 +192,7 @@ export function BookingFeeDialog({ eventId, currentBps, onClose, onSaved }: { ev
   const submit = async () => {
     if (bps === null) { setErr(t("invalid")); return; }
     setBusy(true); setErr(null);
-    try { const r = await api<{ reposted: number }>(`/api/accounting/events/${eventId}/booking-fee`, { json: { percentBps: bps, applyToExisting: scope !== "future", applyFrom: scope === "from" ? from : null, reason } }); toast("ok", t("saved", { n: r.reposted })); onSaved(); onClose(); }
+    try { const r = await api<{ reposted: number }>(`/api/accounting/events/${eventId}/booking-fee`, { json: { percentBps: bps, applyToExisting: scope !== "future", applyFrom: scope === "from" ? from : null, percentBasis: basis, reason } }); toast("ok", t("saved", { n: r.reposted })); onSaved(); onClose(); }
     catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
   };
   return (
@@ -198,6 +200,7 @@ export function BookingFeeDialog({ eventId, currentBps, onClose, onSaved }: { ev
       footer={<><Button onClick={onClose}>{c("cancel")}</Button><Button variant="primary" loading={busy} disabled={bps === null || reason.trim().length < 3 || (scope === "from" && !from)} onClick={submit}>{t("save")}</Button></>}>
       <div className="space-y-4">
         <Field label={t("percent")} required hint={t("current", { v: pct(currentBps) })}>{(p) => <div className="flex items-center gap-2"><Input {...p} inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} className="w-32 text-end font-semibold" placeholder="7.00" /><span className="text-lg font-semibold">%</span></div>}</Field>
+        <Field label={t("basis")} hint={t(`basisHelp.${basis}`)}>{(p) => <Select {...p} value={basis} onChange={(e) => setBasis(e.target.value)}>{BASES.map((b) => <option key={b} value={b}>{t(`bases.${b}`)}</option>)}</Select>}</Field>
         <fieldset className="space-y-2"><legend className="mb-1 text-sm font-medium">{t("scope")}</legend>
           {(["all", "from", "future"] as const).map((k) => <label key={k} className="flex items-start gap-2 rounded-lg border border-line p-2.5 text-sm has-[:checked]:border-accent">
             <input type="radio" name="fee-scope" className="mt-1" checked={scope === k} onChange={() => setScope(k)} />

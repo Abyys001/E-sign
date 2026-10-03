@@ -1,4 +1,4 @@
-import { applyBps, prorate } from "@/lib/money";
+import { applyBps, feeIncluded, prorate } from "@/lib/money";
 import type { Posting } from "./ledger";
 
 export type BtKind = "SALE" | "REFUND" | "DISPUTE" | "DISPUTE_REVERSAL" | "PAYOUT" | "PAYOUT_REVERSAL" | "STRIPE_FEE" | "OTHER";
@@ -22,10 +22,19 @@ export type Agreement = {
   stripeFeesBorneBy: string; chargebacksBorneBy: string; refundsReverseCommission: boolean;
 };
 
-/** Bilit commission on a sale: percentage of gross (or of gross − Stripe fee) plus a fixed amount per ticket. */
+/**
+ * Percentage part of the booking fee on an amount the customer paid.
+ * ADDED: the fee was added on top of the ticket price at checkout (€35 + 10 % = €38.50 → fee €3.50).
+ * GROSS: the fee is a percentage of what was paid. NET: of what was paid minus the Stripe fee.
+ */
+export function percentFee(amount: number, stripeFee: number, a: Pick<Agreement, "percentBasis" | "percentBps">): number {
+  if (a.percentBasis === "ADDED") return feeIncluded(amount, a.percentBps);
+  return applyBps(a.percentBasis === "NET" ? amount - stripeFee : amount, a.percentBps);
+}
+
+/** Bilit commission (booking fee) on a sale: the percentage part plus a fixed amount per ticket. */
 export function saleCommission(gross: number, fee: number, qty: number, a: Agreement): number {
-  const base = a.percentBasis === "NET" ? gross - fee : gross;
-  return applyBps(base, a.percentBps) + a.fixedPerTicket * qty;
+  return percentFee(gross, fee, a) + a.fixedPerTicket * qty;
 }
 
 export type PostingInput = {
@@ -75,7 +84,7 @@ export function btPostings(i: PostingInput): PostingResult {
       const organiserBears = i.kind === "REFUND" || a.chargebacksBorneBy === "ORGANISER";
       if (!organiserBears) return { entryType: i.kind, postings: p, commission: 0, organiserAmount: 0 };
       // Commission follows the money back pro rata (refund of 40 % of a sale reverses 40 % of its commission) when agreed.
-      const cd = !a.refundsReverseCommission ? 0 : i.original && i.original.amount !== 0 ? prorate(i.original.commission, i.amount, i.original.amount) : applyBps(a.percentBasis === "NET" ? i.amount - i.fee : i.amount, a.percentBps);
+      const cd = !a.refundsReverseCommission ? 0 : i.original && i.original.amount !== 0 ? prorate(i.original.commission, i.amount, i.original.amount) : percentFee(i.amount, i.fee, a);
       const share = i.amount - cd;
       add("organiser_share", share, "Organiser share reversed");
       add("organiser_payable", -share, "Charged back to organiser");

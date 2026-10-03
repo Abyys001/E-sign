@@ -195,3 +195,23 @@ describe("variable booking fee from a date", () => {
     expect(await balanced(e.org.id)).toBe(0);
   });
 });
+
+describe("booking fee added on top of the ticket price", () => {
+  it("€35 ticket + 10 % = €38.50 paid → booking fee €3.50, organiser €35.00", async () => {
+    const { feeIncluded } = await import("@/lib/money");
+    const { saleCommission } = await import("@/server/accounting/postings");
+    expect(feeIncluded(3850, 1000)).toBe(350);
+    expect(feeIncluded(3745, 700)).toBe(245); // €35 + 7 %
+    expect(saleCommission(3850, 120, 1, { id: "x", percentBps: 1000, percentBasis: "ADDED", fixedPerTicket: 0, fixedEventFee: 0, stripeFeesBorneBy: "BILIT", chargebacksBorneBy: "ORGANISER", refundsReverseCommission: true })).toBe(350);
+  });
+  it("posts the fee and organiser share from actual Stripe amounts, refunds reverse it", async () => {
+    const e = await setup();
+    await setBookingFee(e.actor, e.event.id, { percentBps: 1000, applyToExisting: true, percentBasis: "ADDED", reason: "Fee added at checkout" });
+    const s = e.fake.sale({ amount: 3850, fee: 120, currency: "gbp", description: `Order (t1) for event: Persian Concert London (${e.event.code})` });
+    await importBalanceTransaction(await e.ctx(), s.bt);
+    expect(await fig(e)).toMatchObject({ grossSales: 3850, bookingFees: 350, organiserDue: 3500, bilitProfit: 350 - 120 });
+    await importBalanceTransaction(await e.ctx(), e.fake.refund(s.charge, 3850).bt);
+    expect(await fig(e)).toMatchObject({ refunds: 3850, bookingFees: 0, organiserDue: 0 });
+    expect(await balanced(e.org.id)).toBe(0);
+  });
+});

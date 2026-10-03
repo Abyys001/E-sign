@@ -339,7 +339,7 @@ export async function editOrganiserPayment(a: Actor, id: string, input: z.infer<
 }
 
 // ---------- booking fee (per event) ----------
-export const BookingFeeInput = z.object({ percentBps: z.number().int().min(0).max(10_000), applyToExisting: z.boolean().default(true), applyFrom: IsoDate.optional().nullable(), reason: Reason });
+export const BookingFeeInput = z.object({ percentBps: z.number().int().min(0).max(10_000), applyToExisting: z.boolean().default(true), applyFrom: IsoDate.optional().nullable(), percentBasis: z.enum(["ADDED", "GROSS", "NET"]).optional(), reason: Reason });
 
 /**
  * Change an event's booking fee %. A new agreement version is created (other terms unchanged). With `applyToExisting`
@@ -352,10 +352,10 @@ export async function setBookingFee(a: Actor, eventId: string, input: z.infer<ty
     const [ev] = await tx.select().from(schema.acctEvents).where(and(eq(schema.acctEvents.id, eventId), eq(schema.acctEvents.organisationId, a.orgId))).for("update");
     if (!ev) throw new AppError("not_found", "Event not found");
     const [prev] = ev.currentAgreementId ? await tx.select().from(schema.acctAgreements).where(eq(schema.acctAgreements.id, ev.currentAgreementId)) : [];
-    if (prev && prev.percentBps === input.percentBps && !input.applyToExisting) throw new AppError("invalid_state", "The booking fee is already set to that percentage.");
+    if (prev && prev.percentBps === input.percentBps && (input.percentBasis ?? prev.percentBasis) === prev.percentBasis && !input.applyToExisting) throw new AppError("invalid_state", "The booking fee is already set to that percentage.");
     const [m] = await tx.select({ v: sql<number>`coalesce(max(${schema.acctAgreements.version}), 0)::int` }).from(schema.acctAgreements).where(eq(schema.acctAgreements.eventId, eventId));
-    const terms = prev ? { percentBasis: prev.percentBasis, fixedPerTicket: prev.fixedPerTicket, fixedEventFee: prev.fixedEventFee, stripeFeesBorneBy: prev.stripeFeesBorneBy, chargebacksBorneBy: prev.chargebacksBorneBy, refundsReverseCommission: prev.refundsReverseCommission } : {};
-    const [ag] = await tx.insert(schema.acctAgreements).values({ organisationId: a.orgId, eventId, version: (m?.v ?? 0) + 1, percentBps: input.percentBps, ...terms, notes: `Booking fee changed: ${input.reason}`.slice(0, 1000), createdBy: a.userId }).returning();
+    const terms = prev ? { percentBasis: input.percentBasis ?? prev.percentBasis, fixedPerTicket: prev.fixedPerTicket, fixedEventFee: prev.fixedEventFee, stripeFeesBorneBy: prev.stripeFeesBorneBy, chargebacksBorneBy: prev.chargebacksBorneBy, refundsReverseCommission: prev.refundsReverseCommission } : {};
+    const [ag] = await tx.insert(schema.acctAgreements).values({ organisationId: a.orgId, eventId, version: (m?.v ?? 0) + 1, percentBps: input.percentBps, ...terms, ...(prev ? {} : { percentBasis: input.percentBasis ?? "ADDED" }), notes: `Booking fee changed: ${input.reason}`.slice(0, 1000), createdBy: a.userId }).returning();
     await tx.update(schema.acctEvents).set({ currentAgreementId: ag!.id, updatedAt: new Date() }).where(eq(schema.acctEvents.id, eventId));
     let reposted = 0;
     if (input.applyToExisting) {
@@ -381,7 +381,7 @@ export async function setBookingFee(a: Actor, eventId: string, input: z.infer<ty
         }
       }
     }
-    await acctAudit(tx, { ...a, action: "booking_fee.changed", entity: "event", entityId: eventId, old: { percentBps: prev?.percentBps ?? null, version: prev?.version ?? null }, new: { percentBps: input.percentBps, version: ag!.version }, reason: input.reason, extra: { eventId, eventName: ev.name, applyToExisting: input.applyToExisting, applyFrom: input.applyFrom ?? null, reposted } });
+    await acctAudit(tx, { ...a, action: "booking_fee.changed", entity: "event", entityId: eventId, old: { percentBps: prev?.percentBps ?? null, basis: prev?.percentBasis ?? null, version: prev?.version ?? null }, new: { percentBps: input.percentBps, basis: ag!.percentBasis, version: ag!.version }, reason: input.reason, extra: { eventId, eventName: ev.name, applyToExisting: input.applyToExisting, applyFrom: input.applyFrom ?? null, reposted } });
     return { agreement: ag!, reposted };
   });
 }

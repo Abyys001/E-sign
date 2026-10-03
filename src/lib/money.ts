@@ -51,6 +51,15 @@ export function applyBps(amount: number, bps: number): number {
   return Number(divRound(BigInt(amount) * BigInt(bps), 10_000n));
 }
 
+/**
+ * Fee that was added on top of a price, recovered from the total paid: total × bps / (10 000 + bps).
+ * €38.50 paid with a 10 % booking fee on top → €3.50 fee (ticket €35.00). Exact, half-away rounding.
+ */
+export function feeIncluded(total: number, bps: number): number {
+  if (!Number.isInteger(total) || !Number.isInteger(bps)) throw new Error("feeIncluded needs integers");
+  return Number(divRound(BigInt(total) * BigInt(bps), BigInt(10_000 + bps)));
+}
+
 /** part × numerator / denominator (pro-rata share of an integer amount), exact with half-away rounding. */
 export function prorate(part: number, numerator: number, denominator: number): number {
   if (denominator === 0) return 0;

@@ -63,7 +63,7 @@ function TxDetail({ id }: { id: string }) {
           [t("event"), data.event ? <Link key="e" href={`/accounting/events/${data.event.id}`} className="underline underline-offset-4">{data.event.name}</Link> : <span key="e" className="text-muted">{t("none")}</span>],
           [t("eventCode"), x.eventCode ? <code key="c">{x.eventCode}</code> : null], [t("organiser"), data.organiser ? <Link key="o" href={`/accounting/organisers/${data.organiser.id}`} className="underline underline-offset-4">{data.organiser.name}</Link> : null],
           [t("method"), x.matchMethod], [t("reasonLabel"), x.matchReason ? <Reason key="r" r={x.matchReason} /> : null], [t("note"), x.reconciliationNote],
-          [t("agreement"), data.agreement ? `v${data.agreement.version}: ${bpsToPercent(data.agreement.percentBps)} % ${data.agreement.percentBasis === "NET" ? t("ofNet") : t("ofGross")}${data.agreement.fixedPerTicket ? ` + ${fm(data.agreement.fixedPerTicket, c)} ${t("perTicket")}` : ""} · ${t("feesBy")} ${data.agreement.stripeFeesBorneBy.toLowerCase()}` : null],
+          [t("agreement"), data.agreement ? `v${data.agreement.version}: ${bpsToPercent(data.agreement.percentBps)} % ${data.agreement.percentBasis === "NET" ? t("ofNet") : data.agreement.percentBasis === "ADDED" ? t("onTop") : t("ofGross")}${data.agreement.fixedPerTicket ? ` + ${fm(data.agreement.fixedPerTicket, c)} ${t("perTicket")}` : ""} · ${t("feesBy")} ${data.agreement.stripeFeesBorneBy.toLowerCase()}` : null],
           [t("tickets"), x.ticketQuantity],
         ]} /></div></Card>
       </div>

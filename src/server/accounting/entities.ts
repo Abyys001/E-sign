@@ -58,7 +58,7 @@ export async function updateOrganiser(a: Actor, id: string, input: Partial<z.inf
 // ---------- events + agreements ----------
 export const AgreementInput = z.object({
   percentBps: z.number().int().min(0).max(10_000).default(0),
-  percentBasis: z.enum(["GROSS", "NET"]).default("GROSS"),
+  percentBasis: z.enum(["ADDED", "GROSS", "NET"]).default("ADDED"),
   fixedPerTicket: z.number().int().min(0).max(1_000_000_00).default(0),
   fixedEventFee: z.number().int().min(0).max(1_000_000_000_00).default(0),
   stripeFeesBorneBy: z.enum(["ORGANISER", "BILIT"]).default("ORGANISER"),
