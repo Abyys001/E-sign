@@ -19,8 +19,10 @@ type Actor = { orgId: string; userId: string; ctx: RequestContext };
 
 export const AiSettingsInput = z.object({
   enabled: z.boolean().default(false),
-  model: z.string().trim().min(2).max(80).regex(/^[A-Za-z0-9._:-]+$/).default("gpt-4.1"),
-  apiKey: z.string().trim().min(20).max(300).regex(/^sk-[A-Za-z0-9_-]+$/, "An OpenAI API key starts with sk-").optional().nullable(), // only sent when it changes; null removes it
+  model: z.string().trim().min(2, "Enter a model name, e.g. gpt-4.1").max(80).regex(/^[A-Za-z0-9._:/-]+$/, "Model names contain only letters, digits and . _ : - /").default("gpt-4.1"),
+  // Pasted keys often carry quotes, spaces or invisible characters; strip them before checking.
+  apiKey: z.preprocess((v) => (typeof v === "string" ? v.replace(/[\s"'`\u200B-\u200D\uFEFF]/g, "") : v),
+    z.string().min(20, "That does not look like a complete OpenAI API key").max(500).regex(/^[A-Za-z0-9_\-.:]+$/, "The API key contains characters an OpenAI key never has").optional().nullable()), // only sent when it changes; null removes it
   instructions: z.string().trim().max(4000).optional().nullable(),
 });
 type Stored = { enabled?: boolean; model?: string; apiKeyEnc?: string | null; keyHint?: string | null; instructions?: string | null };
@@ -41,7 +43,9 @@ export async function updateAiSettings(a: Actor, input: z.infer<typeof AiSetting
   const next: Stored = { enabled: input.enabled, model: input.model, instructions: input.instructions ?? null, apiKeyEnc: s.apiKeyEnc ?? null, keyHint: s.keyHint ?? null };
   if (input.apiKey === null) { next.apiKeyEnc = null; next.keyHint = null; }
   else if (input.apiKey) { next.apiKeyEnc = encrypt(input.apiKey); next.keyHint = `${input.apiKey.slice(0, 7)}…${input.apiKey.slice(-4)}`; }
-  if (next.enabled && !next.apiKeyEnc) throw new AppError("validation_failed", "Add an OpenAI API key to enable the AI review.", [{ path: "apiKey", message: "Required" }]);
+  if (next.enabled && !next.apiKeyEnc) throw new AppError("validation_failed", "Add an OpenAI API key to enable the AI review.", [{ path: "apiKey", message: "Paste your OpenAI API key to enable the review" }]);
+  // Check the key and model with OpenAI before saving, so mistakes show up here rather than on the first review.
+  if (next.enabled && next.apiKeyEnc && (input.apiKey || next.model !== s.model || !s.enabled)) await (g.__aiChecker ?? checkOpenAi)(decrypt(next.apiKeyEnc), next.model!);
   await db.transaction(async (tx) => {
     await tx.update(schema.acctSettings).set({ aiSettings: next, updatedBy: a.userId, updatedAt: new Date() }).where(eq(schema.acctSettings.organisationId, a.orgId));
     await acctAudit(tx, { ...a, action: "ai_settings.updated", entity: "settings", entityId: "ai", old: { enabled: !!s.enabled, model: s.model, keyHint: s.keyHint }, new: { enabled: next.enabled, model: next.model, keyHint: next.keyHint, keyChanged: input.apiKey !== undefined } });
@@ -115,8 +119,21 @@ export const ReviewResult = z.object({
 
 /** Injected in tests; production calls the OpenAI Chat Completions API. */
 type Completer = (a: { apiKey: string; model: string; system: string; user: string }) => Promise<{ content: string; promptTokens?: number; completionTokens?: number }>;
-const g = globalThis as { __aiCompleter?: Completer };
+const g = globalThis as { __aiCompleter?: Completer; __aiChecker?: (apiKey: string, model: string) => Promise<void> };
 export const setAiCompleter = (f: Completer | null) => { g.__aiCompleter = f ?? undefined; };
+type Checker = (apiKey: string, model: string) => Promise<void>;
+export const setAiChecker = (f: Checker | null) => { g.__aiChecker = f ?? undefined; };
+
+/** Ask OpenAI whether the key works and can use the model (GET /v1/models/{model}). */
+const checkOpenAi: Checker = async (apiKey, model) => {
+  let res: Response;
+  try { res = await fetch(`https://api.openai.com/v1/models/${encodeURIComponent(model)}`, { headers: { authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000) }); }
+  catch { throw new AppError("invalid_state", "Could not reach OpenAI to check the key. Try again in a moment."); }
+  if (res.status === 401) throw new AppError("validation_failed", "OpenAI rejected this API key.", [{ path: "apiKey", message: "OpenAI says this key is invalid or revoked" }]);
+  if (res.status === 404) throw new AppError("validation_failed", `Your OpenAI account cannot use the model “${model}”.`, [{ path: "model", message: "Model not found for this key — try another, e.g. gpt-4o" }]);
+  if (res.status === 429) throw new AppError("validation_failed", "OpenAI says this key has no quota left (billing).", [{ path: "apiKey", message: "Add billing/credit to your OpenAI account" }]);
+  if (!res.ok) throw new AppError("invalid_state", `OpenAI check failed (HTTP ${res.status}).`);
+};
 
 const openAiCompleter: Completer = async ({ apiKey, model, system, user }) => {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {

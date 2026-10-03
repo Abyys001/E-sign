@@ -11,7 +11,7 @@ import { cn } from "@/components/ui/cn";
 import { Callout, Skeleton } from "@/components/ui/feedback";
 import { Field, Input, Textarea } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
-import { api, errMsg, fmtDate, useApi } from "@/lib/api";
+import { api, ApiError, errMsg, fmtDate, useApi } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
 
 type Check = { severity: "high" | "medium" | "low"; code: string; title: string; detail: string; count: number; amounts?: Record<string, number> };
@@ -86,24 +86,28 @@ export function AiSettingsCard({ admin }: { admin: boolean }) {
   const { data, reload } = useApi<{ enabled: boolean; model: string; hasKey: boolean; keyHint: string | null; instructions: string; systemPrompt: string }>("/api/accounting/settings/ai");
   const [v, setV] = useState<{ enabled: boolean; model: string; instructions: string; apiKey: string } | null>(null);
   const [showPrompt, setShowPrompt] = useState(false); const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const [errs, setErrs] = useState<Record<string, string>>({});
   useEffect(() => { if (data && !v) setV({ enabled: data.enabled, model: data.model, instructions: data.instructions, apiKey: "" }); }, [data, v]);
   if (!v || !data) return <Skeleton className="h-40" />;
   const save = async (removeKey = false) => {
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); setErrs({});
     try {
       const sendKey = removeKey || !!v.apiKey;
       if (sendKey && !(await ensure())) return;
       await api("/api/accounting/settings/ai", { method: "PATCH", json: { enabled: removeKey ? false : v.enabled, model: v.model, instructions: v.instructions || null, ...(removeKey ? { apiKey: null } : v.apiKey ? { apiKey: v.apiKey } : {}) } });
       setV({ ...v, apiKey: "", enabled: removeKey ? false : v.enabled }); toast("ok", t("saved")); await reload();
-    } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
+    } catch (e) {
+      setErr(errMsg(e));
+      if (e instanceof ApiError && Array.isArray(e.details)) setErrs(Object.fromEntries((e.details as Array<{ path: string; message: string }>).map((d) => [d.path, d.message])));
+    } finally { setBusy(false); }
   };
   return (
     <Card><CardHeader title={t("title")} description={t("desc")} />
       <div className="space-y-4 p-5">
         <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1" disabled={!admin} checked={v.enabled} onChange={(e) => setV({ ...v, enabled: e.target.checked })} /><span><span className="font-medium">{t("enable")}</span><span className="block text-xs text-muted">{t("enableHelp")}</span></span></label>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t("apiKey")} hint={data.hasKey ? t("keySet", { hint: data.keyHint ?? "" }) : t("keyHint")}>{(p) => <Input {...p} type="password" autoComplete="off" disabled={!admin} placeholder={data.hasKey ? "••••••••" : "sk-…"} value={v.apiKey} onChange={(e) => setV({ ...v, apiKey: e.target.value })} />}</Field>
-          <Field label={t("model")} hint={t("modelHint")}>{(p) => <Input {...p} disabled={!admin} value={v.model} onChange={(e) => setV({ ...v, model: e.target.value })} className="font-mono" />}</Field>
+          <Field label={t("apiKey")} error={errs.apiKey} hint={data.hasKey ? t("keySet", { hint: data.keyHint ?? "" }) : t("keyHint")}>{(p) => <Input {...p} type="password" autoComplete="off" disabled={!admin} placeholder={data.hasKey ? "••••••••" : "sk-…"} value={v.apiKey} onChange={(e) => setV({ ...v, apiKey: e.target.value })} />}</Field>
+          <Field label={t("model")} error={errs.model} hint={t("modelHint")}>{(p) => <Input {...p} disabled={!admin} value={v.model} onChange={(e) => setV({ ...v, model: e.target.value })} className="font-mono" />}</Field>
         </div>
         <Field label={t("instructions")} hint={t("instructionsHint")}>{(p) => <Textarea {...p} disabled={!admin} value={v.instructions} onChange={(e) => setV({ ...v, instructions: e.target.value })} className="min-h-24" placeholder={t("instructionsPh")} />}</Field>
         <div><Button size="sm" variant="ghost" onClick={() => setShowPrompt(!showPrompt)}>{showPrompt ? t("hidePrompt") : t("showPrompt")}</Button>

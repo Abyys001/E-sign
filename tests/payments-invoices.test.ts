@@ -126,7 +126,11 @@ describe("accountant pack and AI review", () => {
     expect(strFromU8(files["12_general_ledger.csv"]!).split("\r\n").length).toBeGreaterThan(10);
   });
   it("runs the AI review with an anonymised digest and stores the findings", async () => {
-    const { setAiCompleter, updateAiSettings, runAiReview, getAiSettings } = await import("@/server/accounting/ai");
+    const { setAiCompleter, setAiChecker, updateAiSettings, runAiReview, getAiSettings, AiSettingsInput } = await import("@/server/accounting/ai");
+    setAiChecker(async () => {});
+    // Pasted keys: quotes, spaces, newlines and zero-width characters are stripped; project keys (sk-proj-…) are accepted.
+    expect(AiSettingsInput.parse({ apiKey: ' "sk-proj-Ab_12-cdEFghIJklMNopQR\u200B"\n' }).apiKey).toBe("sk-proj-Ab_12-cdEFghIJklMNopQR");
+    expect(AiSettingsInput.safeParse({ apiKey: "short" }).success).toBe(false);
     let sent = "";
     setAiCompleter(async ({ user, system }) => { sent = user; expect(system).toContain("chartered accountant"); return { content: JSON.stringify({ overallStatus: "needs_attention", summary: "Mostly fine.", findings: [{ severity: "high", area: "sales", title: "Unmatched", detail: "x", recommendation: "Create events", currency: "eur", amount: 50 }], questionsForAccountant: [], goodPractice: ["Ledger balanced"] }), promptTokens: 10, completionTokens: 5 }; });
     await expectPg(runAiReview(e.actor, "test", { from: "2020-01-01", to: "2030-12-31" }), /Enable the AI review/);
@@ -138,6 +142,11 @@ describe("accountant pack and AI review", () => {
     expect(sent).toContain("Focus on VAT.");
     expect(sent).not.toContain("ali@example.test");
     expect(sent).not.toContain("Ali Rezaei");
-    setAiCompleter(null);
+    // A key/model OpenAI rejects is reported on the field.
+    const { AppError } = await import("@/server/errors");
+    setAiChecker(async () => { throw new AppError("validation_failed", "OpenAI rejected this API key.", [{ path: "apiKey", message: "invalid" }]); });
+    await expectPg(updateAiSettings(e.actor, { enabled: true, model: "gpt-4.1", apiKey: "sk-wrong1234567890abcdefgh", instructions: null }), /rejected/);
+    expect(await getAiSettings(e.org.id)).toMatchObject({ keyHint: "sk-test…hijk" }); // the good key is kept
+    setAiChecker(null); setAiCompleter(null);
   });
 });
