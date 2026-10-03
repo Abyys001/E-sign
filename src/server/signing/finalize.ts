@@ -64,8 +64,8 @@ async function stampWrapped(doc: PDFDocument, f: FieldRow, text: string) {
   });
 }
 
-async function buildFinalPdf(orgId: string, sourceBytes: Buffer, fields: FieldRow[], meta: { certificateId: string; sourceHash: string; reference: string; name: string }) {
-  const doc = await loadPdf(sourceBytes);
+/** Stamp every filled field (signatures, typed values, checkboxes) onto `doc`; returns attachments to append. */
+async function stampFilledFields(doc: PDFDocument, orgId: string, fields: FieldRow[]) {
   const items: StampItem[] = [];
   const extraPages: Array<{ label: string; obj: string; mime: string }> = [];
   const wrapped: Array<{ f: FieldRow; text: string }> = [];
@@ -88,6 +88,25 @@ async function buildFinalPdf(orgId: string, sourceBytes: Buffer, fields: FieldRo
   }
   await stampItems(doc, items);
   for (const w of wrapped) await stampWrapped(doc, w.f, w.text);
+  return extraPages;
+}
+
+/**
+ * While a contract is in progress: the signing document with what earlier signers already completed (their signatures,
+ * dates and typed values) drawn on, so the next signer sees it. Rendered on the fly; the frozen signing version and the
+ * final document are unaffected.
+ */
+export async function inProgressPdf(orgId: string, sourceBytes: Buffer, fields: FieldRow[]): Promise<Buffer> {
+  const done = fields.filter((f) => f.filledAt && f.value);
+  if (!done.length) return sourceBytes;
+  const doc = await loadPdf(sourceBytes);
+  await stampFilledFields(doc, orgId, done);
+  return Buffer.from(await savePdf(doc));
+}
+
+async function buildFinalPdf(orgId: string, sourceBytes: Buffer, fields: FieldRow[], meta: { certificateId: string; sourceHash: string; reference: string; name: string }) {
+  const doc = await loadPdf(sourceBytes);
+  const extraPages = await stampFilledFields(doc, orgId, fields);
 
   for (const a of extraPages) {
     const bytes = await objBytes(orgId, a.obj);

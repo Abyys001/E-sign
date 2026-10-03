@@ -161,7 +161,8 @@ function Signer({ view, token, onDone, onDeclined }: { view: SignView; token: st
 
   const overlay = (page: number) => (
     <div className="absolute inset-0" dir="ltr">
-      {view.filledByOthers.filter((o) => o.page === page).map((o) => <div key={o.key} className="absolute flex items-center justify-center overflow-hidden rounded-sm bg-surface/80 px-1 text-[10px] text-muted ring-1 ring-line" style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, width: `${o.w * 100}%`, height: `${o.h * 100}%` }} title={t("byOthers")}>{o.text ?? <ShieldCheck className="size-3" aria-label={t("byOthers")} />}</div>)}
+      {/* Earlier signers' values are drawn on the document itself; only a faint outline marks them here. */}
+      {view.filledByOthers.filter((o) => o.page === page).map((o) => <div key={o.key} className="pointer-events-none absolute rounded-sm ring-1 ring-ok/40" style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%`, width: `${o.w * 100}%`, height: `${o.h * 100}%` }} title={t("byOthers")}><span className="sr-only">{t("byOthers")}{o.text ? `: ${o.text}` : ""}</span><ShieldCheck className="absolute -end-1.5 -top-1.5 size-3 rounded-full bg-surface text-ok" aria-hidden /></div>)}
       {view.fields.filter((f) => f.page === page).map((f) => {
         const v = vals[f.key]; const on = activeKey === f.key; const ok = !!v && filled(f);
         return (
