@@ -67,6 +67,7 @@ const NAV = [
   { href: "/accounting/stripe", key: "stripe" },
   { href: "/accounting/reconciliation", key: "reconciliation" },
   { href: "/accounting/reports", key: "reports" },
+  { href: "/accounting/ai", key: "ai" },
   { href: "/accounting/ledger", key: "ledger" },
   { href: "/accounting/settings", key: "settings", perm: "accounting.admin" },
 ] as const;

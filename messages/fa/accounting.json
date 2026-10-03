@@ -28,7 +28,8 @@
     "settings": "Finance settings",
     "overview": "Overview",
     "books": "Bookkeeping",
-    "refunds": "Refunds"
+    "refunds": "Refunds",
+    "ai": "AI accountant"
   },
   "range": {
     "label": "Period",
@@ -783,7 +784,8 @@
       "closedBy": "Closed by",
       "notes": "Reason",
       "reasonFirst": "Enter a reason above first"
-    }
+    },
+    "balancedTotal": "Debits = credits"
   },
   "settings": {
     "title": "Finance settings",
@@ -1798,5 +1800,28 @@
       "pdf": "Refunds statement (PDF)"
     },
     "pdfAll": "Refunds PDF"
+  },
+  "aichat": {
+    "title": "Ask the AI accountant",
+    "pageTitle": "AI accountant",
+    "pageSub": "Ask questions about payments, profits, refunds and organiser settlements, and run a full AI review of the books.",
+    "chatDesc": "Answers come from the live ledger figures (no customer personal data is sent).",
+    "intro": "Ask anything about the books — for example:",
+    "s1": "How much profit did Bilit make this month, per currency?",
+    "s2": "How much do we still owe each organiser?",
+    "s3": "Which payments have we made to Pegasus and for which events?",
+    "s4": "How much booking fee do we need to recover from organisers for refunds?",
+    "s5": "Which events have the highest refunds?",
+    "s6": "Which Stripe payouts are not linked to an organiser?",
+    "placeholder": "Ask about payments, profits, refunds…",
+    "send": "Send",
+    "clear": "Clear conversation",
+    "thinking": "Checking the books…",
+    "close": "Close",
+    "openPage": "Open full page",
+    "disclaimer": "AI answers can be wrong — check important figures in the reports.",
+    "setupTitle": "AI accountant not set up",
+    "setup": "Add an OpenAI API key and enable the AI accountant in Finance settings to ask questions here.",
+    "openSettings": "Open Finance settings"
   }
 }

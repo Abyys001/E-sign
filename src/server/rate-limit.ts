@@ -30,6 +30,7 @@ export const LIMITS = {
   stripeWebhookBad: { limit: 30, windowSec: 60 }, // unsigned / badly signed Stripe webhook attempts, per IP
   accountingExport: { limit: 30, windowSec: 600 },
   accountingSync: { limit: 20, windowSec: 600 },
+  aiChat: { limit: 40, windowSec: 600 }, // questions to the AI finance assistant, per user
 } as const;
 export type LimitName = keyof typeof LIMITS;
 

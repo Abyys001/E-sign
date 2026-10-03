@@ -1,6 +1,7 @@
 "use client";
 import { useTranslations } from "next-intl";
 import { FinanceGate, FinanceNav, ModeBanner, ModeSwitch } from "@/components/accounting/kit";
+import { FloatingChat } from "@/components/accounting/ai-chat";
 
 export default function FinanceLayout({ children }: { children: React.ReactNode }) {
   const t = useTranslations("accounting");
@@ -13,6 +14,7 @@ export default function FinanceLayout({ children }: { children: React.ReactNode 
       <FinanceNav />
       <ModeBanner />
       {children}
+      <FloatingChat />
     </FinanceGate>
   );
 }

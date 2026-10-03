@@ -185,3 +185,21 @@ describe("bulk-linking Stripe payouts to an organiser", () => {
     expect((await trialBalance(x.org.id, "test")).reduce((s, t) => s + t.balance, 0)).toBe(0);
   });
 });
+
+describe("AI finance chat", () => {
+  it("answers from the ledger digest, sends no customer PII, needs the AI to be enabled", async () => {
+    const x = await setup();
+    const { runChat, setAiChat, setAiChecker, updateAiSettings } = await import("@/server/accounting/ai");
+    await expectPg(runChat(x.actor, "test", { messages: [{ role: "user", content: "How much profit?" }] }), /Set up the AI accountant/);
+    setAiChecker(async () => {});
+    await updateAiSettings(x.actor, { enabled: true, model: "gpt-4.1", apiKey: "sk-test1234567890abcdefghijk", instructions: null });
+    let sys = "";
+    setAiChat(async ({ messages }) => { sys = messages[0]!.content; return { content: "Profit is €3.50 on Persian Night." }; });
+    const r = await runChat(x.actor, "test", { messages: [{ role: "user", content: "How much profit?" }] });
+    expect(r.answer).toContain("€3.50");
+    expect(sys).toContain("Persian Night");
+    expect(sys).not.toContain("ali@example.test");
+    expect(sys).not.toContain("Ali Rezaei");
+    setAiChat(null); setAiChecker(null);
+  });
+});

@@ -195,3 +195,62 @@ export async function latestAiSummary(orgId: string, mode: Mode, range: Range) {
   if (!res) return null;
   return [`Status: ${res.overallStatus.replace("_", " ")}. ${res.summary}`, ...res.findings.slice(0, 12).map((f) => `• [${f.severity.toUpperCase()}] ${f.title} — ${f.recommendation}`)].join("\n");
 }
+
+// ---------- chat (floating assistant + AI accountant page) ----------
+export const CHAT_PROMPT = `You are Bilit's finance assistant, an experienced accountant who knows this company's books. Answer questions about payments, profits, organiser settlements, refunds, booking fees, Stripe payouts, expenses and VAT using ONLY the data provided below (current figures from the double-entry ledger).
+
+How Bilit works: customers pay ticket price + a booking fee added on top; Bilit sells as agent for event organisers, so the ticket price belongs to the organiser and Bilit's revenue is the booking fee. The booking fee is non-refundable for Bilit: if a refund includes it, the organiser is charged for it ("booking fee to recover"). Amount due to an organiser = ticket sales − refunds − booking fee − Stripe fees they bear − deductions; remaining = due − paid; negative remaining = the organiser owes Bilit. Stripe payouts move money from Stripe to Bilit's bank; some were paid on to organisers (shown as organiser payments with the payout id as reference).
+
+Rules: be concise and precise; quote amounts with their currency and never add different currencies together; say which event/organiser a figure belongs to; if the data does not contain the answer, say so plainly and suggest where in the system to look (e.g. Finance → Events, Refunds, Organiser payments, Stripe → Payouts, Bookkeeping). Never invent numbers. Use short lists or a small table when it helps. Answer in the language of the question.`;
+
+export const ChatInput = z.object({
+  messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().trim().min(1).max(4000) })).min(1).max(20)
+    .refine((m) => m[m.length - 1]!.role === "user", "The last message must be a question"),
+});
+type ChatMsg = { role: "system" | "user" | "assistant"; content: string };
+type ChatFn = (a: { apiKey: string; model: string; messages: ChatMsg[] }) => Promise<{ content: string; promptTokens?: number; completionTokens?: number }>;
+const gc = globalThis as { __aiChat?: ChatFn };
+export const setAiChat = (f: ChatFn | null) => { gc.__aiChat = f ?? undefined; };
+
+const openAiChat: ChatFn = async ({ apiKey, model, messages }) => {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST", signal: AbortSignal.timeout(120_000),
+    headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+    body: JSON.stringify({ model, messages }),
+  });
+  const body = await res.json().catch(() => null) as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number }; error?: { message?: string } } | null;
+  if (!res.ok) throw new AppError("invalid_state", `OpenAI: ${body?.error?.message ?? `HTTP ${res.status}`}`.replace(/sk-[A-Za-z0-9_*.-]+/g, "sk-…").slice(0, 400));
+  return { content: body?.choices?.[0]?.message?.content ?? "", promptTokens: body?.usage?.prompt_tokens, completionTokens: body?.usage?.completion_tokens };
+};
+
+/** Everything the assistant may use: the anonymised period digest (all time) plus payments to organisers and payouts. */
+async function chatContext(orgId: string, mode: Mode) {
+  const today = new Date().toISOString().slice(0, 10);
+  const d = await accountantData(orgId, mode, { from: "2000-01-01", to: today });
+  const m = (v: number, c: string) => formatMoney(v, c, "en");
+  const byOrganiser = new Map<string, { organiser: string; currency: string; due: number; paid: number; remaining: number; bookingFeeToRecover: number; events: number }>();
+  for (const e of d.events) {
+    if (!e.organiserName) continue;
+    const k = `${e.organiserName}|${e.currency}`;
+    const o = byOrganiser.get(k) ?? { organiser: e.organiserName, currency: e.currency, due: 0, paid: 0, remaining: 0, bookingFeeToRecover: 0, events: 0 };
+    o.due += e.organiserDue; o.paid += e.organiserPaid; o.remaining += e.remaining; o.bookingFeeToRecover += e.bookingFeesRefunded; o.events++;
+    byOrganiser.set(k, o);
+  }
+  return {
+    today, ...digest(d),
+    organisers: [...byOrganiser.values()].map((o) => ({ organiser: o.organiser, currency: o.currency, events: o.events, due: m(o.due, o.currency), paid: m(o.paid, o.currency), remaining: m(o.remaining, o.currency), bookingFeeToRecover: m(o.bookingFeeToRecover, o.currency) })),
+    eventBookingFeeToRecover: d.events.filter((e) => e.bookingFeesRefunded).map((e) => ({ event: `${e.eventName} (${e.eventCode})`, status: e.eventStatus, amount: m(e.bookingFeesRefunded, e.currency) })),
+    organiserPayments: d.payments.slice(-300).map((p) => ({ date: p.payment_date, organiser: p.organiser, event: p.event_code ? `${p.event} (${p.event_code})` : "not event-specific", amount: m(Number(p.amount), String(p.currency)), method: p.method, reference: p.bank_reference, status: p.status })),
+    stripePayoutsList: d.payouts.slice(-200).map((p) => ({ date: String(p.stripe_created_at).slice(0, 10), arrival: String(p.arrival_date ?? "").slice(0, 10), amount: m(Number(p.amount), String(p.currency)), status: p.status, id: p.payout_id })),
+  };
+}
+
+export async function runChat(a: Actor, mode: Mode, input: z.infer<typeof ChatInput>) {
+  const s = await stored(a.orgId);
+  if (!s.enabled || !s.apiKeyEnc) throw new AppError("invalid_state", "Set up the AI accountant (OpenAI key) under Finance settings → AI accountant first.");
+  const ctx = await chatContext(a.orgId, mode);
+  const system = `${CHAT_PROMPT}${s.instructions ? `\n\nAdditional instructions from the finance admin:\n${s.instructions}` : ""}\n\nDATA (JSON, ${mode} mode, as of ${ctx.today}):\n${JSON.stringify(ctx)}`;
+  const out = await (gc.__aiChat ?? openAiChat)({ apiKey: decrypt(s.apiKeyEnc), model: s.model ?? "gpt-4.1", messages: [{ role: "system", content: system }, ...input.messages] });
+  await db.transaction((tx) => acctAudit(tx, { ...a, action: "ai_chat.asked", entity: "ai_chat", entityId: "chat", new: { question: input.messages[input.messages.length - 1]!.content.slice(0, 500), model: s.model, tokens: (out.promptTokens ?? 0) + (out.completionTokens ?? 0) } }));
+  return { answer: out.content.trim() || "(no answer)", model: s.model ?? "gpt-4.1" };
+}

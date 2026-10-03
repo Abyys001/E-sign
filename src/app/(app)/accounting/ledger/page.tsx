@@ -62,15 +62,17 @@ function Journal() {
         {loading && !data ? <Skeleton className="m-4 h-32" /> : !data?.items.length ? <EmptyState title={t("empty")} /> : <>
           <ul className="divide-y divide-line">{data.items.map((e) => {
             const total = e.lines.reduce((s, l) => s + l.debit, 0);
+            // The transaction's size is its largest line (gross sale, refund, payment…); the debit total double-counts by design.
+            const amount = e.lines.reduce((m, l) => Math.max(m, l.debit, l.credit), 0);
             return <li key={e.id}>
               <button type="button" aria-expanded={!!open[e.id]} onClick={() => setOpen({ ...open, [e.id]: !open[e.id] })} className="flex w-full flex-wrap items-center gap-3 px-5 py-3 text-start text-sm hover:bg-surface-2/70">
                 <ChevronDown className={cn("size-4 shrink-0 transition", open[e.id] && "rotate-180")} aria-hidden /><span className="num w-14 text-muted">#{e.seq}</span><span className="w-24">{e.entryDate}</span><span className="w-40 text-xs font-medium">{e.entryType}</span>
-                <span className="min-w-0 flex-1 truncate">{e.description}</span><Money v={total} c={e.currency} strong /><Badge s={e.status} />
+                <span className="min-w-0 flex-1 truncate">{e.description}</span><Money v={amount} c={e.currency} strong /><Badge s={e.status} />
               </button>
               {open[e.id] && <div className="border-t border-line bg-surface-2/40 px-5 py-3">
                 <TableWrap><Table><thead><tr><Th>{t("account")}</Th><Th>{t("memo")}</Th><Th className="text-end">{t("debit")}</Th><Th className="text-end">{t("credit")}</Th></tr></thead>
                   <tbody>{e.lines.map((l) => <Tr key={l.id}><Td><code className="text-xs">{l.accountCode}</code> {l.accountName}</Td><Td className="text-muted">{l.memo}</Td><Td className="text-end">{l.debit ? <Money v={l.debit} c={e.currency} /> : ""}</Td><Td className="text-end">{l.credit ? <Money v={l.credit} c={e.currency} /> : ""}</Td></Tr>)}</tbody></Table></TableWrap>
-                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">{e.reference && <span>{t("reference")}: <code>{e.reference}</code></span>}{e.stripeBalanceTransactionId && <span>Stripe: <code>{e.stripeBalanceTransactionId}</code></span>}{e.createdByName && <span>{t("by")} {e.createdByName}</span>}{e.reason && <span>{t("reason")}: {e.reason}</span>}
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted"><span>{t("balancedTotal")}: <Money v={total} c={e.currency} /></span>{e.reference && <span>{t("reference")}: <code>{e.reference}</code></span>}{e.stripeBalanceTransactionId && <span>Stripe: <code>{e.stripeBalanceTransactionId}</code></span>}{e.createdByName && <span>{t("by")} {e.createdByName}</span>}{e.reason && <span>{t("reason")}: {e.reason}</span>}
                   {can("accounting.admin") && e.status === "POSTED" && ["ADJUSTMENT", "EVENT_FEE"].includes(e.entryType) && <Button size="sm" variant="ghost" className="ms-auto" onClick={async () => { if (await ensure()) { setReason(""); setRev(e); } }}><Undo2 className="size-3.5" aria-hidden />{t("reverse")}</Button>}</div>
               </div>}
             </li>;
