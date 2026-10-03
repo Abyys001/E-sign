@@ -6,7 +6,7 @@ import { AppError } from "../errors";
 import { C, hasRtl, load, rtl } from "../signing/certificate";
 import { modeOf } from "./core";
 import { eventFinancials, organiserFinancials } from "./finance";
-import { getInvoiceSettings } from "./invoices";
+import { getInvoiceSettings, registrationLines } from "./invoices";
 
 /**
  * Payment receipt (remittance advice) for a payment Bilit made to an organiser: what was paid, how, and where the
@@ -26,7 +26,7 @@ export async function remittancePdf(orgId: string, paymentId: string): Promise<{
   const asOf = { to: p.paymentDate };
   const fig = e ? (await eventFinancials(orgId, mode, { ...asOf, eventIds: [e.id] })).find((x) => x.currency === p.currency) ?? null
     : (await organiserFinancials(orgId, mode, o.id, asOf)).totals.find((x) => x.currency === p.currency) ?? null;
-  const seller = { name: s.legalName ?? r.org ?? "Bilit", address: s.address, website: s.website ?? "bilit.events", email: s.email, vat: s.vatNumber, company: s.companyNumber };
+  const seller = { name: s.legalName ?? r.org ?? "Bilit", address: s.address, website: s.website ?? "bilit.events", email: s.email, reg: registrationLines(s) };
   const number = `RA-${p.paymentDate.slice(0, 4)}-${p.id.slice(0, 8).toUpperCase()}`;
 
   const f = load();
@@ -55,7 +55,7 @@ export async function remittancePdf(orgId: string, paymentId: string): Promise<{
   at("From", M, y, { size: 8, color: C.muted }); at("Paid to", M + col, y, { size: 8, color: C.muted });
   y += 12;
   const block = (lines: Array<string | null | undefined>, x: number) => { let yy = y; lines.filter(Boolean).forEach((l, i) => { for (const part of String(l).split("\n")) { at(part, x, yy, { size: 9.5, bold: i === 0, width: col - 16 }); yy += 13; } }); return yy; };
-  const yL = block([seller.name, seller.address, seller.company && `Company no. ${seller.company}`, seller.vat && `VAT no. ${seller.vat}`, seller.email], M);
+  const yL = block([seller.name, seller.address, ...seller.reg, seller.email], M);
   const yR = block([o.companyName ?? o.name, o.companyName && o.companyName !== o.name ? o.name : null, o.address, o.vatNumber && `VAT no. ${o.vatNumber}`, o.email], M + col);
   y = Math.max(yL, yR) + 20;
 
@@ -94,7 +94,7 @@ export async function remittancePdf(orgId: string, paymentId: string): Promise<{
   doc.rect(0, PH - 70, PW, 70).fill(DARK);
   doc.rect(0, PH - 70, PW, 3).fill(C.primary);
   at([seller.name, seller.website].filter(Boolean).join(" · "), M, PH - 52, { bold: true, size: 9, color: "#ffffff", width: W, align: "center" });
-  at([seller.email, seller.vat && `VAT ${seller.vat}`, seller.company && `Company ${seller.company}`].filter(Boolean).join(" · ") || "Payment receipt issued from the Bilit finance system", M, PH - 38, { size: 8, color: "#c7c7cc", width: W, align: "center" });
+  at([...seller.reg, seller.email].filter(Boolean).join(" · ") || "Payment receipt issued from the Bilit finance system", M, PH - 38, { size: 8, color: "#c7c7cc", width: W, align: "center" });
   at(`Remittance advice ${number} · generated ${new Date().toISOString().slice(0, 10)}`, M, PH - 25, { size: 7, color: "#8e8e93", width: W, align: "center" });
   doc.end();
   return { bytes: await done, name: `${number}-${o.name.normalize("NFKD").replace(/[^\w]+/g, "-").slice(0, 40)}.pdf` };

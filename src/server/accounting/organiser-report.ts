@@ -6,7 +6,7 @@ import { AppError } from "../errors";
 import { C, hasRtl, load, rtl } from "../signing/certificate";
 import { isLive, type Mode } from "./core";
 import { organiserFinancials } from "./finance";
-import { getInvoiceSettings } from "./invoices";
+import { getInvoiceSettings, registrationLines } from "./invoices";
 import { organiserContracts } from "./organiser-contracts";
 
 type Range = { from?: string | null; to?: string | null };
@@ -68,7 +68,7 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   doc.on("data", (c: Buffer) => chunks.push(c));
   const done = new Promise<Buffer>((res) => doc.on("end", () => res(Buffer.concat(chunks))));
   const PW = doc.page.width, PH = doc.page.height, W = PW - M * 2, DARK = "#14141b", TOP = 110, BOTTOM = PH - 84;
-  const seller = { name: s.legalName ?? org?.name ?? "Bilit", website: s.website ?? "bilit.events", email: s.email, vat: s.vatNumber, company: s.companyNumber, address: s.address };
+  const seller = { name: s.legalName ?? org?.name ?? "Bilit", website: s.website ?? "bilit.events", email: s.email, address: s.address, reg: registrationLines(s) };
   const money = (v: number, c: string) => formatMoney(v, c, "en");
   const at = (t: string, x: number, y: number, op: { bold?: boolean; size?: number; color?: string; width?: number; align?: "left" | "right" | "center" } = {}) =>
     doc.font(hasRtl(t) ? (op.bold ? "faBold" : "fa") : op.bold ? "bold" : "reg").fontSize(op.size ?? 9).fillColor(op.color ?? C.text).text(rtl(t), x, y, { width: op.width, align: op.align ?? "left", lineBreak: !!op.width });
@@ -79,7 +79,7 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
     at(`${o.name} · ${period}`, M, 48, { size: 9, color: "#c7c7cc", width: W, align: "right" });
     doc.rect(0, PH - 62, PW, 62).fill(DARK); doc.rect(0, PH - 62, PW, 3).fill(C.primary);
     at([seller.name, seller.website].filter(Boolean).join(" · "), M, PH - 46, { bold: true, size: 9, color: "#ffffff", width: W, align: "center" });
-    at([seller.email, seller.vat && `VAT ${seller.vat}`, seller.company && `Company ${seller.company}`].filter(Boolean).join(" · ") || "Issued from the Bilit finance system", M, PH - 33, { size: 8, color: "#c7c7cc", width: W, align: "center" });
+    at([...seller.reg, seller.email].filter(Boolean).join(" · ") || "Issued from the Bilit finance system", M, PH - 33, { size: 8, color: "#c7c7cc", width: W, align: "center" });
   };
   const newPage = () => { doc.addPage({ size: "A4", margin: 0 }); chrome(); doc.y = TOP; };
   const ensure = (h: number) => { if (doc.y + h > BOTTOM) newPage(); };
@@ -105,7 +105,7 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   const col = W / 2, y0 = doc.y;
   at("From", M, y0, { size: 8, color: C.muted }); at("Organiser", M + col, y0, { size: 8, color: C.muted });
   const block = (lines: Array<string | null | undefined>, x: number) => { let yy = y0 + 12; lines.filter(Boolean).forEach((l, i) => { for (const part of String(l).split("\n")) { at(part, x, yy, { size: 9, bold: i === 0, width: col - 14 }); yy += 12; } }); return yy; };
-  doc.y = Math.max(block([seller.name, seller.address, seller.email], M), block([o.companyName ?? o.name, o.companyName && o.companyName !== o.name ? o.name : null, o.address, o.vatNumber && `VAT no. ${o.vatNumber}`, o.email], M + col)) + 6;
+  doc.y = Math.max(block([seller.name, seller.address, ...seller.reg, seller.email], M), block([o.companyName ?? o.name, o.companyName && o.companyName !== o.name ? o.name : null, o.address, o.vatNumber && `VAT no. ${o.vatNumber}`, o.email], M + col)) + 6;
   at(`Generated ${new Date().toISOString().slice(0, 10)} · Period: ${period} · Events: ${d.eventCount}${mode === "test" ? " · TEST DATA" : ""}`, M, doc.y, { size: 8.5, color: C.muted, width: W }); doc.y += 6;
 
   // Summary per currency

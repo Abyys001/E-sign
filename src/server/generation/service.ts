@@ -9,6 +9,7 @@ import { createContract } from "../contracts/service";
 import { getOrgBranding } from "../settings";
 import { composeClauses, type SelectionItem } from "../clauses/compose";
 import { loadVersionsById } from "../clauses/service";
+import { contractCompany } from "../accounting/invoices";
 import { PolicyConfig, deriveVariables, OPTIONAL_DERIVED, policyExecution } from "../policy/config";
 import { computeLegalFlags, blocksAutoSign, type LegalFlag } from "../legal/review-flags";
 import { evaluateSigningPolicy } from "../legal/signing-policy";
@@ -74,9 +75,14 @@ export async function generateContract(tx: Tx, a: Actor, input: GenerateInput): 
   const selection = row.v.clauseSelection as SelectionItem[];
   const versions = await loadVersionsById(a.orgId, selection.map((s) => s.versionId), tx);
   const branding = await getOrgBranding(a.orgId);
+  const company = await contractCompany(a.orgId);
 
   const base: VariableValues = {
-    organisation_name: branding.orgName, support_email: branding.supportEmail ?? "",
+    organisation_name: company.legalName ?? branding.orgName, support_email: branding.supportEmail ?? "",
+    // Bilit's registered details (Finance settings → Invoices) fill the contract party block; intake answers can still override.
+    ...(company.companyNumber ? { bilit_company_number: company.companyNumber } : {}),
+    ...(company.registeredIn ? { bilit_country: company.registeredIn } : {}),
+    ...(company.address ? { organisation_address: company.address } : {}),
     effective_date: new Date().toISOString().slice(0, 10), agreement_title: input.contractName ?? row.t.name,
     ...input.values,
   };

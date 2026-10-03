@@ -1773,7 +1773,7 @@
       "title": "Invoices",
       "desc": "Seller details and VAT treatment printed on customer invoices, VAT invoices and credit notes.",
       "legalName": "Company legal name",
-      "companyNumber": "Company number",
+      "companyNumber": "Company registration number",
       "vatNumber": "Your VAT number",
       "vatNumberHint": "Required to issue VAT invoices",
       "address": "Registered address",
@@ -1796,7 +1796,11 @@
       "footer": "Footer text",
       "accountantNote": "Confirm the VAT treatment with your accountant before issuing VAT invoices.",
       "save": "Save invoice settings",
-      "saved": "Invoice settings saved"
+      "saved": "Invoice settings saved",
+      "customerNumber": "Customer number",
+      "zone": "Zone",
+      "registeredIn": "Registered in",
+      "registeredInHint": "Used in contracts: \"a company registered in …\""
     }
   },
   "acc": {

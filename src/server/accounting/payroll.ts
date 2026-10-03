@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import PDFDocument from "pdfkit";
+import { getInvoiceSettings, registrationLines } from "./invoices";
 import { z } from "zod";
 import { db, schema, type Tx } from "@/db";
 import { formatMoney } from "@/lib/money";
@@ -227,7 +228,8 @@ export async function payslipPdf(orgId: string, id: string): Promise<{ bytes: Bu
 
 async function orgInfo(tx: Tx | typeof db, orgId: string) {
   const [o] = await tx.select({ name: schema.organisations.name }).from(schema.organisations).where(eq(schema.organisations.id, orgId));
-  return { name: o?.name ?? "" };
+  const s = await getInvoiceSettings(orgId);
+  return { name: s.legalName ?? o?.name ?? "", lines: [s.address?.replace(/\n+/g, ", "), registrationLines(s).join(" · ")].filter((x): x is string => !!x) };
 }
 
 // ---------- PDF ----------
@@ -239,7 +241,7 @@ const DED_LABEL: Record<string, Record<string, string>> = {
 };
 const ID_LABEL: Record<string, [string, string]> = { GB: ["Tax code", "NI number"], DE: ["Steuer-ID", "SV-Nummer"], _: ["Tax ID", "Social security no."] };
 
-export async function renderPayslipPdf(d: { p: typeof schema.acctPayslips.$inferSelect; e: EmployeeRow; ytd: Ytd; org: { name: string } }): Promise<Buffer> {
+export async function renderPayslipPdf(d: { p: typeof schema.acctPayslips.$inferSelect; e: EmployeeRow; ytd: Ytd; org: { name: string; lines?: string[] } }): Promise<Buffer> {
   const f = load();
   const M = 48;
   const doc = new PDFDocument({ size: "A4", margin: M, info: { Title: `Payslip ${d.p.number ?? "DRAFT"}`, Author: d.org.name, Subject: `${d.e.name} ${d.p.periodStart}–${d.p.periodEnd}` } });
@@ -260,10 +262,13 @@ export async function renderPayslipPdf(d: { p: typeof schema.acctPayslips.$infer
   at(d.org.name || "Payslip", M, M, { bold: true, size: 16 });
   at("PAYSLIP", M, M + 2, { bold: true, size: 11, color: C.primary, width: W, align: "right" });
   at(d.p.number ?? "DRAFT — not issued", M, M + 18, { size: 9, color: C.muted, width: W, align: "right" });
-  doc.moveTo(M, M + 40).lineTo(M + W, M + 40).lineWidth(1).strokeColor(C.rule).stroke();
+  const extra = d.org.lines ?? [];
+  extra.forEach((l, i) => at(l, M, M + 20 + i * 10, { size: 7.5, color: C.muted, width: W - 160 }));
+  const top = M + Math.max(40, 24 + extra.length * 10);
+  doc.moveTo(M, top).lineTo(M + W, top).lineWidth(1).strokeColor(C.rule).stroke();
 
   // Employee / period block
-  let y = M + 54;
+  let y = top + 14;
   const col = W / 2;
   const kv = (k: string, v: string | null | undefined, x: number, yy: number) => { at(k, x, yy, { size: 8, color: C.muted }); at(v || "—", x, yy + 10, { bold: true, size: 10, width: col - 12 }); };
   kv("Employee", d.e.name, M, y); kv("Pay period", `${d.p.periodStart} to ${d.p.periodEnd}`, M + col, y); y += 32;

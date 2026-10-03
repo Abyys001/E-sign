@@ -5,7 +5,7 @@ import { formatMoney } from "@/lib/money";
 import { C, hasRtl, load, rtl } from "../signing/certificate";
 import { isLive, type Mode } from "./core";
 import { eventFinancials } from "./finance";
-import { getInvoiceSettings } from "./invoices";
+import { getInvoiceSettings, registrationLines } from "./invoices";
 
 /**
  * Refunds statement (PDF): every refund/chargeback per event with the booking-fee part, and per event the totals the
@@ -42,7 +42,7 @@ export async function refundsPdf(orgId: string, mode: Mode, f: { organiserId?: s
   doc.on("data", (c: Buffer) => chunks.push(c));
   const done = new Promise<Buffer>((res) => doc.on("end", () => res(Buffer.concat(chunks))));
   const PW = doc.page.width, PH = doc.page.height, W = PW - M * 2, DARK = "#14141b", TOP = 112, BOTTOM = PH - 86;
-  const seller = { name: s.legalName ?? org?.name ?? "Bilit", website: s.website ?? "bilit.events", email: s.email, vat: s.vatNumber };
+  const seller = { name: s.legalName ?? org?.name ?? "Bilit", website: s.website ?? "bilit.events", email: s.email, reg: registrationLines(s) };
   const at = (t: string, x: number, y: number, o: { bold?: boolean; size?: number; color?: string; width?: number; align?: "left" | "right" | "center" } = {}) =>
     doc.font(hasRtl(t) ? (o.bold ? "faBold" : "fa") : o.bold ? "bold" : "reg").fontSize(o.size ?? 9).fillColor(o.color ?? C.text).text(rtl(t), x, y, { width: o.width, align: o.align ?? "left", lineBreak: !!o.width });
   const chrome = () => {
@@ -51,7 +51,7 @@ export async function refundsPdf(orgId: string, mode: Mode, f: { organiserId?: s
     at([organiser?.name ?? "All organisers", f.from || f.to ? `${f.from ?? "start"} – ${f.to ?? "today"}` : "all refunds"].join(" · "), M, 50, { size: 9, color: "#c7c7cc", width: W, align: "right" });
     doc.rect(0, PH - 64, PW, 64).fill(DARK); doc.rect(0, PH - 64, PW, 3).fill(C.primary);
     at([seller.name, seller.website].filter(Boolean).join(" · "), M, PH - 46, { bold: true, size: 9, color: "#ffffff", width: W, align: "center" });
-    at([seller.email, seller.vat && `VAT ${seller.vat}`].filter(Boolean).join(" · ") || "Issued from the Bilit finance system", M, PH - 33, { size: 8, color: "#c7c7cc", width: W, align: "center" });
+    at([...seller.reg, seller.email].filter(Boolean).join(" · ") || "Issued from the Bilit finance system", M, PH - 33, { size: 8, color: "#c7c7cc", width: W, align: "center" });
   };
   const newPage = () => { doc.addPage({ size: "A4", margin: 0 }); chrome(); doc.y = TOP; };
   const ensure = (h: number) => { if (doc.y + h > BOTTOM) newPage(); };

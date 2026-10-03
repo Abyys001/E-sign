@@ -7,7 +7,7 @@ import { C, load } from "../signing/certificate";
 import { booksOverview } from "./books";
 import { getAcctSettings, isLive, type Mode } from "./core";
 import { eventFinancials, totalsByCurrency } from "./finance";
-import { getInvoiceSettings } from "./invoices";
+import { getInvoiceSettings, registrationLines } from "./invoices";
 import { csvValue, trialBalance } from "./reports";
 
 /**
@@ -82,7 +82,7 @@ export async function accountantData(orgId: string, mode: Mode, r: Range) {
     const fees = n(x.fees), out = feeIncluded(fees, inv.bookingFeeVatBps), input = books.find((b) => b.currency === x.currency)?.inputVat ?? 0;
     return { currency: x.currency, bookingFees: fees, outputVat: out, inputVat: input, netVatPayable: out - input, rateBps: inv.bookingFeeVatBps };
   });
-  return { generatedAt: new Date().toISOString(), range: r, mode, companyName: inv.legalName, timezone: settings.timezone, books, events, eventTotals: totalsByCurrency(events), trialBalance: tb, checks, payments, expenses, bills, payslips, refunds, payouts, customerInvoices: custInv, ledger, vat };
+  return { generatedAt: new Date().toISOString(), range: r, mode, companyName: inv.legalName, companyLines: registrationLines(inv), timezone: settings.timezone, books, events, eventTotals: totalsByCurrency(events), trialBalance: tb, checks, payments, expenses, bills, payslips, refunds, payouts, customerInvoices: custInv, ledger, vat };
 }
 export type AccountantData = Awaited<ReturnType<typeof accountantData>>;
 
@@ -153,6 +153,7 @@ export async function accountantPdf(d: AccountantData, aiSummary?: string | null
 
   // Cover
   doc.font("bold").fontSize(20).fillColor(C.text).text(d.companyName ?? "Bilit", M, M + 10);
+  if (d.companyLines.length) doc.font("reg").fontSize(8.5).fillColor(C.muted).text(d.companyLines.join(" · "), M, doc.y + 2);
   doc.font("bold").fontSize(14).fillColor(C.primary).text("Accountant report", M, doc.y + 4);
   p(`Period ${d.range.from} to ${d.range.to} · ${d.mode === "live" ? "Live" : "TEST"} data · generated ${d.generatedAt.slice(0, 16).replace("T", " ")} UTC`, { color: C.muted });
   p("All amounts are in the currency they were transacted in; currencies are never added together. Figures come from the double-entry ledger, which is balanced (total debits = total credits) and append-only. Detailed CSV files are included in the same pack.", { color: C.muted });

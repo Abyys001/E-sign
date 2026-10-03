@@ -20,7 +20,7 @@ type Actor = { orgId: string; userId: string; ctx: RequestContext };
 const opt = (max: number) => z.string().trim().max(max).optional().nullable().transform((v) => (v ? v : null));
 
 export const InvoiceSettings = z.object({
-  legalName: opt(200), address: opt(1000), companyNumber: opt(60), vatNumber: opt(60), email: opt(200), website: opt(200), footer: opt(1000),
+  legalName: opt(200), address: opt(1000), companyNumber: opt(60), customerNumber: opt(60), zone: opt(120), registeredIn: opt(200), vatNumber: opt(60), email: opt(200), website: opt(200), footer: opt(1000),
   bookingFeeVatBps: z.number().int().min(0).max(10_000).default(2000),
   ticketVatMode: z.enum(["AGENT", "INCLUDED"]).default("AGENT"), // AGENT: ticket price collected on behalf of the organiser, no Bilit VAT
   ticketVatBps: z.number().int().min(0).max(10_000).default(0),
@@ -28,6 +28,18 @@ export const InvoiceSettings = z.object({
   creditNotePrefix: z.string().trim().regex(/^[A-Z0-9-]{1,10}$/).default("CN"),
 });
 export type InvoiceSettings = z.infer<typeof InvoiceSettings>;
+
+/** Company registration lines printed on every finance PDF (letterhead and footer). */
+export const registrationLines = (s: { companyNumber?: string | null; customerNumber?: string | null; zone?: string | null; vatNumber?: string | null }) =>
+  [s.companyNumber && `Company Registration No. ${s.companyNumber}`, s.customerNumber && `Customer No. ${s.customerNumber}`, s.zone && `Zone: ${s.zone}`, s.vatNumber && `VAT No. ${s.vatNumber}`].filter((x): x is string => !!x);
+
+/** Bilit's legal identity for contracts (no accounting feature flag needed). */
+export async function contractCompany(orgId: string) {
+  const [row] = await db.select({ v: schema.acctSettings.invoiceSettings }).from(schema.acctSettings).where(eq(schema.acctSettings.organisationId, orgId));
+  const p = InvoiceSettings.safeParse(row?.v ?? {});
+  const s = p.success ? p.data : InvoiceSettings.parse({});
+  return { legalName: s.legalName, companyNumber: s.companyNumber, registeredIn: s.registeredIn, address: s.address };
+}
 
 export async function getInvoiceSettings(orgId: string, tx: Tx | typeof db = db): Promise<InvoiceSettings> {
   await getAcctSettings(orgId, tx);
@@ -96,7 +108,7 @@ export async function issueCustomerInvoice(a: Actor, btId: string, input: z.infe
     const number = await nextNumber(tx, a.orgId, credit ? s.creditNotePrefix : s.invoicePrefix, issueDate.slice(0, 4));
     const [related] = credit ? await tx.select({ id: schema.acctCustomerInvoices.id, number: schema.acctCustomerInvoices.number }).from(schema.acctCustomerInvoices)
       .where(and(eq(schema.acctCustomerInvoices.organisationId, a.orgId), eq(schema.acctCustomerInvoices.chargeId, row.chargeId), eq(schema.acctCustomerInvoices.kind, "INVOICE"), eq(schema.acctCustomerInvoices.status, "ISSUED"))).orderBy(desc(schema.acctCustomerInvoices.createdAt)).limit(1) : [];
-    const seller = { legalName: s.legalName, address: s.address, companyNumber: s.companyNumber, vatNumber: s.vatNumber, email: s.email, website: s.website, footer: s.footer };
+    const seller = { legalName: s.legalName, address: s.address, companyNumber: s.companyNumber, customerNumber: s.customerNumber, zone: s.zone, vatNumber: s.vatNumber, email: s.email, website: s.website, footer: s.footer };
     const payment = { orderRef: charge?.description?.match(/^Order \(([^)]+)\)/)?.[1] ?? charge?.paymentIntentId ?? null, chargeId: row.chargeId, method: charge?.paymentMethod ?? null, paidAt: (sale ?? row).stripeCreatedAt.toISOString() };
     const [inv] = await tx.insert(schema.acctCustomerInvoices).values({
       organisationId: a.orgId, livemode: row.livemode, kind: credit ? "CREDIT_NOTE" : "INVOICE", number, vatInvoice: input.vatInvoice, balanceTransactionRef: row.id, chargeId: row.chargeId, eventId: row.eventId,
@@ -155,7 +167,7 @@ export async function renderInvoicePdf(inv: Inv): Promise<Buffer> {
   const M = 48;
   const credit = inv.kind === "CREDIT_NOTE";
   const title = credit ? "CREDIT NOTE" : inv.vatInvoice ? "VAT INVOICE" : "INVOICE";
-  const seller = inv.seller as { legalName: string; address: string; companyNumber?: string | null; vatNumber?: string | null; email?: string | null; website?: string | null; footer?: string | null };
+  const seller = inv.seller as { legalName: string; address: string; companyNumber?: string | null; customerNumber?: string | null; zone?: string | null; vatNumber?: string | null; email?: string | null; website?: string | null; footer?: string | null };
   const cust = inv.customer as { name: string; email?: string | null; company?: string | null; address?: string | null; vatNumber?: string | null; relatedNumber?: string | null; payment?: { orderRef?: string | null; chargeId?: string | null; method?: { brand?: string | null; last4?: string | null; wallet?: string | null } | null; paidAt?: string } };
   const doc = new PDFDocument({ size: "A4", margin: M, info: { Title: `${title} ${inv.number}`, Author: seller.legalName } });
   doc.registerFont("reg", f.reg); doc.registerFont("bold", f.bold); doc.registerFont("fa", f.faReg); doc.registerFont("faBold", f.faBold);
@@ -171,7 +183,7 @@ export async function renderInvoicePdf(inv: Inv): Promise<Buffer> {
   // Seller (left) and document title/number (right)
   at(seller.legalName, M, M, { bold: true, size: 15 });
   let y = M + 22;
-  for (const l of [seller.address, seller.companyNumber && `Company no. ${seller.companyNumber}`, seller.vatNumber && `VAT no. ${seller.vatNumber}`, [seller.email, seller.website].filter(Boolean).join(" · ")].filter(Boolean).join("\n").split("\n")) { at(l, M, y, { size: 8.5, color: C.muted }); y += 11; }
+  for (const l of [seller.address, ...registrationLines(seller), [seller.email, seller.website].filter(Boolean).join(" · ")].filter(Boolean).join("\n").split("\n")) { at(l, M, y, { size: 8.5, color: C.muted }); y += 11; }
   at(title, M, M, { bold: true, size: 15, color: credit ? "#c0262d" : C.primary, width: W, align: "right" });
   const meta: Array<[string, string]> = [["Number", inv.number], ["Issue date", inv.issueDate], ...(inv.supplyDate ? [[credit ? "Refund of sale dated" : "Date of supply", inv.supplyDate] as [string, string]] : []), ...(cust.relatedNumber ? [["Credits invoice", cust.relatedNumber] as [string, string]] : [])];
   let my = M + 24;

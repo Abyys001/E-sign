@@ -9,7 +9,7 @@ import { useToast } from "@/components/ui/toast";
 import { api, errMsg, useApi } from "@/lib/api";
 import { bpsToPercent, percentToBps } from "@/lib/money";
 
-type InvS = { legalName: string | null; address: string | null; companyNumber: string | null; vatNumber: string | null; email: string | null; website: string | null; footer: string | null; bookingFeeVatBps: number; ticketVatMode: "AGENT" | "INCLUDED"; ticketVatBps: number; invoicePrefix: string; creditNotePrefix: string };
+type InvS = { legalName: string | null; address: string | null; companyNumber: string | null; customerNumber: string | null; zone: string | null; registeredIn: string | null; vatNumber: string | null; email: string | null; website: string | null; footer: string | null; bookingFeeVatBps: number; ticketVatMode: "AGENT" | "INCLUDED"; ticketVatBps: number; invoicePrefix: string; creditNotePrefix: string };
 
 /** Seller details and VAT treatment printed on customer invoices, credit notes and VAT invoices. */
 export function InvoiceSettingsCard({ admin }: { admin: boolean }) {
@@ -29,11 +29,11 @@ export function InvoiceSettingsCard({ admin }: { admin: boolean }) {
       toast("ok", t("saved"));
     } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
   };
-  const I = (k: "legalName" | "companyNumber" | "vatNumber" | "email" | "website" | "invoicePrefix" | "creditNotePrefix", label: string, hint?: string) => <Field label={label} hint={hint}>{(p) => <Input {...p} disabled={!admin} value={v[k] ?? ""} onChange={(e) => set(k, e.target.value)} />}</Field>;
+  const I = (k: "legalName" | "companyNumber" | "customerNumber" | "zone" | "registeredIn" | "vatNumber" | "email" | "website" | "invoicePrefix" | "creditNotePrefix", label: string, hint?: string) => <Field label={label} hint={hint}>{(p) => <Input {...p} disabled={!admin} value={v[k] ?? ""} onChange={(e) => set(k, e.target.value)} />}</Field>;
   return (
     <Card><CardHeader title={t("title")} description={t("desc")} />
       <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
-        {I("legalName", t("legalName"))}{I("companyNumber", t("companyNumber"))}{I("vatNumber", t("vatNumber"), t("vatNumberHint"))}
+        {I("legalName", t("legalName"))}{I("companyNumber", t("companyNumber"))}{I("customerNumber", t("customerNumber"))}{I("zone", t("zone"))}{I("registeredIn", t("registeredIn"), t("registeredInHint"))}{I("vatNumber", t("vatNumber"), t("vatNumberHint"))}
         <div className="sm:col-span-2 lg:col-span-3"><Field label={t("address")}>{(p) => <Textarea {...p} disabled={!admin} value={v.address ?? ""} onChange={(e) => set("address", e.target.value)} className="min-h-20" />}</Field></div>
         {I("email", t("email"))}{I("website", t("website"))}
         <Field label={t("feeVat")} hint={t("feeVatHint")}>{(p) => <Input {...p} disabled={!admin} inputMode="decimal" value={v.feeVat} onChange={(e) => set("feeVat", e.target.value)} />}</Field>
