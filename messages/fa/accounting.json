@@ -398,7 +398,9 @@
       "order": "Order",
       "customer": "Customer"
     },
-    "linkEvents": "Link events"
+    "linkEvents": "Link events",
+    "profit": "Bilit profit (after Stripe)",
+    "remaining": "Remaining to pay"
   },
   "payments": {
     "title": "Organiser payments",
@@ -1088,7 +1090,8 @@
       "profit": "Bilit profit",
       "processing": "Stripe fees",
       "expenses": "Expenses",
-      "recharged": "charged to organiser"
+      "recharged": "charged to organiser",
+      "profitShort": "Bilit profit"
     },
     "filters": {
       "allOrganisers": "All organisers",
@@ -1135,7 +1138,12 @@
       "expenses": "Expenses deducted",
       "expensesHint": "Event costs charged to this organiser",
       "byEvent": "Settlement by event",
-      "unassigned": "Some payments are not tied to a specific event; they count towards the organiser's total but not to any single event."
+      "unassigned": "Some payments are not tied to a specific event; they count towards the organiser's total but not to any single event.",
+      "profit": "Bilit profit after Stripe fees",
+      "profitHint": "Booking fees − Stripe fees and costs borne by Bilit",
+      "stripeFees": "Stripe fees borne by Bilit",
+      "recharged": "Charged to organiser:",
+      "margin": "Profit margin on gross"
     },
     "portalUsers": {
       "title": "Organiser portal access",

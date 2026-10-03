@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { CalendarDays, Coins, HandCoins, Percent, Receipt, Scale, Undo2, UserPlus, Wallet, X } from "lucide-react";
+import { CalendarDays, Coins, HandCoins, Percent, PiggyBank, Receipt, Scale, Undo2, UserPlus, Wallet, X } from "lucide-react";
 import { useMe } from "@/components/app/me";
 import { AmountCard, Money, useMode } from "@/components/accounting/kit";
 import { pct, SettlementBadge, type Fig } from "@/components/accounting/finance";
@@ -43,13 +43,23 @@ export function OrganiserFinance({ id, refresh }: { id: string; refresh: number 
           <AmountCard label={t("k.organiserPaid")} v={f.organiserPaid} c={f.currency} tone="bal" icon={Wallet} />
           <AmountCard label={t("k.remaining")} v={f.remaining} c={f.currency} tone={f.remaining === 0 ? "pos" : "warn"} icon={HandCoins} />
         </div>
+        <Card className="grid gap-4 p-5 md:grid-cols-[minmax(0,18rem)_1fr] md:items-center">
+          <AmountCard label={t("orgFin.profit")} v={f.bilitProfit} c={f.currency} tone="pos" icon={PiggyBank} hint={t("orgFin.profitHint")} />
+          <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
+            <div><dt className="text-xs text-muted">{t("k.bookingFees")}</dt><dd className="font-semibold text-fin-pos">+<Money v={f.bookingFees + f.eventFees + f.otherRevenue} c={f.currency} /></dd></div>
+            <div><dt className="text-xs text-muted">{t("orgFin.stripeFees")}</dt><dd className="font-semibold">−<Money v={f.bilitProcessingFees} c={f.currency} />{f.feesRecharged > 0 && <span className="block text-xs font-normal text-muted">{t("orgFin.recharged")} <Money v={f.feesRecharged} c={f.currency} /></span>}</dd></div>
+            <div><dt className="text-xs text-muted">{t("k.expensesBilit")}</dt><dd className="font-semibold">−<Money v={f.expensesBilit + f.otherCosts} c={f.currency} /></dd></div>
+            <div><dt className="text-xs text-muted">{t("orgFin.margin")}</dt><dd className="font-semibold">{f.grossSales ? `${((f.bilitProfit / f.grossSales) * 100).toFixed(2)} %` : "—"}</dd></div>
+          </dl>
+        </Card>
         <Card><CardHeader title={t("orgFin.byEvent")} />
-          <TableWrap><Table><thead><tr><Th>{t("events.event")}</Th><Th className="text-end">{t("events.tickets")}</Th><Th className="text-end">{t("events.gross")}</Th><Th className="text-end">{t("events.fee")}</Th><Th className="text-end">{t("events.due")}</Th><Th className="text-end">{t("events.paid")}</Th><Th className="text-end">{t("events.remaining")}</Th><Th>{t("settlement.label")}</Th></tr></thead>
+          <TableWrap><Table><thead><tr><Th>{t("events.event")}</Th><Th className="text-end">{t("events.tickets")}</Th><Th className="text-end">{t("events.gross")}</Th><Th className="text-end">{t("events.fee")}</Th><Th className="text-end">{t("events.due")}</Th><Th className="text-end">{t("events.paid")}</Th><Th className="text-end">{t("events.remaining")}</Th><Th className="text-end">{t("events.processing")}</Th><Th className="text-end">{t("events.profit")}</Th><Th>{t("settlement.label")}</Th></tr></thead>
             <tbody>{data.events.filter((e) => e.currency === f.currency).map((e) => <Tr key={e.eventId}>
               <Td className="min-w-56"><Link href={`/accounting/events/${e.eventId}`} className="font-medium underline-offset-4 hover:underline">{e.eventName}</Link><span className="block text-xs text-muted"><code>{e.eventCode}</code>{e.startsOn ? ` · ${e.startsOn}` : ""}</span></Td>
               <Td className="text-end tabular-nums">{e.tickets.toLocaleString(locale)}</Td><Td className="text-end"><Money v={e.grossSales} c={e.currency} /></Td>
               <Td className="text-end"><Money v={e.bookingFees} c={e.currency} /><span className="block text-xs text-muted">{pct(e.bookingFeeBps)}</span></Td>
-              <Td className="text-end"><Money v={e.organiserDue} c={e.currency} /></Td><Td className="text-end"><Money v={e.organiserPaid} c={e.currency} /></Td><Td className="text-end"><Money v={e.remaining} c={e.currency} strong /></Td><Td><SettlementBadge s={e.settlement} /></Td></Tr>)}</tbody></Table></TableWrap>
+              <Td className="text-end"><Money v={e.organiserDue} c={e.currency} /></Td><Td className="text-end"><Money v={e.organiserPaid} c={e.currency} /></Td><Td className="text-end"><Money v={e.remaining} c={e.currency} strong /></Td>
+              <Td className="text-end"><Money v={e.bilitProcessingFees} c={e.currency} /></Td><Td className="text-end"><Money v={e.bilitProfit} c={e.currency} strong className={e.bilitProfit < 0 ? "text-fin-neg" : "text-fin-pos"} /></Td><Td><SettlementBadge s={e.settlement} /></Td></Tr>)}</tbody></Table></TableWrap>
           {f.organiserPaid !== data.events.filter((e) => e.currency === f.currency).reduce((s, e) => s + e.organiserPaid, 0) && <p className="border-t border-line px-5 py-3 text-xs text-muted">{t("orgFin.unassigned")}</p>}
         </Card>
       </>}
