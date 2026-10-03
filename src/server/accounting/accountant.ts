@@ -133,19 +133,20 @@ export async function accountantPdf(d: AccountantData, aiSummary?: string | null
   const h1 = (s: string) => { ensure(60); doc.moveDown(0.6); doc.font("bold").fontSize(13).fillColor(C.primary).text(s, M, doc.y, { width: W }); doc.moveDown(0.3); };
   const p = (s: string, o: { size?: number; color?: string; bold?: boolean } = {}) => { ensure(20); doc.font(o.bold ? "bold" : "reg").fontSize(o.size ?? 9).fillColor(o.color ?? C.text).text(s, M, doc.y, { width: W }); };
   const m = (v: number, c: string) => formatMoney(v, c, "en");
-  const table = (head: string[], rows: string[][], widths: number[], right: number[] = []) => {
+  const table = (head: string[], rows: string[][], widths: number[], right: number[] = [], fs = 8) => {
     const tw = widths.reduce((s, x) => s + x, 0), k = W / tw, ws = widths.map((x) => x * k);
     const row = (cells: string[], bold = false, fill?: string) => {
-      const hh = Math.max(14, ...cells.map((c, i) => doc.font(bold ? "bold" : "reg").fontSize(8).heightOfString(c, { width: ws[i]! - 6 }) + 5));
+      const hh = Math.max(14, ...cells.map((c, i) => doc.font(bold ? "bold" : "reg").fontSize(fs).heightOfString(c, { width: ws[i]! - 6 }) + 5));
       ensure(hh + 2);
       const y = doc.y;
       if (fill) doc.rect(M, y, W, hh).fill(fill);
       let x = M;
-      cells.forEach((c, i) => { doc.font(bold ? "bold" : "reg").fontSize(8).fillColor(C.text).text(c, x + 3, y + 3, { width: ws[i]! - 6, align: right.includes(i) ? "right" : "left" }); x += ws[i]!; });
+      cells.forEach((c, i) => { doc.font(bold ? "bold" : "reg").fontSize(fs).fillColor(C.text).text(c, x + 3, y + 3, { width: ws[i]! - 6, align: right.includes(i) ? "right" : "left" }); x += ws[i]!; });
       doc.y = y + hh;
       doc.moveTo(M, doc.y).lineTo(M + W, doc.y).lineWidth(0.3).strokeColor(C.rule).stroke();
     };
     row(head, true, C.tint);
+    if (!rows.length) row([`None in this period.`, ...head.slice(1).map(() => "")]);
     for (const r of rows) row(r);
     doc.moveDown(0.5);
   };
@@ -172,8 +173,8 @@ export async function accountantPdf(d: AccountantData, aiSummary?: string | null
   table(["Currency", "Booking fees (incl. VAT)", "Rate", "Output VAT", "Input VAT", "Net payable"], d.vat.map((v) => [v.currency.toUpperCase(), m(v.bookingFees, v.currency), `${v.rateBps / 100}%`, m(v.outputVat, v.currency), m(v.inputVat, v.currency), m(v.netVatPayable, v.currency)]), [12, 22, 10, 18, 18, 20], [1, 3, 4, 5]);
 
   h1("Events — sales, booking fees and organiser settlement");
-  table(["Event", "Cur", "Gross", "Refunds", "Booking fee", "Due", "Paid", "Remaining", "Profit"], d.events.filter((e) => e.grossSales || e.organiserDue || e.organiserPaid).map((e) => [`${e.eventName} (${e.eventCode})`, e.currency.toUpperCase(), m(e.grossSales, e.currency), m(e.refunds + e.chargebacks, e.currency), m(e.bookingFees, e.currency), m(e.organiserDue, e.currency), m(e.organiserPaid, e.currency), m(e.remaining, e.currency), m(e.bilitProfit, e.currency)]), [30, 6, 10, 9, 10, 10, 9, 9, 9], [2, 3, 4, 5, 6, 7, 8]);
-  table(["Totals", "Gross", "Booking fees", "Fee to recover", "Due", "Paid", "Remaining", "Profit"], d.eventTotals.map((t) => [t.currency.toUpperCase(), m(t.grossSales, t.currency), m(t.bookingFees, t.currency), m(t.bookingFeesRefunded, t.currency), m(t.organiserDue, t.currency), m(t.organiserPaid, t.currency), m(t.remaining, t.currency), m(t.bilitProfit, t.currency)]), [10, 13, 13, 13, 13, 12, 13, 13], [1, 2, 3, 4, 5, 6, 7]);
+  table(["Event", "Cur", "Gross", "Refunds", "Booking fee", "Due", "Paid", "Remaining", "Profit"], d.events.filter((e) => e.grossSales || e.organiserDue || e.organiserPaid).map((e) => [`${e.eventName} (${e.eventCode})`, e.currency.toUpperCase(), m(e.grossSales, e.currency), m(e.refunds + e.chargebacks, e.currency), m(e.bookingFees, e.currency), m(e.organiserDue, e.currency), m(e.organiserPaid, e.currency), m(e.remaining, e.currency), m(e.bilitProfit, e.currency)]), [20, 5, 12, 9, 11, 12, 9, 12, 12], [2, 3, 4, 5, 6, 7, 8], 7);
+  table(["Totals", "Gross", "Booking fees", "Fee to recover", "Due", "Paid", "Remaining", "Profit"], d.eventTotals.map((t) => [t.currency.toUpperCase(), m(t.grossSales, t.currency), m(t.bookingFees, t.currency), m(t.bookingFeesRefunded, t.currency), m(t.organiserDue, t.currency), m(t.organiserPaid, t.currency), m(t.remaining, t.currency), m(t.bilitProfit, t.currency)]), [8, 14, 13, 12, 14, 12, 14, 13], [1, 2, 3, 4, 5, 6, 7], 7);
 
   h1("Payments made to organisers");
   table(["Date", "Organiser", "Event", "Amount", "Method", "Reference", "Status"], d.payments.map((r) => [String(r.payment_date), String(r.organiser), String(r.event ?? "—"), m(n(r.amount), String(r.currency)), String(r.method), String(r.bank_reference ?? ""), String(r.status)]), [12, 20, 22, 13, 11, 13, 9], [3]);
@@ -195,7 +196,13 @@ export async function accountantPdf(d: AccountantData, aiSummary?: string | null
   table(["Cur", "Account", "Debit", "Credit", "Balance"], d.trialBalance.map((x) => [x.currency.toUpperCase(), `${x.code} ${x.name}`, m(x.debit, x.currency), m(x.credit, x.currency), m(x.balance, x.currency)]), [7, 45, 16, 16, 16], [2, 3, 4]);
 
   const range = doc.bufferedPageRange();
-  for (let i = 0; i < range.count; i++) { doc.switchToPage(i); doc.font("reg").fontSize(7).fillColor(C.muted).text(`${d.companyName ?? "Bilit"} · Accountant report ${d.range.from} – ${d.range.to} · page ${i + 1} of ${range.count}`, M, H - M + 8, { width: W, align: "center", lineBreak: false }); }
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(i);
+    // Writing inside the bottom margin would make pdfkit start a new page; lift the margin while drawing the footer.
+    const bottom = doc.page.margins.bottom; doc.page.margins.bottom = 0;
+    doc.font("reg").fontSize(7).fillColor(C.muted).text(`${d.companyName ?? "Bilit"} · Accountant report ${d.range.from} – ${d.range.to} · page ${i + 1} of ${range.count}`, M, H - M + 8, { width: W, align: "center", lineBreak: false });
+    doc.page.margins.bottom = bottom;
+  }
   doc.end();
   return done;
 }
