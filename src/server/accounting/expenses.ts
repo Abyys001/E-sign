@@ -20,7 +20,12 @@ export const ExpenseInput = z.object({
   amount: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), currency: Currency, expenseDate: IsoDate, description: opt(2000),
   borneBy: z.enum(["BILIT", "ORGANISER"]).default("BILIT"),
 });
-export const ExpenseEdit = ExpenseInput.omit({ mode: true, eventId: true, currency: true }).partial().extend({ reason: z.string().trim().min(3, "Give a reason (at least 3 characters)").max(1000) });
+// Explicit (not ExpenseInput.partial()): a default such as borneBy = BILIT must never be filled in on an edit.
+export const ExpenseEdit = z.object({
+  name: z.string().trim().min(1).max(200).optional(), category: z.enum(EXPENSE_CATEGORIES).optional(), amount: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  expenseDate: IsoDate.optional(), description: opt(2000).optional(), borneBy: z.enum(["BILIT", "ORGANISER"]).optional(),
+  reason: z.string().trim().min(3, "Give a reason (at least 3 characters)").max(1000),
+});
 
 type ExpenseRow = typeof schema.acctEventExpenses.$inferSelect;
 const auditable = (e: ExpenseRow) => ({ name: e.name, category: e.category, amount: e.amount, currency: e.currency, expenseDate: e.expenseDate, borneBy: e.borneBy, description: e.description });

@@ -39,6 +39,24 @@ export const SYSTEM_ACCOUNTS = {
   refunds: { code: "5100", name: "Refunds", type: "EXPENSE" },
   chargebacks: { code: "5200", name: "Chargebacks", type: "EXPENSE" },
   other_expenses: { code: "5900", name: "Other Expenses", type: "EXPENSE" },
+  // bookkeeping
+  cash: { code: "1030", name: "Cash", type: "ASSET" },
+  vat_input: { code: "1200", name: "Input VAT / Tax Reclaimable", type: "ASSET" },
+  accounts_payable: { code: "2100", name: "Accounts Payable (Supplier Invoices)", type: "LIABILITY" },
+  net_wages_payable: { code: "2200", name: "Net Wages Payable", type: "LIABILITY" },
+  payroll_liabilities: { code: "2210", name: "Payroll Taxes & Deductions Payable", type: "LIABILITY" },
+  employee_reimbursements: { code: "2300", name: "Owed to Employees (Expenses Paid Personally)", type: "LIABILITY" },
+  wages: { code: "6000", name: "Wages & Salaries (Gross)", type: "EXPENSE" },
+  employer_payroll_costs: { code: "6010", name: "Employer Payroll Costs", type: "EXPENSE" },
+  rent: { code: "6100", name: "Rent & Premises", type: "EXPENSE" },
+  software: { code: "6200", name: "Software & Subscriptions", type: "EXPENSE" },
+  marketing: { code: "6300", name: "Marketing & Advertising", type: "EXPENSE" },
+  travel: { code: "6400", name: "Travel & Accommodation", type: "EXPENSE" },
+  professional_fees: { code: "6500", name: "Accounting & Legal Fees", type: "EXPENSE" },
+  office: { code: "6600", name: "Office & Equipment", type: "EXPENSE" },
+  bank_charges: { code: "6700", name: "Bank Charges", type: "EXPENSE" },
+  utilities: { code: "6800", name: "Utilities & Telecoms", type: "EXPENSE" },
+  event_costs: { code: "6900", name: "Event Production Costs", type: "EXPENSE" },
 } as const;
 export type SystemAccount = keyof typeof SYSTEM_ACCOUNTS;
 export type AccountIds = Record<SystemAccount, string>;

@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 /** Object keys are server-generated only; client filenames never reach the storage layer. */
-export function objectKey(orgId: string, area: "source" | "final" | "certificate" | "signature" | "template" | "branding" | "export" | "intake" | "receipt"): string {
+export function objectKey(orgId: string, area: "source" | "final" | "certificate" | "signature" | "template" | "branding" | "export" | "intake" | "receipt" | "invoice" | "payslip"): string {
   return `orgs/${orgId}/${area}/${randomUUID()}`;
 }
 
-const SAFE = /^orgs\/[0-9a-f-]{36}\/(source|final|certificate|signature|template|branding|export|intake|receipt)\/[0-9a-f-]{36}$/;
+const SAFE = /^orgs\/[0-9a-f-]{36}\/(source|final|certificate|signature|template|branding|export|intake|receipt|invoice|payslip)\/[0-9a-f-]{36}$/;
 export const isSafeKey = (k: string) => SAFE.test(k);
 
 export function safeDownloadName(name: string, ext: string): string {

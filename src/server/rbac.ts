@@ -4,7 +4,7 @@ export const PERMISSIONS = [
   "templates.view", "templates.create", "templates.edit", "templates.delete",
   "intake.view", "intake.manage", "intake.send", "intake.telemetry",
   "users.manage", "organisation.manage", "billing.manage", "settings.manage", "webhooks.manage", "audit.export",
-  "accounting.view", "accounting.manage", "accounting.admin",
+  "accounting.view", "accounting.manage", "accounting.admin", "accounting.payroll",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 

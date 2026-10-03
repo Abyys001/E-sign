@@ -474,3 +474,111 @@ export const acctSyncErrors = pgTable("acct_sync_errors", {
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   createdAt: createdAt(),
 }, (t) => [index("acct_sync_errors_org_idx").on(t.organisationId, t.livemode, t.resolvedAt)]);
+
+// ---------- bookkeeping: supplier invoices, expenses, employees, payslips ----------
+/**
+ * A supplier invoice (BILL: owed until paid) or a manual expense (EXPENSE: paid when recorded). Net + VAT = total,
+ * in the document's own currency. Posted to the ledger; edits re-post, deleting voids.
+ */
+export const acctBills = pgTable("acct_bills", {
+  id: id(),
+  organisationId: org(),
+  livemode: boolean("livemode").notNull(),
+  kind: text("kind").notNull(), // BILL | EXPENSE
+  supplierName: text("supplier_name").notNull(),
+  supplierVat: text("supplier_vat"),
+  country: text("country"), // ISO 3166 alpha-2
+  invoiceNumber: text("invoice_number"),
+  invoiceDate: date("invoice_date").notNull(),
+  dueDate: date("due_date"),
+  currency: text("currency").notNull(),
+  netAmount: money("net_amount").notNull(),
+  vatAmount: money("vat_amount").notNull().default(0),
+  totalAmount: money("total_amount").notNull(),
+  accountId: uuid("account_id").notNull().references(() => acctAccounts.id), // expense account (category)
+  eventId: uuid("event_id").references(() => acctEvents.id),
+  description: text("description"),
+  paidFrom: text("paid_from"), // BANK | CASH | CARD | EMPLOYEE (expenses, and how a bill was paid)
+  status: text("status").notNull(), // UNPAID | PAID | VOIDED
+  paidDate: date("paid_date"),
+  paymentReference: text("payment_reference"),
+  fileObjectId: uuid("file_object_id").references(() => storageObjects.id),
+  fileName: text("file_name"),
+  revision: integer("revision").notNull().default(0),
+  journalEntryId: uuid("journal_entry_id").references(() => acctJournalEntries.id),
+  paymentEntryId: uuid("payment_entry_id").references(() => acctJournalEntries.id),
+  voidReason: text("void_reason"),
+  voidedBy: uuid("voided_by").references(() => users.id),
+  voidedAt: timestamp("voided_at", { withTimezone: true }),
+  createdBy: uuid("created_by").references(() => users.id),
+  updatedBy: uuid("updated_by").references(() => users.id),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+}, (t) => [
+  index("acct_bills_org_idx").on(t.organisationId, t.livemode, t.invoiceDate.desc()),
+  index("acct_bills_status_idx").on(t.organisationId, t.livemode, t.status),
+  check("acct_bills_amounts_ck", sql`${t.netAmount} >= 0 and ${t.vatAmount} >= 0 and ${t.totalAmount} = ${t.netAmount} + ${t.vatAmount} and ${t.totalAmount} > 0`),
+]);
+
+export const acctEmployees = pgTable("acct_employees", {
+  id: id(),
+  organisationId: org(),
+  name: text("name").notNull(),
+  email: text("email"),
+  jobTitle: text("job_title"),
+  employeeRef: text("employee_ref"),
+  country: text("country").notNull(), // ISO 3166 alpha-2; drives labels and the tax year
+  currency: text("currency").notNull(),
+  taxId: text("tax_id"), // tax code / Steuer-ID / TIN
+  socialSecurityNo: text("social_security_no"), // NI number / SV-Nummer
+  address: text("address"),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  payFrequency: text("pay_frequency").notNull().default("MONTHLY"), // MONTHLY | FOUR_WEEKLY | FORTNIGHTLY | WEEKLY
+  defaultGross: money("default_gross"),
+  bankDetailsEnc: text("bank_details_enc"),
+  bankHint: text("bank_hint"),
+  active: boolean("active").notNull().default(true),
+  notes: text("notes"),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+}, (t) => [index("acct_employees_org_idx").on(t.organisationId, t.name)]);
+
+/** Payslip. Deductions are entered by hand; net = gross − deductions. FINAL payslips are immutable (void + reissue). */
+export const acctPayslips = pgTable("acct_payslips", {
+  id: id(),
+  organisationId: org(),
+  livemode: boolean("livemode").notNull(),
+  employeeId: uuid("employee_id").notNull().references(() => acctEmployees.id),
+  number: text("number"), // assigned when finalised, e.g. PS-2026-0001
+  periodStart: date("period_start").notNull(),
+  periodEnd: date("period_end").notNull(),
+  payDate: date("pay_date").notNull(),
+  currency: text("currency").notNull(),
+  earnings: jsonb("earnings").notNull().default([]), // [{ label, amount }]
+  deductions: jsonb("deductions").notNull().default([]), // [{ label, type: TAX|SOCIAL|PENSION|OTHER, amount }]
+  employerCosts: jsonb("employer_costs").notNull().default([]), // [{ label, amount }] (employer NI / social / pension)
+  grossPay: money("gross_pay").notNull(),
+  totalDeductions: money("total_deductions").notNull(),
+  netPay: money("net_pay").notNull(),
+  employerTotal: money("employer_total").notNull().default(0),
+  notes: text("notes"),
+  status: text("status").notNull().default("DRAFT"), // DRAFT | FINAL | PAID | VOIDED
+  pdfObjectId: uuid("pdf_object_id").references(() => storageObjects.id),
+  pdfSha256: text("pdf_sha256"),
+  journalEntryId: uuid("journal_entry_id").references(() => acctJournalEntries.id),
+  paymentEntryId: uuid("payment_entry_id").references(() => acctJournalEntries.id),
+  paidDate: date("paid_date"),
+  paymentReference: text("payment_reference"),
+  voidReason: text("void_reason"),
+  voidedBy: uuid("voided_by").references(() => users.id),
+  voidedAt: timestamp("voided_at", { withTimezone: true }),
+  finalisedBy: uuid("finalised_by").references(() => users.id),
+  finalisedAt: timestamp("finalised_at", { withTimezone: true }),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+}, (t) => [
+  index("acct_payslips_employee_idx").on(t.employeeId, t.payDate.desc()),
+  index("acct_payslips_org_idx").on(t.organisationId, t.livemode, t.payDate.desc()),
+  uniqueIndex("acct_payslips_number_uq").on(t.organisationId, t.number).where(sql`${t.number} is not null`),
+  check("acct_payslips_net_ck", sql`${t.netPay} = ${t.grossPay} - ${t.totalDeductions}`),
+]);
