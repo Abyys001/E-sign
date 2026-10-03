@@ -215,7 +215,14 @@
       "signature": "امضا",
       "initials": "حروف اول",
       "acknowledgement": "تأییدیه"
-    }
+    },
+    "bilitSigner": "امضاکننده Bilit",
+    "bilitSignerHint": "چه کسی از طرف Bilit امضا می‌کند. وقتی گردش‌کار قرارداد را به‌طور خودکار برای امضا می‌فرستد (A) الزامی است.",
+    "bilitSignerName": "نام",
+    "bilitSignerEmail": "ایمیل",
+    "signingOrder": "ترتیب امضا",
+    "orderOrganiserFirst": "ابتدا برگزارکننده امضا می‌کند",
+    "orderBilitFirst": "ابتدا Bilit امضا می‌کند"
   },
   "policy": {
     "refund": "سیاست بازپرداخت",

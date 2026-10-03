@@ -215,7 +215,14 @@
       "signature": "Signature",
       "initials": "Initials",
       "acknowledgement": "Acknowledgement"
-    }
+    },
+    "bilitSigner": "Bilit signer",
+    "bilitSignerHint": "Who signs for Bilit. Required when the workflow sends contracts for signature automatically (A).",
+    "bilitSignerName": "Name",
+    "bilitSignerEmail": "Email",
+    "signingOrder": "Signing order",
+    "orderOrganiserFirst": "Organiser signs first",
+    "orderBilitFirst": "Bilit signs first"
   },
   "policy": {
     "refund": "Refund policy",

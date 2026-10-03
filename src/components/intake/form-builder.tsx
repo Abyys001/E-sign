@@ -38,6 +38,14 @@ export function FormBuilder({ schema, onSchema, settings, onSettings, coverage, 
   const t = useTranslations("intake.builder");
   const [si, setSi] = useState(0);
   const [fi, setFi] = useState<number | null>(null);
+  // Bilit signer is saved only as a complete name + email pair (the server requires both); partial input stays local.
+  const [signer, setSigner] = useState({ name: settings.signers.bilit?.name ?? "", email: settings.signers.bilit?.email ?? "" });
+  const setBilitSigner = (name: string, email: string) => {
+    setSigner({ name, email });
+    const { bilit: _old, ...rest } = settings.signers;
+    const complete = name.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+    onSettings({ ...settings, signers: complete ? { ...rest, bilit: { name: name.trim(), email: email.trim() } } : rest });
+  };
   useEffect(() => { if (si >= schema.sections.length) setSi(Math.max(0, schema.sections.length - 1)); }, [schema.sections.length, si]);
   const sec = schema.sections[si];
   const fld = sec && fi !== null ? sec.fields[fi] : undefined;
@@ -116,6 +124,11 @@ export function FormBuilder({ schema, onSchema, settings, onSettings, coverage, 
           <SwitchField checked={settings.allowResume} disabled={dis} onChange={(v) => onSettings({ ...settings, allowResume: v })} label={t("allowResume")} />
           <SwitchField checked={settings.privacyNotice.enabled} disabled={dis} onChange={(v) => onSettings({ ...settings, privacyNotice: { ...settings.privacyNotice, enabled: v } })} label={t("privacyNotice")} />
           {settings.privacyNotice.enabled && <Textarea aria-label={t("privacyNotice")} disabled={dis} value={settings.privacyNotice.text} onChange={(e) => onSettings({ ...settings, privacyNotice: { ...settings.privacyNotice, text: e.target.value } })} maxLength={2000} />}
+          <h3 className="pt-2 text-sm font-semibold">{t("bilitSigner")}</h3>
+          <p className="text-xs text-muted">{t("bilitSignerHint")}</p>
+          <Field label={t("bilitSignerName")}>{(p) => <Input {...p} disabled={dis} value={signer.name} maxLength={200} onChange={(e) => setBilitSigner(e.target.value, signer.email)} />}</Field>
+          <Field label={t("bilitSignerEmail")}>{(p) => <Input {...p} type="email" disabled={dis} value={signer.email} onChange={(e) => setBilitSigner(signer.name, e.target.value)} />}</Field>
+          <Field label={t("signingOrder")}>{(p) => <Select {...p} disabled={dis} value={settings.signers.order} onChange={(e) => onSettings({ ...settings, signers: { ...settings.signers, order: e.target.value } })}><option value="organiser_first">{t("orderOrganiserFirst")}</option><option value="bilit_first">{t("orderBilitFirst")}</option></Select>}</Field>
           <Field label={t("fixedValues")} hint={t("fixedHint")}>{(p) => <Textarea {...p} disabled={dis} defaultValue={Object.entries(settings.fixedValues).map(([k, v]) => `${k}=${v}`).join("\n")} onBlur={(e) => onSettings({ ...settings, fixedValues: Object.fromEntries(e.target.value.split("\n").map((l) => l.split(/=(.*)/s)).filter((p) => p[0]?.trim() && p[1] !== undefined).map((p) => [p[0]!.trim(), p[1]!.trim()])) })} />}</Field>
         </div>
       </aside>
