@@ -30,6 +30,8 @@ Hereinafter referred to as **"Promoter"**, **"Organiser"**, **"you"** or **"your
 
 Bilit and the Promoter are individually a **"Party"** and together the **"Parties"**.
 
+This Agreement is a global agreement: it applies to every Event of the Promoter for which an Event Schedule is agreed, without the need to sign this Agreement again for each Event.
+
 ---
 
 # 3. PURPOSE OF THE AGREEMENT
@@ -1066,83 +1068,7 @@ Date: ______________________________
 
 ---
 
-# SCHEDULE 1 — EVENT DETAILS
-
-**Event Name:** [●]
-
-**Event ID:** [●]
-
-**Event Date:** [●]
-
-**Event Time:** [●]
-
-**Venue:** [●]
-
-**Venue Address:** [●]
-
-**Country:** [●]
-
-**Event Capacity:** [●]
-
-**Promoter:** [●]
-
-**Promoter Registration No.:** [●]
-
----
-
-# SCHEDULE 2 — COMMERCIAL TERMS
-
-**Settlement Currency:** [GBP / EUR / USD / Other]
-
-**Ticket Revenue Share:** [●]
-
-**Bilit Booking Fee:** [●]%
-
-**Payment Processing Fee:** [●]
-
-**Other Bilit Fees:** [●]
-
-**Promoter Settlement:** [●]
-
-**Advance Payment:** [●]
-
-**Reserve:** [●]
-
-**Settlement Timing:** [●]
-
-**Refund Responsibility:** Promoter
-
-**Chargeback Responsibility:** Promoter, subject to this Agreement
-
----
-
-# SCHEDULE 3 — TICKET CATEGORIES
-
-| Category | Price | Capacity | Benefits |
-|---|---:|---:|---|
-| Standard | [●] | [●] | [●] |
-| Premium | [●] | [●] | [●] |
-| VIP | [●] | [●] | [●] |
-| Golden | [●] | [●] | [●] |
-| Meet & Greet | [●] | [●] | [●] |
-
----
-
-# SCHEDULE 4 — EVENT-SPECIFIC CANCELLATION TERMS
-
-**Cancellation Notice Required:** [●]
-
-**Promoter Cancellation Fee:** [●]
-
-**Advance Payment Repayment:** [●]
-
-**Customer Refund Process:** [●]
-
-**Reserve Release Date:** [●]
-
----
-
-# SCHEDULE 5 — PROMOTER BANK DETAILS
+# SCHEDULE — PROMOTER BANK DETAILS
 
 Account Name: [●]
 
@@ -1161,12 +1087,6 @@ Sort Code: [●]
 Currency: [●]
 
 The Promoter warrants that the above bank information is accurate and belongs to the Promoter or its authorised settlement recipient.
-
----
-
-# SCHEDULE 6 — EVENT-SPECIFIC SPECIAL TERMS
-
-[Insert any special commercial or operational terms.]
 
 ---
 

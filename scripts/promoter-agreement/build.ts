@@ -89,7 +89,7 @@ const valueLine = (label: string, value: string) => { ensure(16); const y = doc.
 // ---------- render ----------
 const lines = md.split("\n");
 let section = "", sub = "", inTitle = true;
-const roleNow = (): Role => /^1\./.test(sub) ? "bilit" : /^2\./.test(sub) ? "promoter" : /FOR BILIT/.test(sub) ? "bilit" : /FOR PROMOTER/.test(sub) ? "promoter" : /SCHEDULE 5/.test(section) ? "promoter" : "bilit";
+const roleNow = (): Role => /^1\./.test(sub) ? "bilit" : /^2\./.test(sub) ? "promoter" : /FOR BILIT/.test(sub) ? "bilit" : /FOR PROMOTER/.test(sub) ? "promoter" : /BANK DETAILS/.test(section) ? "promoter" : "bilit";
 
 for (let i = 0; i < lines.length; i++) {
   const raw = lines[i]!.trimEnd();
@@ -106,7 +106,7 @@ for (let i = 0; i < lines.length; i++) {
   if (/^## /.test(l)) { sub = l.slice(3); doc.y += 6; ensure(190); rich(sub, M, W, { size: 11, bold: true, color: C.primary }); doc.y += 4; continue; }
   if (/^# /.test(l)) {
     inTitle = false; section = l.slice(2); sub = "";
-    if (/^SCHEDULE 1\b/.test(section)) { doc.addPage(); rich("SCHEDULES", M, W, { size: 15, bold: true, align: "center" }); doc.y += 2; rich("Purple boxes are completed by Bilit before signing; green boxes by the Promoter.", M, W, { size: 8.5, align: "center", color: C.muted }); doc.y += 10; }
+    if (/^SCHEDULE\b/.test(section)) { doc.addPage(); rich("SCHEDULE", M, W, { size: 15, bold: true, align: "center" }); doc.y += 2; rich("Event details and commercial terms are agreed for each Event in a separate Event Schedule.", M, W, { size: 8.5, align: "center", color: C.muted }); doc.y += 10; }
     else if (/^65\./.test(section)) ensure(240);
     doc.y += 8; ensure(/^SCHEDULE/.test(section) ? 175 : 70);
     rich(section, M, W, { size: 11.5, bold: true, color: C.primary }); doc.y += 4; continue;
@@ -149,7 +149,7 @@ for (let i = 0; i < lines.length; i++) {
   const fm = s.match(/^(.+?):\s*\[(●|GBP \/ EUR \/ USD \/ Other)\](.*)$/);
   if (fm) {
     const label = fm[1]!.trim(), suffix = fm[3]!.trim() || undefined, role = roleNow();
-    const req = role === "promoter" ? (/SCHEDULE 5/.test(section) ? /^(Account Name|Bank Name|Currency)$/.test(label) : label !== "Trading Name")
+    const req = role === "promoter" ? (/BANK DETAILS/.test(section) ? /^(Account Name|Bank Name|Currency)$/.test(label) : label !== "Trading Name")
       : /^65\./.test(section) ? true : /^(Event Name|Event Date|Venue|Settlement Currency|Bilit Booking Fee)$/.test(label);
     if (fm[2] !== "●") fieldLine(label, role, req, { type: "dropdown", options: ["GBP", "EUR", "USD", "SEK", "DKK", "AED", "Other"] });
     else fieldLine(label, role, req, { suffix });
