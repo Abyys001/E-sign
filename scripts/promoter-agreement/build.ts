@@ -31,9 +31,10 @@ if (!org) throw new Error("Bilit organisation not found");
 const co = await getInvoiceSettings(org.id);
 const legal = co.legalName ?? "Bilit Platform FZ-LLC";
 const reg = registrationLines(co);
+const BILIT_SIGNER = { name: "Sina Najafi", position: "Director", email: "info@bilit.events" };
 /** Sina Najafi always signs for Bilit (owner instruction); pre-filled on every contract from this template. */
 const BILIT_ROLES = () => [
-  { key: "bilit", name: `Bilit (${legal})`, role: "SIGNER", order: 1, required: true, defaultName: "Sina Najafi", defaultEmail: "info@bilit.events" },
+  { key: "bilit", name: `Bilit (${legal})`, role: "SIGNER", order: 1, required: true, defaultName: BILIT_SIGNER.name, defaultEmail: BILIT_SIGNER.email },
   { key: "promoter", name: "Promoter / Organiser", role: "SIGNER", order: 2, required: true },
 ];
 
@@ -148,6 +149,12 @@ for (let i = 0; i < lines.length; i++) {
     if (s.startsWith("Website:")) { valueLine("Website", "https://bilit.events"); continue; }
   }
   if (s.startsWith("Legal Entity: [BILIT LEGAL ENTITY]")) { valueLine("Legal Entity", legal); continue; }
+  // Bilit's signatory is fixed (owner instruction): printed, not asked. Sina only applies the signature and date.
+  if (/FOR BILIT/.test(sub)) {
+    const fixed: Record<string, string> = { Name: BILIT_SIGNER.name, Position: BILIT_SIGNER.position, Email: BILIT_SIGNER.email };
+    const k = s.match(/^(Name|Position|Email):/)?.[1];
+    if (k) { valueLine(k, fixed[k]!); continue; }
+  }
   if (/^Signature: _+/.test(s)) { ensure(56); const y = doc.y; doc.font("bold").fontSize(9.5).fillColor(C.text).text("Signature:", M, y + 16, { lineBreak: false }); box(roleNow(), `Signature — ${roleNow() === "bilit" ? "Bilit" : "Promoter"}`, M + 176, y, 220, 44, "signature", true); doc.x = M; doc.y = y + 52; continue; }
   if (/^Date: _+/.test(s)) { fieldLine("Date", roleNow(), true, { type: "date" }); continue; }
   if (s.startsWith("[Insert any special")) { ensure(140); const y = doc.y; box("bilit", "Event-specific special terms", M, y, W, 130, "long_text", false); doc.font("reg").fontSize(8).fillColor(C.muted).text("Insert any special commercial or operational terms (leave blank if none).", M + 6, y + 6, { lineBreak: false }); doc.x = M; doc.y = y + 138; continue; }
