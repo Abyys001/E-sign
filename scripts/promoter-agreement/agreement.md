@@ -867,9 +867,9 @@ Nothing in this clause deprives any person of the protection of the mandatory la
 
 # 51. INTERNATIONAL ARBITRATION
 
-Any dispute arising out of or in connection with this Agreement, including any question regarding its existence, validity or termination, which is not resolved under clause 52 shall be referred to and finally resolved by international arbitration under the **Rules of Arbitration of the International Chamber of Commerce (ICC)**.
+Any dispute arising out of or in connection with this Agreement, including any question regarding its existence, validity or termination, which is not resolved under clause 52 shall be referred to and finally resolved by international arbitration under the **UNCITRAL Arbitration Rules** in force at the date of the dispute.
 
-The tribunal shall consist of one arbitrator. The seat of arbitration shall be **London, United Kingdom**. The language of the arbitration shall be English.
+The tribunal shall consist of one arbitrator. The appointing authority shall be the Secretary-General of the **Permanent Court of Arbitration** at The Hague. The seat of arbitration shall be **Ras Al Khaimah, United Arab Emirates**. The language of the arbitration shall be English.
 
 The award shall be final and binding on the Parties and may be enforced in any court of competent jurisdiction, including under the New York Convention on the Recognition and Enforcement of Foreign Arbitral Awards.
 
