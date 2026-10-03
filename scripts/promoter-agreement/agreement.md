@@ -443,26 +443,46 @@ k. continuing the Event would reasonably expose Bilit to liability.
 
 ---
 
-# 18. CHARGEBACKS AND PAYMENT DISPUTES
+# 18. CHARGEBACKS, PAYMENT DISPUTES AND PROMOTER LIABILITY
 
-18.1 The Promoter shall bear the economic responsibility for chargebacks relating to the Event except to the extent caused directly by Bilit's own breach.
+18.1 **Responsibility for Event-related transactions.** The Promoter acknowledges and agrees that, where Bilit processes ticket payments for an Event through its payment processing account, Bilit may be the merchant-facing party for payment processing purposes. Notwithstanding this payment processing arrangement, the Promoter shall remain responsible for all liabilities arising from the Promoter's Events, including valid Customer claims, refunds, cancellations, Chargebacks, payment reversals and other payment disputes attributable to an Event or the Promoter.
 
-18.2 Bilit may deduct:
+18.2 **General rule.** The Promoter shall bear the economic responsibility for all Chargebacks, payment reversals and payment disputes relating to Tickets for its Events, whatever their stated reason (including fraud, unrecognised-transaction and non-receipt claims), except to the extent caused directly by Bilit's own breach of this Agreement.
 
-- chargeback amounts;
-- processor fees;
-- bank fees;
-- investigation fees;
-- reasonable administrative costs.
+18.3 **Chargebacks and payment disputes.** Without limiting clause 18.2, where a Customer initiates a Chargeback, card dispute, payment reversal or similar claim in relation to a Ticket purchased for the Promoter's Event, the Promoter shall be responsible for the disputed Ticket amount where the underlying liability relates to the Event, the Promoter, the Ticket, the provision of the Event, cancellation, material change, failure to provide the Event, failure to provide the purchased Ticket or any other matter within the Promoter's responsibility.
 
-18.3 Bilit may maintain a reserve against anticipated chargebacks.
+18.4 **Amounts deducted from Bilit's payment account.** If Stripe, a card scheme, acquiring bank, payment processor or other financial institution deducts, freezes, reverses or withholds any amount from Bilit's payment account in connection with a transaction relating to the Promoter's Event, the Promoter shall reimburse Bilit for the relevant amount. This includes, where applicable:
 
-18.4 The Promoter shall provide information and evidence reasonably requested by Bilit in relation to payment disputes.
+- the disputed transaction amount;
+- chargeback and dispute fees;
+- payment reversal fees;
+- bank or payment processor fees;
+- reasonable third-party recovery costs; and
+- other directly incurred costs arising from the relevant payment dispute.
 
-18.5 Bilit may decide, acting reasonably, whether and how to contest any chargeback.
+18.5 **Right of set-off.** Bilit shall be entitled, without further consent from the Promoter, to deduct any amount owed by the Promoter under this clause from:
 
-18.6 The Promoter's liability for chargebacks continues after the Event and after termination of this Agreement for as long as chargebacks may be raised under the applicable card scheme or payment processor rules.
+- Ticket sales proceeds and Funds Held;
+- current or future settlements for any Event;
+- amounts otherwise payable to the Promoter;
+- deposits or reserves held by Bilit; or
+- any other amounts payable by Bilit to the Promoter or its Affiliates.
 
+The Promoter authorises Bilit to make such deductions to recover amounts due under this Agreement. This clause is in addition to clause 10.5.
+
+18.6 **Insufficient settlement funds.** If there are insufficient funds otherwise payable to the Promoter to recover the relevant amount, Bilit may issue an invoice or written demand to the Promoter. The Promoter shall pay the outstanding amount within seven (7) calendar days of receiving such demand, failing which clause 10.7 (interest and recovery costs) applies.
+
+18.7 **Reserve and withholding.** Where Bilit reasonably considers that there is a potential Chargeback, refund or payment-dispute risk associated with an Event, Bilit may retain a reserve from the amounts otherwise payable to the Promoter for the purpose of covering potential liabilities. The amount and duration of any such reserve shall be reasonably related to the anticipated payment, refund and Chargeback exposure associated with the Event, and this clause is without prejudice to clause 60.
+
+18.8 **Promoter's obligation to cooperate.** The Promoter shall, within five (5) Business Days of request, provide Bilit with all information and documentation reasonably required to respond to a Chargeback or payment dispute, including evidence of Ticket delivery, Ticket validity, Event attendance, Customer communications, Event terms, cancellation notices and other relevant documentation. Where the Promoter fails to do so, the Promoter shall bear the full amount of the relevant Chargeback and associated costs.
+
+18.9 **Bilit's right to contest disputes.** Where appropriate, Bilit may submit evidence to Stripe, the relevant payment processor, card network or financial institution to contest a Chargeback or payment dispute. Bilit may decide, acting reasonably, whether and how to contest any Chargeback. The Promoter acknowledges that the final decision on a card Chargeback is made through the applicable card-network and issuing-bank dispute process and is not determined by Bilit or Stripe, and that an unsuccessful contest does not reduce the Promoter's liability under this clause.
+
+18.10 **Event cancellation or material change.** Where an Event is cancelled, materially changed or otherwise gives rise to a legal entitlement to a Customer refund, the Promoter shall remain responsible for the financial consequences of that cancellation, material change or other Promoter-related event, including all amounts which Bilit is required to refund to Customers.
+
+18.11 **Continuing obligation.** The Promoter's obligations under this clause shall survive the completion, cancellation or termination of the Event and the termination of this Agreement for as long as any Chargeback, refund, reversal, dispute or related liability may arise from a Ticket transaction processed during the term of this Agreement under the applicable card scheme or payment processor rules.
+
+18.12 **No limitation of consumer rights.** Nothing in this Agreement shall be interpreted as limiting, excluding or transferring any mandatory statutory rights or remedies available to consumers. This clause governs the allocation of financial responsibility between Bilit and the Promoter and does not prevent a Customer from exercising rights available under Applicable Law.
 ---
 
 # 19. CUSTOMER CLAIMS
