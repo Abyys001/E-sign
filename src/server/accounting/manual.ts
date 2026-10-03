@@ -339,12 +339,13 @@ export async function editOrganiserPayment(a: Actor, id: string, input: z.infer<
 }
 
 // ---------- booking fee (per event) ----------
-export const BookingFeeInput = z.object({ percentBps: z.number().int().min(0).max(10_000), applyToExisting: z.boolean().default(true), reason: Reason });
+export const BookingFeeInput = z.object({ percentBps: z.number().int().min(0).max(10_000), applyToExisting: z.boolean().default(true), applyFrom: IsoDate.optional().nullable(), reason: Reason });
 
 /**
  * Change an event's booking fee %. A new agreement version is created (other terms unchanged). With `applyToExisting`
  * every sale already booked to the event (and its refunds/disputes) is re-posted with the new rate: the old postings are
- * reversed, never edited, so the change is visible in the ledger and the audit log.
+ * reversed, never edited, so the change is visible in the ledger and the audit log. With `applyFrom` only sales made on or
+ * after that date (organisation timezone) are re-posted — e.g. "7 % so far, 10 % from today".
  */
 export async function setBookingFee(a: Actor, eventId: string, input: z.infer<typeof BookingFeeInput>) {
   return db.transaction(async (tx) => {
@@ -360,16 +361,19 @@ export async function setBookingFee(a: Actor, eventId: string, input: z.infer<ty
     if (input.applyToExisting) {
       const bt = schema.stripeBalanceTransactions;
       const accs = await tx.select().from(schema.stripeAccounts).where(eq(schema.stripeAccounts.organisationId, a.orgId));
+      const { timezone } = await getAcctSettings(a.orgId, tx);
+      const since = input.applyFrom ? sql` and ${bt.stripeCreatedAt} >= (${input.applyFrom}::date::timestamp at time zone ${timezone})` : sql``;
       for (const acc of accs) {
         const ctx = await offlineContext(tx, acc);
         const agreement = ctx.eventsById.get(eventId)!.agreement!;
-        const sales = await tx.select().from(bt).where(and(eq(bt.stripeAccountRef, acc.id), eq(bt.eventId, eventId), eq(bt.matchStatus, "MATCHED"), eq(bt.kind, "SALE"))).for("update");
+        const sales = await tx.select().from(bt).where(and(eq(bt.stripeAccountRef, acc.id), eq(bt.eventId, eventId), eq(bt.matchStatus, "MATCHED"), eq(bt.kind, "SALE"), sql`true ${since}`)).for("update");
         for (const row of sales) {
           await repost(tx, ctx, row, { eventId, organiserId: row.organiserId, agreement, eventCode: row.eventCode, matchStatus: "MATCHED", matchReason: row.matchReason, matchMethod: row.matchMethod, ticketQuantity: row.ticketQuantity, original: null }, { userId: a.userId, reason: `Booking fee changed to ${input.percentBps / 100}%: ${input.reason}` });
           reposted++;
         }
         // Refunds/disputes assigned by hand are not re-derived automatically; bring them onto the new rate too.
-        const manual = await tx.select().from(bt).where(and(eq(bt.stripeAccountRef, acc.id), eq(bt.eventId, eventId), eq(bt.matchStatus, "MATCHED"), sql`${bt.kind} <> 'SALE'`, sql`${bt.agreementId} is distinct from ${ag!.id}`)).for("update");
+        const manual = await tx.select().from(bt).where(and(eq(bt.stripeAccountRef, acc.id), eq(bt.eventId, eventId), eq(bt.matchStatus, "MATCHED"), sql`${bt.kind} <> 'SALE'`, sql`${bt.agreementId} is distinct from ${ag!.id}`,
+          sql`exists (select 1 from stripe_balance_transactions o where o.stripe_account_ref = ${bt.stripeAccountRef} and o.charge_id = ${bt.chargeId} and o.kind = 'SALE' and o.agreement_id = ${ag!.id})`)).for("update");
         for (const row of manual) {
           const [o] = row.chargeId ? await tx.select().from(bt).where(and(eq(bt.stripeAccountRef, acc.id), eq(bt.chargeId, row.chargeId), eq(bt.kind, "SALE"))) : [];
           await repost(tx, ctx, row, { eventId, organiserId: row.organiserId, agreement, eventCode: row.eventCode, matchStatus: "MATCHED", matchReason: row.matchReason, matchMethod: row.matchMethod, ticketQuantity: row.ticketQuantity, original: o?.eventId === eventId ? { amount: o.amount, commission: o.commissionAmount ?? 0 } : null }, { userId: a.userId, reason: `Booking fee changed: ${input.reason}` });
@@ -377,7 +381,7 @@ export async function setBookingFee(a: Actor, eventId: string, input: z.infer<ty
         }
       }
     }
-    await acctAudit(tx, { ...a, action: "booking_fee.changed", entity: "event", entityId: eventId, old: { percentBps: prev?.percentBps ?? null, version: prev?.version ?? null }, new: { percentBps: input.percentBps, version: ag!.version }, reason: input.reason, extra: { eventId, eventName: ev.name, applyToExisting: input.applyToExisting, reposted } });
+    await acctAudit(tx, { ...a, action: "booking_fee.changed", entity: "event", entityId: eventId, old: { percentBps: prev?.percentBps ?? null, version: prev?.version ?? null }, new: { percentBps: input.percentBps, version: ag!.version }, reason: input.reason, extra: { eventId, eventName: ev.name, applyToExisting: input.applyToExisting, applyFrom: input.applyFrom ?? null, reposted } });
     return { agreement: ag!, reposted };
   });
 }

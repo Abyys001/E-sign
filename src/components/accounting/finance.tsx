@@ -6,7 +6,7 @@ import { Money } from "@/components/accounting/kit";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Callout } from "@/components/ui/feedback";
-import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
+import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { api, ApiError, errMsg, fmtDate, useApi } from "@/lib/api";
@@ -182,23 +182,29 @@ export function BookingFeeDialog({ eventId, currentBps, onClose, onSaved }: { ev
   const c = useTranslations("common");
   const toast = useToast();
   const [v, setV] = useState(currentBps == null ? "" : bpsToPercent(currentBps));
-  const [apply, setApply] = useState(true);
+  const [scope, setScope] = useState<"all" | "from" | "future">("all");
+  const [from, setFrom] = useState(new Date().toISOString().slice(0, 10));
   const [reason, setReason] = useState("");
   const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   let bps: number | null = null; try { bps = v.trim() ? percentToBps(v) : null; } catch { bps = null; }
   const submit = async () => {
     if (bps === null) { setErr(t("invalid")); return; }
     setBusy(true); setErr(null);
-    try { const r = await api<{ reposted: number }>(`/api/accounting/events/${eventId}/booking-fee`, { json: { percentBps: bps, applyToExisting: apply, reason } }); toast("ok", t("saved", { n: r.reposted })); onSaved(); onClose(); }
+    try { const r = await api<{ reposted: number }>(`/api/accounting/events/${eventId}/booking-fee`, { json: { percentBps: bps, applyToExisting: scope !== "future", applyFrom: scope === "from" ? from : null, reason } }); toast("ok", t("saved", { n: r.reposted })); onSaved(); onClose(); }
     catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
   };
   return (
     <Modal open onClose={onClose} title={t("title")} description={t("desc")}
-      footer={<><Button onClick={onClose}>{c("cancel")}</Button><Button variant="primary" loading={busy} disabled={bps === null || reason.trim().length < 3} onClick={submit}>{t("save")}</Button></>}>
+      footer={<><Button onClick={onClose}>{c("cancel")}</Button><Button variant="primary" loading={busy} disabled={bps === null || reason.trim().length < 3 || (scope === "from" && !from)} onClick={submit}>{t("save")}</Button></>}>
       <div className="space-y-4">
         <Field label={t("percent")} required hint={t("current", { v: pct(currentBps) })}>{(p) => <div className="flex items-center gap-2"><Input {...p} inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} className="w-32 text-end font-semibold" placeholder="7.00" /><span className="text-lg font-semibold">%</span></div>}</Field>
-        <Checkbox label={t("apply")} checked={apply} onChange={(e) => setApply(e.target.checked)} />
-        <p className="text-xs text-muted">{apply ? t("applyHelp") : t("futureHelp")}</p>
+        <fieldset className="space-y-2"><legend className="mb-1 text-sm font-medium">{t("scope")}</legend>
+          {(["all", "from", "future"] as const).map((k) => <label key={k} className="flex items-start gap-2 rounded-lg border border-line p-2.5 text-sm has-[:checked]:border-accent">
+            <input type="radio" name="fee-scope" className="mt-1" checked={scope === k} onChange={() => setScope(k)} />
+            <span className="flex-1"><span className="font-medium">{t(`scopes.${k}`)}</span><span className="block text-xs text-muted">{t(`scopes.${k}Help`)}</span>
+              {k === "from" && scope === "from" && <Input type="date" aria-label={t("scopes.date")} value={from} onChange={(e) => setFrom(e.target.value)} className="mt-2 w-auto" />}</span>
+          </label>)}
+        </fieldset>
         <Field label={t("reason")} required>{(p) => <Input {...p} value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
         {err && <Callout tone="warn">{err}</Callout>}
       </div>

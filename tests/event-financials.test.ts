@@ -176,3 +176,22 @@ describe("refunds follow their sale automatically", () => {
     expect(await balanced(e.org.id)).toBe(0);
   });
 });
+
+describe("variable booking fee from a date", () => {
+  it("7 % on earlier sales, 10 % from a given date", async () => {
+    const e = await setup();
+    const day = 86400;
+    const old = e.fake.sale({ amount: 10000, fee: 0, currency: "gbp", description: `Order (o1) for event: Persian Concert London (${e.event.code})`, created: Math.floor(Date.now() / 1000) - 3 * day });
+    const now = e.fake.sale({ amount: 10000, fee: 0, currency: "gbp", description: `Order (o2) for event: Persian Concert London (${e.event.code})` });
+    await importBalanceTransaction(await e.ctx(), old.bt);
+    await importBalanceTransaction(await e.ctx(), now.bt);
+    const today = new Date().toISOString().slice(0, 10);
+    const r = await setBookingFee(e.actor, e.event.id, { percentBps: 1000, applyToExisting: true, applyFrom: today, reason: "10% from today" });
+    expect(r.reposted).toBe(1);
+    const rows = await db.select().from(schema.stripeBalanceTransactions).where(eq(schema.stripeBalanceTransactions.eventId, e.event.id));
+    expect(rows.find((x) => x.chargeId === old.charge.id)?.commissionAmount).toBe(700);
+    expect(rows.find((x) => x.chargeId === now.charge.id)?.commissionAmount).toBe(1000);
+    expect((await fig(e)).bookingFees).toBe(1700);
+    expect(await balanced(e.org.id)).toBe(0);
+  });
+});

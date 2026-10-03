@@ -929,7 +929,17 @@
       "futureHelp": "Only sales imported or matched from now on use the new rate; booked sales keep the rate they were calculated with.",
       "reason": "Reason",
       "save": "Save booking fee",
-      "saved": "Booking fee updated ({n} transactions re-posted)"
+      "saved": "Booking fee updated ({n} transactions re-posted)",
+      "scope": "Apply the new rate to",
+      "scopes": {
+        "all": "All sales already booked",
+        "allHelp": "Every booked sale (and its refunds) is re-posted at the new rate; old postings are reversed, never edited. Use before settling.",
+        "from": "Sales from a date",
+        "fromHelp": "Sales made on or after this date use the new rate; earlier sales keep theirs (e.g. 7 % until yesterday, 10 % from today).",
+        "future": "Future sales only",
+        "futureHelp": "Booked sales keep the rate they were calculated with.",
+        "date": "From date"
+      }
     },
     "pay": {
       "title": "Pay organiser",
