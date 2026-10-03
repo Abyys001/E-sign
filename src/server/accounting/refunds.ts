@@ -94,3 +94,57 @@ export async function listCharges(orgId: string, mode: Mode, f: z.infer<typeof C
   ]);
   return { items: items.map((r) => ({ ...r.c, btId: r.btId, eventName: r.eventName, refundIssues: r.refundIssues })), total: total[0]?.n ?? 0, counts: counts.rows[0] };
 }
+
+// ---------- refunds overview ----------
+export const RefundFilter = z.object({ linked: z.enum(["yes", "no"]).optional(), eventId: z.string().uuid().optional(), q: z.string().trim().max(120).optional(), from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
+
+/**
+ * Every refund/chargeback with its original sale: who, which event, how much of it was ticket price and how much booking
+ * fee, the Stripe refund status and whether it is linked to an event. Unlinked ones are grouped by detected event code.
+ */
+export async function refundsOverview(orgId: string, mode: Mode, f: z.infer<typeof RefundFilter>, page: { limit: number; offset: number }) {
+  const live = isLive(mode);
+  const like = (q: string) => `%${q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+  const where = sql`r.organisation_id = ${orgId} and r.livemode = ${live} and r.kind in ('REFUND', 'DISPUTE')
+    ${f.linked === "yes" ? sql` and r.match_status = 'MATCHED'` : f.linked === "no" ? sql` and r.match_status <> 'MATCHED'` : sql``}
+    ${f.eventId ? sql` and r.event_id = ${f.eventId}` : sql``}
+    ${f.from ? sql` and r.stripe_created_at >= ${f.from}::date` : sql``} ${f.to ? sql` and r.stripe_created_at < (${f.to}::date + 1)` : sql``}
+    ${f.q ? sql` and (ch.customer_name ilike ${like(f.q)} or ch.customer_email ilike ${like(f.q)} or ch.description ilike ${like(f.q)} or r.event_code ilike ${like(f.q)} or r.charge_id = ${f.q})` : sql``}`;
+  const from = sql`stripe_balance_transactions r
+    left join stripe_balance_transactions s on s.stripe_account_ref = r.stripe_account_ref and s.charge_id = r.charge_id and s.kind = 'SALE'
+    left join stripe_charges ch on ch.stripe_account_ref = r.stripe_account_ref and ch.charge_id = r.charge_id
+    left join stripe_refunds rf on rf.stripe_account_ref = r.stripe_account_ref and rf.refund_id = r.source_id
+    left join acct_events ev on ev.id = r.event_id`;
+  const [rows, total, sums, groups] = await Promise.all([
+    db.execute<Record<string, unknown>>(sql`
+      select r.id, r.kind, r.stripe_created_at, -r.amount as amount, r.currency, r.match_status, r.match_reason, r.event_id, upper(r.event_code) as event_code, ev.name as event_name,
+        s.id as sale_id, s.amount as sale_amount, coalesce(s.commission_amount, 0) as sale_fee, s.match_status as sale_status, ch.customer_name, ch.customer_email, ch.description,
+        rf.status as refund_status, rf.reason, rf.note, rf.keep_booking_fee, rf.failure_reason, coalesce(r.commission_amount, 0) as commission_reversed,
+        (select coalesce(sum(-x.amount), 0) from stripe_balance_transactions x where x.stripe_account_ref = r.stripe_account_ref and x.charge_id = r.charge_id and x.kind in ('REFUND','DISPUTE') and x.stripe_created_at <= r.stripe_created_at) as refunded_so_far
+      from ${from} where ${where} order by r.stripe_created_at desc limit ${page.limit} offset ${page.offset}`),
+    db.execute<{ n: number }>(sql`select count(*)::int n from ${from} where ${where}`),
+    db.execute<{ currency: string; n: number; amount: string; linked: number; unlinked_amount: string }>(sql`
+      select r.currency, count(*)::int n, sum(-r.amount)::text amount, count(*) filter (where r.match_status = 'MATCHED')::int linked, coalesce(sum(-r.amount) filter (where r.match_status <> 'MATCHED'), 0)::text unlinked_amount
+      from ${from} where r.organisation_id = ${orgId} and r.livemode = ${live} and r.kind in ('REFUND','DISPUTE') group by 1`),
+    db.execute<{ code: string | null; currency: string; n: number; amount: string; sample: string | null; sales_unlinked: number; event_exists: boolean }>(sql`
+      select upper(r.event_code) code, r.currency, count(*)::int n, sum(-r.amount)::text amount, max(ch.description) sample, count(*) filter (where s.match_status <> 'MATCHED')::int sales_unlinked,
+        bool_or(exists (select 1 from acct_events e where e.organisation_id = ${orgId} and upper(e.code) = upper(r.event_code))) event_exists
+      from ${from} where r.organisation_id = ${orgId} and r.livemode = ${live} and r.kind in ('REFUND','DISPUTE') and r.match_status <> 'MATCHED' group by 1, 2 order by 3 desc`),
+  ]);
+  const n = (v: unknown) => Number(v ?? 0);
+  return {
+    total: total.rows[0]?.n ?? 0,
+    totals: sums.rows.map((x) => ({ currency: x.currency, count: x.n, amount: n(x.amount), linked: x.linked, unlinkedAmount: n(x.unlinked_amount) })),
+    unlinkedGroups: groups.rows.map((g) => ({ code: g.code, currency: g.currency, count: g.n, amount: n(g.amount), eventName: g.sample?.match(/for event:\s*(.*)\s*\([A-Za-z0-9]+-[0-9]+\)/)?.[1]?.trim() ?? null, organiserHint: g.sample?.match(/\), by (.*)$/)?.[1]?.trim() ?? null, eventExists: g.event_exists })),
+    items: rows.rows.map((x) => {
+      const ticket = n(x.sale_amount) - n(x.sale_fee), so = n(x.refunded_so_far), before = so - n(x.amount);
+      // Booking fee part of this refund: what it refunded beyond the ticket price (refunds are applied to the ticket first).
+      const feePart = Math.max(0, so - Math.max(ticket, before)) ;
+      return { id: x.id as string, kind: x.kind as string, date: x.stripe_created_at, amount: n(x.amount), currency: x.currency as string, linked: x.match_status === "MATCHED", matchReason: x.match_reason as string | null,
+        eventId: x.event_id as string | null, eventCode: x.event_code as string | null, eventName: x.event_name as string | null, saleId: x.sale_id as string | null, saleAmount: n(x.sale_amount), saleFee: n(x.sale_fee), saleLinked: x.sale_status === "MATCHED",
+        customerName: x.customer_name as string | null, customerEmail: x.customer_email as string | null, description: x.description as string | null,
+        refundStatus: x.refund_status as string | null, reason: x.reason as string | null, note: x.note as string | null, failureReason: x.failure_reason as string | null,
+        feeRefunded: x.sale_id && x.match_status === "MATCHED" ? feePart : null, feeKeptByBilit: n(x.commission_reversed) === 0 };
+    }),
+  };
+}

@@ -27,7 +27,8 @@
     "ledger": "Accounting ledger",
     "settings": "Finance settings",
     "overview": "Overview",
-    "books": "Bookkeeping"
+    "books": "Bookkeeping",
+    "refunds": "Refunds"
   },
   "range": {
     "label": "Period",
@@ -1726,5 +1727,44 @@
       "save": "Save AI settings",
       "saved": "AI settings saved"
     }
+  },
+  "refunds": {
+    "title": "Refunds",
+    "sub": "Every refund and chargeback, the event it belongs to, and how much of it was ticket price or booking fee. Refunds follow their sale: link the sale to an event and its refunds link too.",
+    "refundedCount": "{n} refunds",
+    "linkedOf": "{n} of {total} linked to events",
+    "unlinkedAmount": "Not linked:",
+    "feeRecover": "Booking fee to recover from organisers",
+    "unlinkedTitle": "Not linked to an event",
+    "unlinkedDesc": "These refunds belong to sales whose event is not set up yet. Create the events (choose the organiser and booking fee) and the sales and refunds link automatically — or link single refunds by hand below.",
+    "createEvents": "Create events from Stripe",
+    "noCode": "No event code",
+    "by": "by {name}",
+    "eventExistsHint": "The event exists — link the sales/refunds by hand below.",
+    "noEventHint": "No event with this code yet — create it.",
+    "nRefunds": "{n} refunds",
+    "f": {
+      "all": "All",
+      "yes": "Linked",
+      "no": "Not linked"
+    },
+    "search": "Search customer, email, order or event code",
+    "empty": "No refunds",
+    "date": "Date",
+    "customer": "Customer",
+    "event": "Event",
+    "amount": "Refunded",
+    "originalSale": "Original sale",
+    "incFee": "incl. fee",
+    "feePart": "Booking fee refunded",
+    "chargedToOrganiser": "charged to organiser",
+    "ticketOnly": "ticket only",
+    "stripeStatus": "Stripe status",
+    "reason": "Reason / note",
+    "actions": "Actions",
+    "chargeback": "Chargeback",
+    "notLinked": "Not linked",
+    "link": "Link to event",
+    "help": "Linking a refund whose sale is not linked links the sale too (the refund follows its sale). Under the platform policy the booking fee is non-refundable: if a refund includes it, the organiser is charged for it."
   }
 }

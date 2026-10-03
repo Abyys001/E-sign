@@ -150,3 +150,21 @@ describe("accountant pack and AI review", () => {
     setAiChecker(null); setAiCompleter(null);
   });
 });
+
+describe("refunds overview", () => {
+  it("lists refunds with their sale, event link and booking-fee part; groups unlinked ones by code", async () => {
+    const x = await setup();
+    const ctx = await importContext(x.acc, x.fake);
+    await importBalanceTransaction(ctx, x.fake.refund(x.sale.charge, 3850).bt); // full refund incl. €3.50 fee
+    const s2 = x.fake.sale({ amount: 2000, fee: 50, description: "Order (q9) for event: Unknown Gig (ZZ-0001), by Someone" });
+    await importBalanceTransaction(ctx, s2.bt);
+    await importBalanceTransaction(ctx, x.fake.refund(s2.charge, 2000).bt);
+    const { refundsOverview } = await import("@/server/accounting/refunds");
+    const o = await refundsOverview(x.org.id, "test", {}, { limit: 50, offset: 0 });
+    expect(o.total).toBe(2);
+    const linked = o.items.find((r) => r.linked)!;
+    expect(linked).toMatchObject({ amount: 3850, saleAmount: 3850, saleFee: 350, feeRefunded: 350, eventId: x.event.id });
+    expect(o.unlinkedGroups).toEqual([expect.objectContaining({ code: "ZZ-0001", count: 1, amount: 2000, eventName: "Unknown Gig", organiserHint: "Someone", eventExists: false })]);
+    expect((await refundsOverview(x.org.id, "test", { linked: "no" }, { limit: 50, offset: 0 })).total).toBe(1);
+  });
+});

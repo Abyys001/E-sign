@@ -50,6 +50,8 @@ export async function matchTransaction(a: Actor, btId: string, input: z.infer<ty
         original = { amount: o.amount, commission: rf?.k || !ctx.settings.bookingFeeRefundable ? 0 : o.commissionAmount ?? 0 };
       }
     }
+    // Refund linked by hand while its sale is not on this event: apply the refund policy (booking fee non-refundable → nothing reversed).
+    if (row.kind !== "SALE" && !original && !ctx.settings.bookingFeeRefundable) original = { amount: row.amount || 1, commission: 0 };
     let qty: number | null = row.ticketQuantity;
     if (row.kind === "SALE" && row.chargeId) {
       const [c] = await tx.select({ m: schema.stripeCharges.metadata }).from(schema.stripeCharges).where(and(eq(schema.stripeCharges.stripeAccountRef, acc.id), eq(schema.stripeCharges.chargeId, row.chargeId)));

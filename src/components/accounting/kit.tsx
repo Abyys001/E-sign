@@ -62,6 +62,7 @@ const NAV = [
   { href: "/accounting/transactions", key: "transactions" },
   { href: "/accounting/organisers", key: "organisers" },
   { href: "/accounting/payments", key: "payments" },
+  { href: "/accounting/refunds", key: "refunds" },
   { href: "/accounting/books", key: "books" },
   { href: "/accounting/stripe", key: "stripe" },
   { href: "/accounting/reconciliation", key: "reconciliation" },
