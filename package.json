@@ -55,6 +55,7 @@
     "react-dom": "^19.3.0",
     "sanitize-html": "^2.17.7",
     "signature_pad": "^5.1.4",
+    "stripe": "^23.0.0",
     "tailwindcss": "^4.3.3",
     "zod": "^4.6.5"
   },

@@ -13,7 +13,8 @@
     "search": "جستجوی قراردادها…",
     "org": "سازمان",
     "switchOrg": "تغییر سازمان",
-    "newContract": "قرارداد جدید"
+    "newContract": "قرارداد جدید",
+    "finance": "Finance"
   },
   "dashboard": {
     "title": "داشبورد",

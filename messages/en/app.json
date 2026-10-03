@@ -13,7 +13,8 @@
     "search": "Search contracts…",
     "org": "Organisation",
     "switchOrg": "Switch organisation",
-    "newContract": "New contract"
+    "newContract": "New contract",
+    "finance": "Finance"
   },
   "dashboard": {
     "title": "Dashboard",

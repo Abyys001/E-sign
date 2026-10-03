@@ -15,7 +15,7 @@ import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { fmtDate, useApi } from "@/lib/api";
 
 type E = { seq: number; eventType: string; occurredAt: string; ip: string | null; contractId: string | null; contractName: string | null; reference: string | null; userName: string | null; recipientId: string | null };
-const GROUPS = ["contract", "recipient", "signature", "document", "otp", "auth", "webhook", "settings", "user", "template", "email", "sms", "retention", "admin"];
+const GROUPS = ["contract", "recipient", "signature", "document", "otp", "auth", "webhook", "settings", "user", "template", "email", "sms", "retention", "admin", "accounting"];
 
 export default function AuditPage() {
   const t = useTranslations("app.audit");

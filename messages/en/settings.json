@@ -14,7 +14,8 @@
     "retention": "Retention",
     "security": "Security",
     "emailTemplates": "Email templates",
-    "privacy": "Privacy & analytics"
+    "privacy": "Privacy & analytics",
+    "stripe": "Stripe"
   },
   "general": {
     "timezone": "Time zone",

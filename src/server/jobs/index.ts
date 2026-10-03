@@ -6,6 +6,7 @@ export const QUEUES = {
   email: "email.send", sms: "sms.send", webhook: "webhook.deliver", finalize: "contract.finalize",
   remindersScan: "reminders.scan", expireScan: "contracts.expire", outboxSweep: "outbox.sweep",
   retentionScan: "retention.scan", intakeProcess: "intake.process", intakeReminders: "intake.reminders", maintenance: "maintenance", dead: "dead-letter",
+  acctSync: "accounting.sync", acctStripeEvent: "accounting.stripe_event", acctScan: "accounting.scan",
 } as const;
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
@@ -15,6 +16,8 @@ const RETRY: Record<string, SendOptions & { deadLetter?: string }> = {
   [QUEUES.webhook]: { retryLimit: 0 }, // webhook retries are scheduled by us so attempts/backoff are visible in webhook_deliveries
   [QUEUES.finalize]: { retryLimit: 8, retryDelay: 15, retryBackoff: true },
   [QUEUES.intakeProcess]: { retryLimit: 5, retryDelay: 15, retryBackoff: true },
+  [QUEUES.acctSync]: { retryLimit: 3, retryDelay: 60, retryBackoff: true, expireInSeconds: 6 * 3600 }, // large historical imports; resumable from the saved cursor
+  [QUEUES.acctStripeEvent]: { retryLimit: 6, retryDelay: 20, retryBackoff: true },
 };
 
 const g = globalThis as unknown as { __boss?: Promise<PgBoss> };

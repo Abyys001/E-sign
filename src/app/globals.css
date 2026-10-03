@@ -40,7 +40,17 @@
 }
 :root[data-theme="dark"] { --bg: var(--color-4); --surface: var(--color-12); --surface-2: var(--color-10); --fg: var(--color-1); --muted: var(--color-2); --line: var(--color-13); --line-strong: var(--color-11); --ring: var(--color-1); --shadow: 0 1px 2px color-mix(in srgb, var(--color-3) 40%, transparent), 0 12px 32px -12px color-mix(in srgb, var(--color-3) 70%, transparent); color-scheme: dark; }
 
+/* Finance dashboard amount tones (requested exception to the 13-colour palette: amounts are colour-coded by meaning, always alongside a text label). */
+:root { --fin-pos: #15803d; --fin-neg: #c0262d; --fin-warn: #b45309; --fin-info: #1d5fd8; --fin-bal: #7034d9; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fin-pos: #4ade80; --fin-neg: #f87171; --fin-warn: #fbbf24; --fin-info: #6ea8fe; --fin-bal: #b197fc; } }
+:root[data-theme="dark"] { --fin-pos: #4ade80; --fin-neg: #f87171; --fin-warn: #fbbf24; --fin-info: #6ea8fe; --fin-bal: #b197fc; }
+
 @theme inline {
+  --color-fin-pos: var(--fin-pos);
+  --color-fin-neg: var(--fin-neg);
+  --color-fin-warn: var(--fin-warn);
+  --color-fin-info: var(--fin-info);
+  --color-fin-bal: var(--fin-bal);
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);

@@ -14,7 +14,8 @@
     "retention": "نگهداری",
     "security": "امنیت",
     "emailTemplates": "الگوهای ایمیل",
-    "privacy": "حریم خصوصی و تحلیل"
+    "privacy": "حریم خصوصی و تحلیل",
+    "stripe": "Stripe"
   },
   "general": {
     "timezone": "منطقه زمانی",

@@ -33,6 +33,8 @@ const schema = z.object({
   WEBHOOK_ALLOW_PRIVATE_TARGETS: z.enum(["true", "false"]).default("false"),
   MAX_UPLOAD_MB: z.coerce.number().default(25),
   MAX_PDF_PAGES: z.coerce.number().default(200),
+  /** Finance module (Stripe accounting). Off unless explicitly enabled for a deployment. */
+  ACCOUNTING_ENABLED: z.enum(["true", "false"]).default("false"),
 });
 
 export type Env = z.infer<typeof schema>;

@@ -1,8 +1,9 @@
 "use client";
+import Link from "next/link";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { Bell, Building2, Clock, FileSignature, Globe, Lock, Mail, MessageSquare, Palette, ShieldCheck, Trash2, type LucideIcon } from "lucide-react";
+import { Bell, Building2, Clock, CreditCard, FileSignature, Globe, Lock, Mail, MessageSquare, Palette, ShieldCheck, Trash2, type LucideIcon } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ function Settings() {
   const sp = useSearchParams();
   const sec = sp.get("s") ?? "general";
   const { data, reload } = useApi<S>("/api/settings");
+  const { me, can } = useMe();
   return (
     <div>
       <PageHeader title={t("title")} description={t("sub")} />
@@ -37,6 +39,7 @@ function Settings() {
         <nav aria-label={t("title")} className="scroll-thin flex gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
           {SECTIONS.map((s) => { const I = s.icon; const on = sec === s.id; return (
             <button key={s.id} type="button" aria-current={on ? "page" : undefined} onClick={() => router.replace(`/settings?s=${s.id}`, { scroll: false })} className={cn("flex items-center gap-2.5 whitespace-nowrap rounded-xl px-3.5 py-2.5 text-sm transition", on ? "bg-surface font-medium shadow-card ring-1 ring-line" : "text-muted hover:bg-surface-2 hover:text-fg")}><I className="size-4" aria-hidden />{t(`sections.${s.id}` as never)}</button>); })}
+          {me.features?.accounting && can("accounting.view") && <Link href="/accounting/stripe" className="flex items-center gap-2.5 whitespace-nowrap rounded-xl px-3.5 py-2.5 text-sm text-muted transition hover:bg-surface-2 hover:text-fg"><CreditCard className="size-4" aria-hidden />{t("sections.stripe")}</Link>}
         </nav>
         <div className="min-w-0">{!data ? <Skeleton className="h-96" /> : sec === "emailTemplates" ? <EmailTemplates /> : sec === "branding" ? <Branding /> : <Section key={sec} id={sec} data={data} reload={reload} />}</div>
       </div>

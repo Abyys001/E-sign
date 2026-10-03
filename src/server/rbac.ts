@@ -4,6 +4,7 @@ export const PERMISSIONS = [
   "templates.view", "templates.create", "templates.edit", "templates.delete",
   "intake.view", "intake.manage", "intake.send", "intake.telemetry",
   "users.manage", "organisation.manage", "billing.manage", "settings.manage", "webhooks.manage", "audit.export",
+  "accounting.view", "accounting.manage", "accounting.admin",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -20,7 +21,7 @@ export const SYSTEM_ROLES: Record<string, { name: string; permissions: readonly 
   SENDER: { name: "Sender", permissions: [...contractRead, ...intakeRead, "intake.send", "contracts.create", "contracts.edit", "contracts.send", "contracts.remind", "contracts.cancel"] },
   EDITOR: { name: "Editor", permissions: [...contractRead, ...intakeRead, "intake.manage", "contracts.create", "contracts.edit", "templates.create", "templates.edit"] },
   VIEWER: { name: "Viewer", permissions: [...contractRead, ...intakeRead] },
-  AUDITOR: { name: "Auditor", permissions: [...contractRead, ...intakeRead, "intake.telemetry", "contracts.audit", "audit.export"] },
+  AUDITOR: { name: "Auditor", permissions: [...contractRead, ...intakeRead, "intake.telemetry", "contracts.audit", "audit.export", "accounting.view"] },
   SIGNER: { name: "Signer (external, token only)", permissions: [] },
 };
 

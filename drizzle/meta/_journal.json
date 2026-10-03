@@ -64,6 +64,13 @@
       "when": 1790726030374,
       "tag": "0008_email_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790726031374,
+      "tag": "0009_accounting",
+      "breakpoints": true
     }
   ]
 }

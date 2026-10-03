@@ -83,7 +83,8 @@ export function open<P = Record<string, never>>(handler: PublicHandler<P>) {
     try {
       if (MUTATING.has(req.method)) {
         const origin = req.headers.get("origin");
-        if (origin && new URL(origin).origin !== req.nextUrl.origin) throw new AppError("forbidden", "Cross-site request blocked.");
+        // Compare against APP_URL: behind a reverse proxy req.nextUrl.origin is the internal listen address, not the public origin.
+        if (origin && new URL(origin).origin !== new URL(env().APP_URL).origin) throw new AppError("forbidden", "Cross-site request blocked.");
       }
       const out = await handler({ req, ctx: requestContext(req, correlationId), params: await route.params, correlationId });
       return finish(out, correlationId);

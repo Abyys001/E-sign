@@ -689,3 +689,4 @@ export const intakeReminders = pgTable("intake_reminders", {
   emailMessageId: uuid("email_message_id"),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("intake_reminders_uq").on(t.invitationId, t.slot)]);
+export * from "./accounting-schema";

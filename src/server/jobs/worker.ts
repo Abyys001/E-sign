@@ -6,6 +6,8 @@ import { processSubmission } from "../intake/process";
 import { auditExpiredInvitations, scanIntakeReminders, scanIntakeRetention, sweepIntake } from "../intake/tasks";
 import { finalizeContract, scanExpiry, scanReminders, scanRetention, sweepOutbox } from "./tasks";
 import { log } from "../logger";
+import { accountingEnabled } from "../accounting/core";
+import { executeRun, processStripeEvent, scanScheduledSyncs } from "../accounting/sync";
 
 type J<T> = { id: string; data: T; retryCount?: number; retryLimit?: number };
 
@@ -29,12 +31,17 @@ async function main() {
   await boss.work(QUEUES.remindersScan, wrap("reminders", () => scanReminders()));
   await boss.work(QUEUES.outboxSweep, wrap("sweep", async () => { await sweepOutbox(); await sweepIntake(); }));
   await boss.work(QUEUES.retentionScan, wrap("retention", async () => { await scanRetention(); await scanIntakeRetention(); }));
+  await boss.work(QUEUES.acctSync, { localConcurrency: 1 }, wrap<{ runId: string }>("accounting-sync", (j) => executeRun(j.data.runId)));
+  await boss.work(QUEUES.acctStripeEvent, { localConcurrency: 2 }, wrap<{ eventRowId: string }>("accounting-stripe-event", (j) => processStripeEvent(j.data.eventRowId)));
+  await boss.work(QUEUES.acctScan, wrap("accounting-scan", () => scanScheduledSyncs()));
   await boss.work(QUEUES.dead, wrap<Record<string, unknown>>("dead-letter", async (j) => { log.error("job.dead_letter", { jobId: j.id, data: j.data }); }));
   await boss.schedule(QUEUES.expireScan, "*/5 * * * *");
   await boss.schedule(QUEUES.remindersScan, "*/5 * * * *");
   await boss.schedule(QUEUES.intakeReminders, "*/5 * * * *");
   await boss.schedule(QUEUES.outboxSweep, "* * * * *");
   await boss.schedule(QUEUES.retentionScan, "17 3 * * *");
+  if (accountingEnabled()) await boss.schedule(QUEUES.acctScan, "*/30 * * * *");
+  else await boss.unschedule(QUEUES.acctScan).catch(() => {});
   log.info("worker.started", {});
   const stop = async () => { await boss.stop({ graceful: true, timeout: 20_000 }); process.exit(0); };
   process.on("SIGTERM", stop); process.on("SIGINT", stop);

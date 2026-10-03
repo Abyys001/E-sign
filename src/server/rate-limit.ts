@@ -27,6 +27,9 @@ export const LIMITS = {
   intakeOtp: { limit: 5, windowSec: 900 },
   intakeUpload: { limit: 30, windowSec: 600 },
   intakeBeat: { limit: 120, windowSec: 60 },
+  stripeWebhookBad: { limit: 30, windowSec: 60 }, // unsigned / badly signed Stripe webhook attempts, per IP
+  accountingExport: { limit: 30, windowSec: 600 },
+  accountingSync: { limit: 20, windowSec: 600 },
 } as const;
 export type LimitName = keyof typeof LIMITS;
 
