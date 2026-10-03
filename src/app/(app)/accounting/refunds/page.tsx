@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { CalendarPlus, CheckCircle2, Link2, Search, Undo2, Unlink } from "lucide-react";
+import { CalendarPlus, CheckCircle2, FileDown, Link2, Search, Undo2, Unlink } from "lucide-react";
 import { useMe } from "@/components/app/me";
 import { Badge, Money, RangePicker, rangeFor, rangeQuery, useMode, type RangeKey } from "@/components/accounting/kit";
 import { ImportEventsDialog } from "@/components/accounting/forms";
@@ -25,6 +25,7 @@ type EvRow = { eventId: string; eventName: string; eventCode: string; eventStatu
 /** Per organiser: events whose refunds included booking fee, which the organiser must pay back (policy: fee non-refundable). */
 function FeeRecovery({ rows }: { rows: EvRow[] }) {
   const t = useTranslations("accounting.refunds.recover");
+  const { q: withMode } = useMode();
   const by = new Map<string, { name: string; organiserId: string | null; currency: string; events: EvRow[]; balance: number }>();
   for (const r of rows) {
     const k = `${r.organiserId}|${r.currency}`;
@@ -42,7 +43,7 @@ function FeeRecovery({ rows }: { rows: EvRow[] }) {
         return <div key={`${g.organiserId}|${g.currency}`} className="border-t border-line first:border-t-0">
           <div className="flex flex-wrap items-baseline justify-between gap-2 px-5 pt-4">
             <h3 className="font-semibold">{g.organiserId ? <Link href={`/accounting/organisers/${g.organiserId}`} className="underline-offset-4 hover:underline">{g.name}</Link> : g.name} <span className="text-xs font-normal uppercase text-muted">{g.currency}</span></h3>
-            <span className="text-sm"><span className="text-muted">{t("balance")}: </span><Money v={g.balance} c={g.currency} strong className={g.balance < 0 ? "text-fin-neg" : ""} /> <span className="text-xs text-muted">{g.balance < 0 ? t("owes") : t("owed")}</span></span>
+            <span className="flex flex-wrap items-center gap-3 text-sm">{g.organiserId && <a href={withMode(`/api/accounting/refunds/pdf?organiserId=${g.organiserId}`)} className="inline-flex items-center gap-1 underline underline-offset-4"><FileDown className="size-3.5" aria-hidden />{t("pdf")}</a>}<span><span className="text-muted">{t("balance")}: </span><Money v={g.balance} c={g.currency} strong className={g.balance < 0 ? "text-fin-neg" : ""} /> <span className="text-xs text-muted">{g.balance < 0 ? t("owes") : t("owed")}</span></span></span>
           </div>
           <TableWrap><Table className="text-[13px] [&_td]:px-3 [&_th]:px-3"><thead><tr><Th>{t("event")}</Th><Th>{t("status")}</Th><Th className="text-end">{t("refunded")}</Th><Th className="text-end">{t("fee")}</Th><Th className="text-end">{t("stripe")}</Th></tr></thead>
             <tbody>{g.events.map((e) => <Tr key={e.eventId}><Td><Link href={`/accounting/events/${e.eventId}`} className="font-medium underline-offset-4 hover:underline">{e.eventName}</Link> <code className="text-xs text-muted">{e.eventCode}</code></Td>
@@ -71,7 +72,7 @@ export default function RefundsPage() {
   const target = (r: Row) => ({ id: r.saleId && !r.saleLinked ? r.saleId : r.id, kind: r.saleId && !r.saleLinked ? "SALE" : r.kind, balanceTransactionId: "", amount: r.saleId && !r.saleLinked ? r.saleAmount : -r.amount, currency: r.currency, description: r.description, eventCode: r.eventCode, eventId: r.eventId });
   return (
     <div className="space-y-4">
-      <PageHeader title={t("title")} description={t("sub")} />
+      <PageHeader title={t("title")} description={t("sub")} actions={<a href={withMode(`/api/accounting/refunds/pdf?x=1${rangeQuery(rangeFor(range.key, range))}`)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-line-strong px-4 text-sm font-medium hover:bg-surface-2"><FileDown className="size-4" aria-hidden />{t("pdfAll")}</a>} />
       {data && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{data.totals.map((x) => {
         const fr = fees.data?.totals.find((f) => f.currency === x.currency)?.bookingFeesRefunded ?? 0;
         return <Card key={x.currency} className="p-4 text-sm"><p className="text-xs font-semibold uppercase text-muted">{x.currency}</p>

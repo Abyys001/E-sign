@@ -1794,7 +1794,9 @@
       "owes": "owes Bilit",
       "owed": "Bilit still owes",
       "total": "Total for {name}",
-      "settled": "recovered by deduction"
-    }
+      "settled": "recovered by deduction",
+      "pdf": "Refunds statement (PDF)"
+    },
+    "pdfAll": "Refunds PDF"
   }
 }
