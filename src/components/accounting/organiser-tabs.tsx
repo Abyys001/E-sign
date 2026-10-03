@@ -36,18 +36,22 @@ export function OrganiserPayments({ id, onPay, onChanged }: { id: string; onPay?
   const { q } = useMode();
   const { data, loading, reload } = useApi<{ items: PaymentRow[] }>(q(`/api/accounting/organiser-payments?organiserId=${id}&pageSize=200`));
   const [view, setView] = useState<string | null>(null); const [edit, setEdit] = useState<PaymentRow | null>(null); const [del, setDel] = useState<PaymentRow | null>(null); const [reason, setReason] = useState("");
+  const [showVoided, setShowVoided] = useState(false);
   const after = async () => { await reload(); onChanged(); };
+  const voided = (data?.items ?? []).filter((p) => p.status === "VOIDED").length;
+  const items = (data?.items ?? []).filter((p) => showVoided || p.status !== "VOIDED");
   const markPaid = async (p: PaymentRow) => { try { await api(`/api/accounting/organiser-payments/${p.id}`, { method: "PATCH", json: { status: "PAID" } }); toast("ok", tp("markedPaid")); await after(); } catch (x) { toast("error", errMsg(x)); } };
   const manage = can("accounting.manage");
   const totals = new Map<string, number>(); for (const p of data?.items ?? []) if (p.status === "PAID") totals.set(p.currency, (totals.get(p.currency) ?? 0) + p.amount);
   return (
     <Card>
       <CardHeader title={t("pay.title")} description={t("pay.desc")} action={<div className="flex flex-wrap gap-2">
+        {voided > 0 && <label className="inline-flex items-center gap-2 text-sm text-muted"><input type="checkbox" checked={showVoided} onChange={(e) => setShowVoided(e.target.checked)} />{t("pay.showVoided", { n: voided })}</label>}
         <Button size="sm" onClick={() => doExport(ensure, q(`/api/accounting/organiser-payments?organiserId=${id}`))}><Download className="size-4" aria-hidden />CSV</Button>
         {manage && onPay && <Button size="sm" variant="primary" onClick={onPay}><Banknote className="size-4" aria-hidden />{t("recordPayment")}</Button>}</div>} />
-      {loading && !data ? <div className="p-4"><Skeleton className="h-24" /></div> : !data?.items.length ? <EmptyState title={tp("empty")} description={tp("emptyDesc")} /> : <>
+      {loading && !data ? <div className="p-4"><Skeleton className="h-24" /></div> : !items.length ? <EmptyState title={tp("empty")} description={tp("emptyDesc")} /> : <>
         <TableWrap><Table><thead><tr><Th>{tp("date")}</Th><Th>{t("pay.event")}</Th><Th className="text-end">{tp("amount")}</Th><Th>{tp("method")}</Th><Th>{tp("reference")}</Th><Th>{tp("status")}</Th><Th><span className="sr-only">{tp("actions")}</span></Th></tr></thead>
-          <tbody>{data.items.map((p) => <Tr key={p.id} className={p.status === "VOIDED" ? "text-muted line-through decoration-1" : ""}>
+          <tbody>{items.map((p) => <Tr key={p.id} className={p.status === "VOIDED" ? "text-muted line-through decoration-1" : ""}>
             <Td className="whitespace-nowrap">{p.paymentDate}{p.notes && <span className="block max-w-xs truncate text-xs text-muted no-underline" title={p.notes}>{p.notes}</span>}</Td>
             <Td className="min-w-48">{p.eventId ? <Link href={`/accounting/events/${p.eventId}`} className="underline-offset-4 hover:underline">{p.eventName}</Link> : <span className="text-muted">{t("pay.notEvent")}</span>}{p.eventCode && <code className="block text-xs text-muted">{p.eventCode}</code>}</Td>
             <Td className="text-end"><Money v={p.amount} c={p.currency} strong /></Td><Td>{tp(`m.${p.method}`)}</Td><Td><code className="text-xs">{p.bankReference ?? "—"}</code></Td>

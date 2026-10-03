@@ -137,13 +137,14 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   }
 
   // Payments
-  heading("Payments to organiser", `${d.payments.filter((p) => p.status !== "VOIDED").length} payment(s). Voided payments are listed for completeness and do not count.`);
-  if (!d.payments.length) { at("No payments in this period.", M, doc.y, { size: 9.5 }); doc.y += 14; }
+  const payments = d.payments.filter((p) => p.status !== "VOIDED");
+  heading("Payments to organiser", `${payments.length} payment(s).`);
+  if (!payments.length) { at("No payments in this period.", M, doc.y, { size: 9.5 }); doc.y += 14; }
   else {
     table([{ k: "Date", w: 60 }, { k: "Event", w: 140 }, { k: "Method", w: 62 }, { k: "Reference", w: 150 }, { k: "Status", w: 40 }, { k: "Amount", w: 70, r: true }],
-      d.payments.map((p) => [p.date, p.eventCode ? `${p.eventName} (${p.eventCode})` : "Not event-specific", ({ BANK_TRANSFER: "Bank transfer", STRIPE_TRANSFER: "Stripe", CASH: "Cash", OTHER: "Other" } as Record<string, string>)[p.method] ?? p.method, p.reference ?? "—", p.status === "VOIDED" ? `Voided${p.voidReason ? `: ${p.voidReason}` : ""}` : p.status.toLowerCase(), money(p.amount, p.currency)]),
-      { strike: d.payments.map((p) => p.status === "VOIDED") });
-    const byCur = new Map<string, number>(); for (const p of d.payments) if (p.status === "PAID") byCur.set(p.currency, (byCur.get(p.currency) ?? 0) + p.amount);
+      payments.map((p) => [p.date, p.eventCode ? `${p.eventName} (${p.eventCode})` : "Total payable (all events)", ({ BANK_TRANSFER: "Bank transfer", STRIPE_TRANSFER: "Stripe", CASH: "Cash", OTHER: "Other" } as Record<string, string>)[p.method] ?? p.method, p.reference ?? "—", p.status === "VOIDED" ? `Voided${p.voidReason ? `: ${p.voidReason}` : ""}` : p.status.toLowerCase(), money(p.amount, p.currency)]),
+    );
+    const byCur = new Map<string, number>(); for (const p of payments) if (p.status === "PAID") byCur.set(p.currency, (byCur.get(p.currency) ?? 0) + p.amount);
     for (const [c, v] of byCur) { ensure(14); at(`Total paid (${c.toUpperCase()})`, M, doc.y, { bold: true, size: 9.5, width: W - 110 }); at(money(v, c), M + W - 110, doc.y, { bold: true, size: 9.5, width: 110, align: "right" }); doc.y += 14; }
   }
 

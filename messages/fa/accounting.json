@@ -425,8 +425,9 @@
       "title": "Payments to this organiser",
       "desc": "Every payment made to the organiser, with receipts. Voided payments are kept for the audit trail.",
       "event": "Event",
-      "notEvent": "Not event-specific",
-      "total": "Total paid"
+      "notEvent": "Total payable (all events)",
+      "total": "Total paid",
+      "showVoided": "Show {n} voided"
     },
     "ref": {
       "title": "Refunds & chargebacks",
