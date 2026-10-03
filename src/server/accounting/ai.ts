@@ -124,15 +124,30 @@ export const setAiCompleter = (f: Completer | null) => { g.__aiCompleter = f ?? 
 type Checker = (apiKey: string, model: string) => Promise<void>;
 export const setAiChecker = (f: Checker | null) => { g.__aiChecker = f ?? undefined; };
 
-/** Ask OpenAI whether the key works and can use the model (GET /v1/models/{model}). */
+/**
+ * Check the key the same way the review uses it: a one-token chat completion. (Listing models needs a permission many
+ * restricted keys do not have, so it would reject keys that work fine.) OpenAI's own message is shown on failure.
+ */
 const checkOpenAi: Checker = async (apiKey, model) => {
   let res: Response;
-  try { res = await fetch(`https://api.openai.com/v1/models/${encodeURIComponent(model)}`, { headers: { authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000) }); }
-  catch { throw new AppError("invalid_state", "Could not reach OpenAI to check the key. Try again in a moment."); }
-  if (res.status === 401) throw new AppError("validation_failed", "OpenAI rejected this API key.", [{ path: "apiKey", message: "OpenAI says this key is invalid or revoked" }]);
-  if (res.status === 404) throw new AppError("validation_failed", `Your OpenAI account cannot use the model “${model}”.`, [{ path: "model", message: "Model not found for this key — try another, e.g. gpt-4o" }]);
-  if (res.status === 429) throw new AppError("validation_failed", "OpenAI says this key has no quota left (billing).", [{ path: "apiKey", message: "Add billing/credit to your OpenAI account" }]);
-  if (!res.ok) throw new AppError("invalid_state", `OpenAI check failed (HTTP ${res.status}).`);
+  try {
+    res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST", signal: AbortSignal.timeout(20_000),
+      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ model, messages: [{ role: "user", content: "Reply with: ok" }], max_completion_tokens: 16 }),
+    });
+  } catch { throw new AppError("invalid_state", "Could not reach OpenAI to check the key. Try again in a moment."); }
+  if (res.ok) return;
+  const body = await res.json().catch(() => null) as { error?: { message?: string; code?: string; type?: string } } | null;
+  const said = (body?.error?.message ?? "").replace(/sk-[A-Za-z0-9_*.-]+/g, "sk-…").slice(0, 300);
+  const code = body?.error?.code ?? "";
+  if (res.status === 401 && /insufficient permissions|missing scopes/i.test(said)) throw new AppError("validation_failed", `This key is restricted and may not create chat completions. In OpenAI → API keys, edit the key and allow “Model capabilities” (or use “All”). OpenAI: ${said}`, [{ path: "apiKey", message: "Key lacks the chat-completions permission" }]);
+  if (res.status === 401) throw new AppError("validation_failed", `OpenAI rejected this API key. OpenAI: ${said || "invalid key"}`, [{ path: "apiKey", message: "Invalid, revoked or incompletely copied key" }]);
+  if (res.status === 403) throw new AppError("validation_failed", `OpenAI refused access. OpenAI: ${said}`, [{ path: "apiKey", message: "Key/project not allowed (permissions, region or organisation)" }]);
+  if (res.status === 404 || code === "model_not_found") throw new AppError("validation_failed", `Your OpenAI account cannot use the model “${model}”. OpenAI: ${said}`, [{ path: "model", message: "Model not available for this key — try gpt-4o-mini or gpt-4o" }]);
+  if (res.status === 429) throw new AppError("validation_failed", `OpenAI: ${said || "rate limit or no credit"}`, [{ path: "apiKey", message: code === "insufficient_quota" ? "No credit — add billing to your OpenAI account" : "Rate limited — try again shortly" }]);
+  if (res.status === 400) throw new AppError("validation_failed", `OpenAI did not accept the test request. OpenAI: ${said}`, [{ path: "model", message: "Check the model name" }]);
+  throw new AppError("invalid_state", `OpenAI check failed (HTTP ${res.status}). ${said}`);
 };
 
 const openAiCompleter: Completer = async ({ apiKey, model, system, user }) => {
