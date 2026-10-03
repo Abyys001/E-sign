@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Ban, Copy, Eye, Mail, RotateCcw, Send } from "lucide-react";
+import { Ban, Copy, ExternalLink, Eye, Link2, Mail, RotateCcw, Send } from "lucide-react";
+import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Callout, EmptyState, Skeleton } from "@/components/ui/feedback";
@@ -25,6 +26,37 @@ const PAGE = 20;
 
 const show = (v: unknown): string => (v === undefined || v === null || v === "" ? "—" : typeof v === "object" ? Object.values(v as object).filter(Boolean).join(", ") : String(v));
 
+/** Shows a form link with copy / open actions. */
+function LinkModal({ link, onClose }: { link: { url: string; name: string; expiresAt?: string } | null; onClose: () => void }) {
+  const t = useTranslations("intake.invitations");
+  const c = useTranslations("common");
+  const toast = useToast();
+  const locale = useLocale();
+  if (!link) return null;
+  const copy = async () => { try { await navigator.clipboard.writeText(link.url); toast("ok", t("linkCopied")); } catch { toast("error", t("copyFailed")); } };
+  return (
+    <Modal open onClose={onClose} title={t("linkTitle", { name: link.name })} description={t("linkDesc")} footer={<Button onClick={onClose}>{c("close")}</Button>}>
+      <div className="space-y-3">
+        <Input readOnly value={link.url} aria-label={t("linkTitle", { name: link.name })} onFocus={(e) => e.currentTarget.select()} className="font-mono text-xs" />
+        <div className="flex flex-wrap gap-2"><Button variant="primary" onClick={copy}><Copy className="size-4" aria-hidden />{t("copy")}</Button>
+          <a href={link.url} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center gap-2 rounded-xl border border-line-strong px-4 text-sm font-medium hover:bg-surface-2"><ExternalLink className="size-4" aria-hidden />{t("openLink")}</a></div>
+        {link.expiresAt && <p className="text-xs text-muted">{t("linkExpires", { date: fmtDate(link.expiresAt, locale) })}</p>}
+        <Callout tone="info">{t("linkPrivate")}</Callout>
+      </div>
+    </Modal>
+  );
+}
+
+/** Reveal an invitation's link (re-authentication + audited on the server). */
+function useRevealLink(set: (l: { url: string; name: string; expiresAt?: string }) => void) {
+  const ensure = useElevation();
+  const toast = useToast();
+  return async (inv: { id: string; recipientName: string; expiresAt?: string }) => {
+    if (!(await ensure())) return;
+    try { const r = await api<{ url: string }>(`/api/invitations/${inv.id}/link`, { method: "POST" }); set({ url: r.url, name: inv.recipientName, expiresAt: inv.expiresAt }); } catch (e) { toast("error", errMsg(e)); }
+  };
+}
+
 export function InvitationsPanel({ formId, publishedVersionId }: { formId: string; publishedVersionId: string | null }) {
   const t = useTranslations("intake.invitations");
   const c = useTranslations("common");
@@ -38,11 +70,13 @@ export function InvitationsPanel({ formId, publishedVersionId }: { formId: strin
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [link, setLink] = useState<{ url: string; name: string; expiresAt?: string } | null>(null);
+  const reveal = useRevealLink(setLink);
 
   const submit = async () => {
     if (!publishedVersionId) return;
     setBusy(true); setErr(null);
-    try { await api(`/api/intake-forms/${formId}/invitations`, { json: { formVersionId: publishedVersionId, recipientName: f.recipientName, recipientEmail: f.recipientEmail, authMode: f.authMode, ...(f.authMode === "PASSCODE" ? { passcode: f.passcode } : {}), ...(f.message ? { message: f.message } : {}) } }); toast("ok", t("sent")); setSend(false); await reload(); }
+    try { const r = await api<{ url: string; expiresAt: string }>(`/api/intake-forms/${formId}/invitations`, { json: { formVersionId: publishedVersionId, recipientName: f.recipientName, recipientEmail: f.recipientEmail, authMode: f.authMode, ...(f.authMode === "PASSCODE" ? { passcode: f.passcode } : {}), ...(f.message ? { message: f.message } : {}) } }); toast("ok", t("sent")); setSend(false); setLink({ url: r.url, name: f.recipientName, expiresAt: r.expiresAt }); await reload(); }
     catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
   };
   return (
@@ -59,7 +93,7 @@ export function InvitationsPanel({ formId, publishedVersionId }: { formId: strin
               <Tr key={r.id}><Td><button type="button" onClick={() => setOpen(r.id)} className="text-start font-medium hover:underline">{r.recipientName}</button><span className="block text-xs text-muted">{r.recipientEmail}</span></Td>
                 <Td>{t(`state.${r.state}` as never)}</Td><Td className="text-muted">{r.emailStatus ?? "—"}</Td><Td className="num">{r.openCount}</Td>
                 <Td className="text-muted">{t(`stage.${r.contractStage}` as never)}</Td><Td className="whitespace-nowrap text-muted">{fmtDate(r.sentAt, locale)}</Td>
-                <Td className="text-end"><Button size="sm" onClick={() => setOpen(r.id)}><Eye className="size-3.5" aria-hidden />{t("view")}</Button></Td></Tr>))}</tbody></Table></TableWrap>
+                <Td className="text-end"><div className="flex justify-end gap-1">{can("intake.send") && !["REVOKED", "SUBMITTED", "EXPIRED"].includes(r.state) && <Button size="sm" variant="ghost" onClick={() => reveal(r)}><Link2 className="size-3.5" aria-hidden />{t("link")}</Button>}<Button size="sm" onClick={() => setOpen(r.id)}><Eye className="size-3.5" aria-hidden />{t("view")}</Button></div></Td></Tr>))}</tbody></Table></TableWrap>
             <Pagination page={page} pageSize={PAGE} total={data.items.length === PAGE ? page * PAGE + 1 : (page - 1) * PAGE + data.items.length} onPage={setPage} /></>)}
       </div>
       <Modal open={send} onClose={() => setSend(false)} title={t("send")} footer={<><Button onClick={() => setSend(false)}>{c("cancel")}</Button><Button variant="primary" loading={busy} disabled={!f.recipientName.trim() || !f.recipientEmail.trim() || (f.authMode === "PASSCODE" && f.passcode.length < 6)} onClick={submit}>{t("send")}</Button></>}>
@@ -72,6 +106,7 @@ export function InvitationsPanel({ formId, publishedVersionId }: { formId: strin
         </div>
       </Modal>
       {open && <InvitationDetail id={open} onClose={() => setOpen(null)} onChanged={reload} />}
+      <LinkModal link={link} onClose={() => setLink(null)} />
     </div>
   );
 }
@@ -92,7 +127,9 @@ function InvitationDetail({ id, onClose, onChanged }: { id: string; onClose: () 
   const [err, setErr] = useState<string | null>(null);
   const inv = act.data?.invitation;
   const run = async (k: string, fn: () => Promise<unknown>, okMsg: string) => { setBusy(k); try { await fn(); toast("ok", okMsg); await act.reload(); onChanged(); } catch (e) { toast("error", errMsg(e)); } finally { setBusy(""); } };
-  const copyLink = () => run("link", async () => { const r = await api<{ url: string }>(`/api/invitations/${id}/link`, { method: "POST" }); await navigator.clipboard.writeText(r.url); }, t("linkCopied"));
+  const [link, setLink] = useState<{ url: string; name: string; expiresAt?: string } | null>(null);
+  const reveal = useRevealLink(setLink);
+  const copyLink = async () => { if (!inv) return; setBusy("link"); try { await reveal(inv); } finally { setBusy(""); } };
   const doApprove = async () => {
     if (!inv) return; setBusy("approve"); setErr(null);
     try {
@@ -110,7 +147,7 @@ function InvitationDetail({ id, onClose, onChanged }: { id: string; onClose: () 
             <span className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium">{t(`state.${inv.state}` as never)}</span>
             <span className="text-sm text-muted">{t(`stage.${inv.contractStage}` as never)}</span>
             <div className="ms-auto flex flex-wrap gap-2">
-              {can("intake.send") && !["REVOKED", "SUBMITTED"].includes(inv.state) && <><Button size="sm" loading={busy === "link"} onClick={copyLink}><Copy className="size-3.5" aria-hidden />{t("copyLink")}</Button><Button size="sm" variant="danger" loading={busy === "revoke"} onClick={() => run("revoke", () => api(`/api/invitations/${id}/revoke`, { method: "POST" }), t("revoked"))}><Ban className="size-3.5" aria-hidden />{t("revoke")}</Button></>}
+              {can("intake.send") && !["REVOKED", "SUBMITTED"].includes(inv.state) && <><Button size="sm" loading={busy === "link"} onClick={copyLink}><Link2 className="size-3.5" aria-hidden />{t("showLink")}</Button><Button size="sm" variant="danger" loading={busy === "revoke"} onClick={() => run("revoke", () => api(`/api/invitations/${id}/revoke`, { method: "POST" }), t("revoked"))}><Ban className="size-3.5" aria-hidden />{t("revoke")}</Button></>}
               {can("intake.send") && inv.state === "SUBMITTED" && <Button size="sm" loading={busy === "reopen"} onClick={() => run("reopen", () => api(`/api/invitations/${id}/reopen`, { json: { reason: "Reopened for amendment" } }), t("reopened"))}><RotateCcw className="size-3.5" aria-hidden />{t("reopen")}</Button>}
               {inv.contractId && <LinkButton size="sm" href={`/contracts/${inv.contractId}`}>{t("openContract")}</LinkButton>}
               {awaiting && can("contracts.send") && <Button size="sm" variant="primary" onClick={() => setApprove(true)}><Send className="size-3.5" aria-hidden />{t("approve")}</Button>}
@@ -136,6 +173,7 @@ function InvitationDetail({ id, onClose, onChanged }: { id: string; onClose: () 
           <Field label={t("bilitName")} error={err} required>{(p) => <Input {...p} value={signers.bilitName} onChange={(e) => setSigners({ ...signers, bilitName: e.target.value })} />}</Field>
           <Field label={t("bilitEmail")} required>{(p) => <Input {...p} type="email" value={signers.bilitEmail} onChange={(e) => setSigners({ ...signers, bilitEmail: e.target.value })} />}</Field></div>
       </Modal>
+      <LinkModal link={link} onClose={() => setLink(null)} />
     </Modal>
   );
 }

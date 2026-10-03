@@ -379,7 +379,16 @@
       "READY_FOR_SIGNATURE": "Out for signature",
       "SIGNED": "Partly signed",
       "COMPLETED": "Signed and complete"
-    }
+    },
+    "link": "Link",
+    "linkTitle": "Form link for {name}",
+    "linkDesc": "Send this private link to the organiser if the email did not arrive, e.g. by WhatsApp.",
+    "copy": "Copy link",
+    "openLink": "Open form",
+    "linkExpires": "Valid until {date}.",
+    "linkPrivate": "Anyone with this link can open the form, so only share it with this recipient. Viewing it again later needs your password and is logged.",
+    "copyFailed": "Could not copy — select the link and copy it manually.",
+    "linkCopied": "Link copied."
   },
   "detail": {
     "state": {
@@ -433,7 +442,8 @@
       "activity": "Activity",
       "answers": "Answers"
     },
-    "notSubmitted": "Not submitted yet."
+    "notSubmitted": "Not submitted yet.",
+    "showLink": "Show link"
   },
   "public": {
     "title": "Secure form",
