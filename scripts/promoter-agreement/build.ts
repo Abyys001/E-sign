@@ -113,7 +113,7 @@ for (let i = 0; i < lines.length; i++) {
   if (/^# /.test(l)) {
     inTitle = false; section = l.slice(2); sub = "";
     if (/^SCHEDULE\b/.test(section)) { doc.addPage(); rich("SCHEDULE", M, W, { size: 15, bold: true, align: "center" }); doc.y += 2; rich("Event details and commercial terms are agreed for each Event in a separate Event Schedule.", M, W, { size: 8.5, align: "center", color: C.muted }); doc.y += 10; }
-    else if (/^65\./.test(section)) ensure(240);
+    else if (/SIGNATURES/.test(section)) ensure(240);
     doc.y += 8; ensure(/^SCHEDULE/.test(section) ? 175 : 70);
     rich(section, M, W, { size: 11.5, bold: true, color: C.primary }); doc.y += 4; continue;
   }
@@ -162,7 +162,7 @@ for (let i = 0; i < lines.length; i++) {
   if (fm) {
     const label = fm[1]!.trim(), suffix = fm[3]!.trim() || undefined, role = roleNow();
     const req = role === "promoter" ? (/BANK DETAILS/.test(section) ? /^(Account Name|Bank Name|Currency)$/.test(label) : label !== "Trading Name")
-      : /^65\./.test(section) ? true : /^(Event Name|Event Date|Venue|Settlement Currency|Bilit Booking Fee)$/.test(label);
+      : /SIGNATURES/.test(section) ? true : /^(Event Name|Event Date|Venue|Settlement Currency|Bilit Booking Fee)$/.test(label);
     if (fm[2] !== "●") fieldLine(label, role, req, { type: "dropdown", options: ["GBP", "EUR", "USD", "SEK", "DKK", "AED", "Other"] });
     else fieldLine(label, role, req, { suffix });
     continue;
