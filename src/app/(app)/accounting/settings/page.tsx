@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useMe } from "@/components/app/me";
+import { InvoiceSettingsCard } from "@/components/accounting/settings-extra";
+import { AiSettingsCard } from "@/components/accounting/accountant";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardHeader, PageHeader } from "@/components/ui/card";
 import { Callout, Skeleton } from "@/components/ui/feedback";
@@ -11,7 +13,7 @@ import { useToast } from "@/components/ui/toast";
 import { api, errMsg, useApi } from "@/lib/api";
 
 type Rule = { type: "METADATA"; key: string } | { type: "EXACT" } | { type: "PREFIX"; prefix: string } | { type: "REGEX"; pattern: string };
-type S = { baseCurrency: string; defaultMode: "test" | "live"; matchRules: Rule[]; ticketQuantityKey: string; timezone: string; reportingCurrency: string | null; fxRates: Record<string, string> };
+type S = { baseCurrency: string; defaultMode: "test" | "live"; matchRules: Rule[]; ticketQuantityKey: string; timezone: string; reportingCurrency: string | null; fxRates: Record<string, string>; bookingFeeRefundable: boolean };
 
 export default function FinanceSettings() {
   const t = useTranslations("accounting.settings");
@@ -25,7 +27,7 @@ export default function FinanceSettings() {
   const admin = can("accounting.admin");
   const setRule = (i: number, r: Rule) => setV({ ...v, matchRules: v.matchRules.map((x, j) => (j === i ? r : x)) });
   const move = (i: number, d: number) => { const r = [...v.matchRules]; const [x] = r.splice(i, 1); r.splice(i + d, 0, x!); setV({ ...v, matchRules: r }); };
-  const save = async () => { setBusy(true); setErr(null); try { await api("/api/accounting/settings", { method: "PATCH", json: { baseCurrency: v.baseCurrency, defaultMode: v.defaultMode, matchRules: v.matchRules, ticketQuantityKey: v.ticketQuantityKey, reportingCurrency: v.reportingCurrency || null, fxRates: Object.fromEntries(Object.entries(v.fxRates).filter(([k, x]) => k && x)) } }); toast("ok", t("saved")); await reload(); } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); } };
+  const save = async () => { setBusy(true); setErr(null); try { await api("/api/accounting/settings", { method: "PATCH", json: { baseCurrency: v.baseCurrency, defaultMode: v.defaultMode, matchRules: v.matchRules, ticketQuantityKey: v.ticketQuantityKey, bookingFeeRefundable: v.bookingFeeRefundable, reportingCurrency: v.reportingCurrency || null, fxRates: Object.fromEntries(Object.entries(v.fxRates).filter(([k, x]) => k && x)) } }); toast("ok", t("saved")); await reload(); } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); } };
   return (
     <div className="space-y-6">
       <PageHeader title={t("title")} description={t("sub")} actions={<LinkButton href="/accounting/stripe">{t("stripe")}</LinkButton>} />
@@ -47,6 +49,12 @@ export default function FinanceSettings() {
         </li>)}</ol>
         {admin && <div className="border-t border-line px-5 py-3"><Button size="sm" disabled={v.matchRules.length >= 10} onClick={() => setV({ ...v, matchRules: [...v.matchRules, { type: "PREFIX", prefix: "EVT-" }] })}><Plus className="size-4" aria-hidden />{t("addRule")}</Button></div>}
       </Card>
+      <Card><CardHeader title={tf("policy.title")} description={tf("policy.desc")} /><div className="space-y-3 p-5">
+        <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1" disabled={!admin} checked={!v.bookingFeeRefundable} onChange={(e) => setV({ ...v, bookingFeeRefundable: !e.target.checked })} /><span><span className="font-medium">{tf("policy.nonRefundable")}</span><span className="block text-xs text-muted">{tf("policy.nonRefundableHelp")}</span></span></label>
+        <p className="text-xs text-muted">{tf("policy.note")}</p>
+      </div></Card>
+      <InvoiceSettingsCard admin={admin} />
+      <AiSettingsCard admin={admin} />
       <Card><CardHeader title={tf("fx.title")} description={tf("fx.desc")} /><div className="space-y-4 p-5">
         <Field label={tf("fx.currency")} hint={tf("fx.currencyHint")}>{(p) => <Input {...p} disabled={!admin} value={v.reportingCurrency ?? ""} maxLength={3} onChange={(e) => setV({ ...v, reportingCurrency: e.target.value.toLowerCase() || null })} className="w-28 uppercase" placeholder="gbp" />}</Field>
         {v.reportingCurrency && <ul className="space-y-2">{Object.entries(v.fxRates).map(([c, r], i) => <li key={i} className="flex flex-wrap items-center gap-2 text-sm">

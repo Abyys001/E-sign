@@ -43,6 +43,21 @@ async function recordError(run: Pick<Run, "id" | "organisationId" | "stripeAccou
   await db.insert(schema.acctSyncErrors).values({ organisationId: acc.organisationId, runId: run?.id ?? null, stripeAccountRef: acc.id, livemode: acc.livemode, objectId, stage, message });
 }
 
+/**
+ * All payments in the range, including failed and pending ones (they have no balance transaction, so the import above
+ * never sees them). Stored for the Payments view and the transaction detail: status, decline reason, risk, card.
+ */
+async function syncCharges(ctx: ImportContext, run: Run) {
+  let cursor: string | undefined, n = 0, failed = 0;
+  for (let i = 0; i < 1000; i++) {
+    const page = await ctx.gw.listCharges({ createdGte: sec(run.rangeFrom), createdLte: sec(run.rangeTo), startingAfter: cursor });
+    for (const ch of page.data) { await upsertCharge(db, ctx.acc, ch); n++; if (ch.status === "failed") failed++; }
+    cursor = page.data.at(-1)?.id;
+    if (!page.hasMore || !cursor) break;
+  }
+  return { synced: n, failed };
+}
+
 /** Worker entry point. Resumable: progress (cursor + counters) is saved after every page, so a crash continues where it stopped. */
 export async function executeRun(runId: string) {
   const [run] = await db.select().from(schema.acctSyncRuns).where(eq(schema.acctSyncRuns.id, runId));
@@ -73,6 +88,7 @@ export async function executeRun(runId: string) {
         if (!page.hasMore || !page.data.length) break;
       }
       summary.payouts = await syncPayouts(ctx, run, c);
+      summary.charges = await syncCharges(ctx, run);
       // Every sync ends by re-linking anything that can now be matched (sales to new events, refunds to their sale).
       summary.rematch = await rematchUnmatched(acc!.organisationId);
       summary.reconciliation = await reconcile(ctx);

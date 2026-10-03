@@ -46,7 +46,7 @@ export default function OverviewPage() {
             <AmountCard label={t("ticketSales")} v={sel.grossSales} c={sel.currency} tone="pos" icon={Receipt} hint={<>{tf("k.tickets")}: {sel.tickets.toLocaleString()}</>} />
             <AmountCard label={t("bookingFees")} v={sel.bookingFees} c={sel.currency} tone="pos" icon={Coins} />
             <AmountCard label={t("organiserPayments")} v={sel.organiserPaid} c={sel.currency} tone="bal" icon={Banknote} />
-            <AmountCard label={t("expenses")} v={sel.expensesBilit + sel.expensesOrganiser} c={sel.currency} tone="warn" icon={Wallet} hint={<>{tf("k.expensesOrganiser")}: <Money v={sel.expensesOrganiser} c={sel.currency} /></>} />
+            <AmountCard label={t("expenses")} v={sel.expensesBilit} c={sel.currency} tone="warn" icon={Wallet} hint={t("expensesHint")} />
             <AmountCard label={t("profit")} v={sel.bilitProfit} c={sel.currency} tone="pos" icon={PiggyBank} />
             <AmountCard label={t("outstanding")} v={sel.remaining} c={sel.currency} tone="warn" icon={Scale} hint={t("outstandingHint")} />
             <AmountCard label={tf("k.refunds")} v={sel.refunds + sel.chargebacks} c={sel.currency} tone="neg" icon={HandCoins} />

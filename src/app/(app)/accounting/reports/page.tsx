@@ -5,6 +5,7 @@ import { Download } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { Badge, Money, RangePicker, rangeFor, rangeQuery, useExport, useMode, type RangeKey } from "@/components/accounting/kit";
 import { Button, LinkButton } from "@/components/ui/button";
+import { AccountantPanel } from "@/components/accounting/accountant";
 import { Card, CardHeader, PageHeader } from "@/components/ui/card";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
 import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
@@ -40,6 +41,7 @@ export default function ReportsPage() {
   return (
     <div>
       <PageHeader title={t("title")} description={t("sub")} actions={<><RangePicker value={range} onChange={(v) => { setRange(v); setPage(1); }} /><Button onClick={() => exp(ensure, q(`/api/accounting/reports/${rep}?x=1${rq}`))}><Download className="size-4" aria-hidden />{t("csv")}</Button></>} />
+      <AccountantPanel />
       <div role="tablist" aria-label={t("title")} className="mb-4 flex flex-wrap gap-2">
         {(["sales", "event-profit", "reconciliation"] as Rep[]).map((r) => <button key={r} role="tab" type="button" aria-selected={rep === r} onClick={() => { setRep(r); setPage(1); }} className={cn("rounded-xl border px-3.5 py-2 text-sm transition", rep === r ? "border-fg bg-fg text-bg" : "border-line-strong hover:bg-surface-2")}>{t(`r.${r}`)}</button>)}
       </div>

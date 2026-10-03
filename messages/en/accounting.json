@@ -457,7 +457,8 @@
       "transactions": "Transactions",
       "payouts": "Payouts",
       "disputes": "Disputes",
-      "sync": "Sync"
+      "sync": "Sync",
+      "payments": "Payments"
     },
     "conn": {
       "title": "Stripe integration — {mode}",
@@ -847,7 +848,8 @@
       "NOT_SETTLED": "Not settled",
       "PARTIALLY_PAID": "Partially paid",
       "FULLY_PAID": "Fully paid",
-      "OVERPAID": "Overpaid"
+      "OVERPAID": "Overpaid",
+      "ORGANISER_OWES": "Organiser owes Bilit"
     },
     "k": {
       "tickets": "Tickets sold",
@@ -866,7 +868,7 @@
       "bilitProcessingFees": "Processing fees borne by Bilit",
       "organiserShare": "Organiser share of sales",
       "deductions": "Other deductions",
-      "expensesBilit": "Event expenses (Bilit)",
+      "expensesBilit": "Platform expenses",
       "expensesOrganiser": "Expenses deducted from organiser",
       "otherCosts": "Other costs",
       "organiserDue": "Amount due to organiser",
@@ -900,7 +902,8 @@
       "title": "Where the money went",
       "desc": "Customers paid → booking fee → organiser money → paid → remaining.",
       "bookingHint": "Kept by Bilit",
-      "deductionsHint": "Fixed event fees, expenses charged to the organiser, adjustments"
+      "deductionsHint": "Fixed event fees and manual adjustments",
+      "feeInRefunds": "of which booking fee refunded (charged to organiser)"
     },
     "pl": {
       "title": "Event profitability",
@@ -1007,7 +1010,7 @@
     },
     "exp": {
       "title": "Expenses",
-      "tabDesc": "Costs for this event. Bilit-borne expenses reduce Bilit's profit; organiser-borne ones are deducted from the amount due.",
+      "tabDesc": "Platform costs for this event (venue, artist, marketing…). They reduce Bilit's profit and are never deducted from the organiser.",
       "add": "Add expense",
       "edit": "Edit expense",
       "desc": "Recorded in the event currency and posted to the ledger.",
@@ -1032,7 +1035,7 @@
       "receiptHint": "PDF, PNG, JPEG or WebP, up to 10 MB",
       "receiptFailed": "Saved, but the receipt upload failed",
       "download": "Download",
-      "totalBilit": "Paid by Bilit",
+      "totalBilit": "Total platform expenses",
       "totalOrganiser": "Deducted from organiser",
       "deleted": "Deleted",
       "deleteTitle": "Delete this expense?",
@@ -1049,7 +1052,8 @@
         "TRANSPORT": "Transport",
         "ACCOMMODATION": "Accommodation",
         "OTHER": "Other"
-      }
+      },
+      "platformNote": "Platform cost: reduces Bilit's profit on this event. It is not charged to or deducted from the organiser."
     },
     "reports": {
       "csv": "Download CSV",
@@ -1121,7 +1125,8 @@
       "processing": "Stripe fees",
       "expenses": "Expenses",
       "recharged": "charged to organiser",
-      "profitShort": "Bilit profit"
+      "profitShort": "Bilit profit",
+      "feeRecover": "fee to recover"
     },
     "filters": {
       "allOrganisers": "All organisers",
@@ -1143,7 +1148,7 @@
       "ticketSales": "Total ticket sales",
       "bookingFees": "Total booking fees",
       "organiserPayments": "Total organiser payments",
-      "expenses": "Total expenses",
+      "expenses": "Total platform expenses",
       "profit": "Total Bilit profit",
       "outstanding": "Outstanding organiser payments",
       "outstandingHint": "Due but not yet paid, as of the end of the period",
@@ -1159,14 +1164,15 @@
         "profitMonth": "Bilit profit by month",
         "profitEvent": "Profit by event",
         "outstanding": "Outstanding organiser balances"
-      }
+      },
+      "expensesHint": "Platform costs booked to events"
     },
     "orgFin": {
       "title": "Financial account",
       "empty": "No financial activity yet",
       "events": "Total events",
       "expenses": "Expenses deducted",
-      "expensesHint": "Event costs charged to this organiser",
+      "expensesHint": "Bilit's own costs on this organiser's events (not deducted from them)",
       "byEvent": "Settlement by event",
       "unassigned": "Some payments are not tied to a specific event; they count towards the organiser's total but not to any single event.",
       "profit": "Bilit profit after Stripe fees",
@@ -1202,6 +1208,15 @@
       "add": "Add rate",
       "remove": "Remove rate",
       "note": "Rates are indicative and used only for the converted overview. Every calculation and posting stays in the event's own currency."
+    },
+    "feeRecover": "Booking fee to recover from organiser",
+    "feeRecoverHint": "Booking fee was refunded to customers. Under the platform policy the booking fee is non-refundable for Bilit, so this amount is charged to the organiser (already deducted from what they are due).",
+    "policy": {
+      "title": "Refund policy",
+      "desc": "How refunds affect Bilit's booking fee.",
+      "nonRefundable": "The booking fee is non-refundable",
+      "nonRefundableHelp": "Refunds never reduce Bilit's booking fee. If a booking fee is refunded to a customer, the organiser is charged for it (shown as “booking fee to recover from organiser”).",
+      "note": "Changing this re-calculates all existing refunds (old postings are reversed, never edited)."
     }
   },
   "books": {
@@ -1210,7 +1225,8 @@
       "overview": "Overview",
       "invoices": "Invoices & expenses",
       "employees": "Employees",
-      "payslips": "Payslips"
+      "payslips": "Payslips",
+      "customerInvoices": "Customer invoices"
     },
     "overview": {
       "title": "Bookkeeping",
@@ -1443,6 +1459,264 @@
       "voided": "Payslip voided",
       "reason": "Reason",
       "actions": "Actions"
+    }
+  },
+  "pay": {
+    "balance": {
+      "title": "Stripe balance",
+      "refresh": "Refresh balance",
+      "live": "Live from Stripe",
+      "available": "available to pay out",
+      "pending": "pending"
+    },
+    "payouts": {
+      "title": "Stripe payouts ({n})",
+      "all": "All payouts",
+      "none": "No payouts yet.",
+      "count": "{n} payouts",
+      "paidToBank": "paid to your bank",
+      "inTransit": "on the way",
+      "failed": "failed",
+      "created": "Created",
+      "arrival": "Arrives",
+      "amount": "Amount",
+      "status": "Status",
+      "transactions": "Transactions",
+      "payout": "Payout"
+    },
+    "state": {
+      "SUCCEEDED": "Paid",
+      "FAILED": "Failed",
+      "PENDING": "Pending",
+      "REFUNDED": "Refunded",
+      "PARTIALLY_REFUNDED": "Partly refunded",
+      "DISPUTED": "Disputed"
+    },
+    "risk": {
+      "normal": "Normal",
+      "elevated": "Elevated",
+      "highest": "Highest",
+      "not_assessed": "Not assessed",
+      "unknown": "Unknown"
+    },
+    "title": "Stripe payment",
+    "desc": "Everything Stripe reports about this payment: status, decline reason, risk check, card, refunds and disputes.",
+    "refresh": "Refresh from Stripe",
+    "refreshed": "Updated from Stripe",
+    "issue": {
+      "failed": "Payment failed",
+      "disputed": "Chargeback (dispute) opened",
+      "disputedBody": "The customer disputed this payment with their bank. Respond in the Stripe dashboard before the deadline.",
+      "risk": "Stripe flagged this payment as risky",
+      "refund": "Refund {status}"
+    },
+    "amount": "Amount",
+    "refunded": "Refunded",
+    "customer": "Customer",
+    "card": "Card",
+    "threeDS": "3-D Secure",
+    "network": "Card network",
+    "riskLevel": "Risk level",
+    "sellerMessage": "Stripe says",
+    "failure": "Decline reason",
+    "billing": "Billing address",
+    "charge": "Charge",
+    "intent": "Payment intent",
+    "receipt": "Receipt",
+    "openReceipt": "Open Stripe receipt",
+    "refunds": "Refunds",
+    "disputes": "Disputes",
+    "date": "Date",
+    "status": "Status",
+    "reason": "Reason",
+    "note": "Note",
+    "keptFee": "Booking fee kept by Bilit",
+    "refund": {
+      "title": "Refund payment",
+      "desc": "Refund {customer} through Stripe. The money goes back to the card used.",
+      "paid": "Paid",
+      "alreadyRefunded": "Already refunded",
+      "refundable": "Can still be refunded",
+      "ticketOnly": "Ticket price only (recommended)",
+      "ticketOnlySub": "Platform policy: the booking fee ({fee}) is non-refundable and stays with Bilit.",
+      "full": "Full refund including booking fee",
+      "fullSub": "The booking fee is refunded too — it is charged back to the organiser.",
+      "custom": "Custom amount",
+      "customSub": "Partial refund of a chosen amount.",
+      "amount": "Amount",
+      "tooMuch": "More than can be refunded",
+      "keepFee": "Bilit keeps its booking fee (organiser bears the refund)",
+      "reason": "Reason",
+      "reasons": {
+        "requested_by_customer": "Requested by customer",
+        "duplicate": "Duplicate payment",
+        "fraudulent": "Fraudulent"
+      },
+      "note": "Internal note",
+      "noteHint": "Kept with the refund and in the audit log",
+      "review": "Review refund",
+      "confirm": "Refund {amount} now",
+      "confirmTitle": "This sends real money back",
+      "confirmBody": "{amount} will be refunded to the customer's card through Stripe. This cannot be undone.",
+      "done": "Refund created ({status})"
+    },
+    "list": {
+      "title": "Payments",
+      "sub": "Every card payment in Stripe — including declined and pending ones that never reach the books — with the reason and risk.",
+      "nFailed": "{n} failed",
+      "nDisputed": "{n} disputed",
+      "nRisky": "{n} risky",
+      "nRefunded": "{n} refunded",
+      "f": {
+        "all": "All",
+        "issues": "Issues",
+        "failed": "Failed",
+        "refunded": "Refunded",
+        "partially_refunded": "Partly refunded",
+        "disputed": "Disputed",
+        "succeeded": "Paid"
+      },
+      "search": "Search customer, email, order or charge id",
+      "empty": "No payments",
+      "emptyDesc": "Run a Stripe sync to import payments, including failed ones.",
+      "date": "Date",
+      "customer": "Customer",
+      "order": "Order / event",
+      "amount": "Amount",
+      "refunded": "Refunded",
+      "card": "Card",
+      "risk": "Risk",
+      "status": "Status",
+      "refundIssue": "A refund failed"
+    },
+    "inv": {
+      "title": "Invoices & credit notes",
+      "desc": "Issue an invoice for the sale (or a VAT invoice with the customer's business details) and a credit note for each refund. Documents are numbered, stored and never changed.",
+      "sale": "Sale",
+      "refundOf": "Refund of {date}",
+      "issueInvoice": "Invoice",
+      "issueVat": "VAT invoice",
+      "issueCredit": "Credit note",
+      "issue": "Issue",
+      "issued": "{number} issued",
+      "vat": "VAT",
+      "void": "Void",
+      "voided": "Void",
+      "voidTitle": "Void this document?",
+      "voidDesc": "It stays on file marked void; you can then issue a corrected one with a new number.",
+      "voidedToast": "Document voided",
+      "reason": "Reason",
+      "kind": {
+        "INVOICE": "Invoice",
+        "INVOICE_VAT": "VAT invoice",
+        "CREDIT_NOTE": "Credit note",
+        "CREDIT_NOTE_VAT": "Credit note"
+      },
+      "vatDesc": "For a business customer: their (company) name and address are required; add their VAT number if they have one.",
+      "plainDesc": "A receipt-style invoice for the customer, from the Stripe payment details.",
+      "c": {
+        "name": "Customer name",
+        "email": "Email",
+        "company": "Company",
+        "vatNumber": "Customer VAT number",
+        "vatNumberHint": "Optional — for business customers",
+        "address": "Address",
+        "country": "Country"
+      },
+      "immutable": "Once issued the document cannot be edited — void it and issue a new one if something is wrong.",
+      "listTitle": "Customer invoices",
+      "listSub": "Invoices, VAT invoices and credit notes issued to ticket buyers.",
+      "filter": {
+        "ALL": "All",
+        "INVOICE": "Invoices",
+        "CREDIT_NOTE": "Credit notes"
+      },
+      "search": "Search number, customer or charge",
+      "listEmpty": "No customer invoices yet",
+      "listEmptyDesc": "Issue them from a transaction (Transactions → open a sale).",
+      "number": "Number",
+      "date": "Date",
+      "type": "Type",
+      "customer": "Customer",
+      "event": "Event",
+      "net": "Net",
+      "total": "Total",
+      "status": "Status",
+      "issuedStatus": "Issued"
+    },
+    "invSettings": {
+      "title": "Invoices",
+      "desc": "Seller details and VAT treatment printed on customer invoices, VAT invoices and credit notes.",
+      "legalName": "Company legal name",
+      "companyNumber": "Company number",
+      "vatNumber": "Your VAT number",
+      "vatNumberHint": "Required to issue VAT invoices",
+      "address": "Registered address",
+      "email": "Email",
+      "website": "Website",
+      "feeVat": "VAT rate on the booking fee (%)",
+      "feeVatHint": "Booking fees are charged VAT-inclusive at this rate",
+      "ticketMode": "Ticket price",
+      "modes": {
+        "AGENT": "Sold as agent for the organiser (no Bilit VAT)",
+        "INCLUDED": "Includes VAT charged by Bilit"
+      },
+      "ticketModeHint": {
+        "AGENT": "The ticket price belongs to the organiser; the invoice says so.",
+        "INCLUDED": "Use if Bilit itself sells the tickets."
+      },
+      "ticketVat": "VAT rate on tickets (%)",
+      "invoicePrefix": "Invoice number prefix",
+      "creditNotePrefix": "Credit note prefix",
+      "footer": "Footer text",
+      "accountantNote": "Confirm the VAT treatment with your accountant before issuing VAT invoices.",
+      "save": "Save invoice settings",
+      "saved": "Invoice settings saved"
+    }
+  },
+  "acc": {
+    "title": "Accountant pack & AI review",
+    "desc": "Everything your accountant needs for a period — PDF report plus CSVs (ledger, P&L, VAT, events & settlement, organiser payments, expenses, payroll, refunds, payouts, invoices) — and automatic checks for gaps.",
+    "from": "From",
+    "to": "To",
+    "zip": "Download pack (PDF + CSV)",
+    "pdf": "PDF report only",
+    "runAi": "Run AI accountant review",
+    "aiDisabled": "Set up the AI accountant under Finance settings first",
+    "packNote": "The pack includes the latest AI review for the same period, if there is one. Exports need a recent sign-in.",
+    "checks": "Automatic checks",
+    "noIssues": "No gaps found by the automatic checks.",
+    "aiTitle": "AI accountant review",
+    "aiSetup": "Add an OpenAI API key under Finance settings → AI accountant to have the books reviewed by an AI bookkeeper.",
+    "aiDone": "AI review finished",
+    "aiFailed": "The last AI review failed",
+    "status": {
+      "good": "In good order",
+      "needs_attention": "Needs attention",
+      "serious_issues": "Serious issues"
+    },
+    "questions": "Questions for your accountant",
+    "good": "In good order",
+    "aiDisclaimer": "AI suggestions are a second pair of eyes, not professional advice — confirm anything important with your accountant.",
+    "ai": {
+      "title": "AI accountant (OpenAI)",
+      "desc": "An AI bookkeeper reviews each period for gaps, inconsistencies and things your accountant will ask about.",
+      "enable": "Enable AI review",
+      "enableHelp": "Runs only when someone presses “Run AI accountant review” on the Reports page.",
+      "apiKey": "OpenAI API key",
+      "keyHint": "From platform.openai.com → API keys. Stored encrypted, never shown again.",
+      "keySet": "Key saved ({hint}). Enter a new one to replace it.",
+      "model": "Model",
+      "modelHint": "Any OpenAI chat model your key can use, e.g. gpt-4.1 or gpt-4o",
+      "instructions": "Extra instructions",
+      "instructionsHint": "Added to the review prompt (e.g. your VAT scheme, year end, things to focus on)",
+      "instructionsPh": "e.g. We are UK VAT registered on the standard scheme; year end 31 March. Pay particular attention to organiser balances.",
+      "showPrompt": "Show the review prompt",
+      "hidePrompt": "Hide the prompt",
+      "privacy": "Only aggregated figures are sent to OpenAI (totals, events, categories, checks). Customer names, emails and card details are never sent; employees are referred to by employee number only.",
+      "removeKey": "Remove key",
+      "save": "Save AI settings",
+      "saved": "AI settings saved"
     }
   }
 }

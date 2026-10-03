@@ -21,7 +21,10 @@ export const acctSettings = pgTable("acct_settings", {
   matchRules: jsonb("match_rules").notNull().default([]), // ordered event-code extraction rules, see server/accounting/matcher.ts
   ticketQuantityKey: text("ticket_quantity_key").notNull().default("quantity"), // Stripe metadata key holding the ticket count
   reportingCurrency: text("reporting_currency"), // optional currency for converted (indicative) global totals
-  fxRates: jsonb("fx_rates").notNull().default({}), // { eur: "0.85", usd: "0.74" } = 1 unit of key in the reporting currency; reporting only, never posted
+  fxRates: jsonb("fx_rates").notNull().default({}),
+  invoiceSettings: jsonb("invoice_settings").notNull().default({}),
+  bookingFeeRefundable: boolean("booking_fee_refundable").notNull().default(false),
+  aiSettings: jsonb("ai_settings").notNull().default({}), // { enabled, model, apiKeyEnc, keyHint, instructions } — the key is encrypted, never returned // platform policy: refunds never reduce Bilit's booking fee // seller details + VAT treatment for customer invoices // { eur: "0.85", usd: "0.74" } = 1 unit of key in the reporting currency; reporting only, never posted
   updatedBy: uuid("updated_by").references(() => users.id),
   updatedAt: updatedAt(),
 });
@@ -152,6 +155,10 @@ export const stripeCharges = pgTable("stripe_charges", {
   metadata: jsonb("metadata").notNull().default({}),
   failureCode: text("failure_code"),
   failureMessage: text("failure_message"),
+  outcome: jsonb("outcome"), // { networkStatus, type, reason, riskLevel, riskScore, sellerMessage }
+  paymentMethod: jsonb("payment_method"), // { type, brand, last4, country, funding, wallet, expMonth, expYear }
+  receiptUrl: text("receipt_url"),
+  billingAddress: jsonb("billing_address"),
   stripeCreatedAt: timestamp("stripe_created_at", { withTimezone: true }).notNull(),
   createdAt: createdAt(), updatedAt: updatedAt(),
 }, (t) => [
@@ -173,6 +180,10 @@ export const stripeRefunds = pgTable("stripe_refunds", {
   currency: text("currency").notNull(),
   status: text("status"),
   reason: text("reason"),
+  failureReason: text("failure_reason"),
+  keepBookingFee: boolean("keep_booking_fee").notNull().default(false), // refund of the ticket price only: Bilit keeps its booking fee
+  requestedBy: uuid("requested_by").references(() => users.id), // set when the refund was issued from this app
+  note: text("note"),
   stripeCreatedAt: timestamp("stripe_created_at", { withTimezone: true }).notNull(),
   createdAt: createdAt(), updatedAt: updatedAt(),
 }, (t) => [uniqueIndex("stripe_refunds_uq").on(t.stripeAccountRef, t.refundId), index("stripe_refunds_charge_idx").on(t.chargeId)]);
@@ -582,3 +593,59 @@ export const acctPayslips = pgTable("acct_payslips", {
   uniqueIndex("acct_payslips_number_uq").on(t.organisationId, t.number).where(sql`${t.number} is not null`),
   check("acct_payslips_net_ck", sql`${t.netPay} = ${t.grossPay} - ${t.totalDeductions}`),
 ]);
+
+/**
+ * Customer invoice (for a ticket sale) or credit note (for a refund), generated from the Stripe transaction. Numbered,
+ * rendered once to PDF and stored; never edited (void + reissue). A VAT invoice carries the customer's business details.
+ */
+export const acctCustomerInvoices = pgTable("acct_customer_invoices", {
+  id: id(),
+  organisationId: org(),
+  livemode: boolean("livemode").notNull(),
+  kind: text("kind").notNull(), // INVOICE | CREDIT_NOTE
+  number: text("number").notNull(),
+  vatInvoice: boolean("vat_invoice").notNull().default(false),
+  balanceTransactionRef: uuid("balance_transaction_ref").notNull().references(() => stripeBalanceTransactions.id),
+  chargeId: text("charge_id"),
+  eventId: uuid("event_id").references(() => acctEvents.id),
+  relatedInvoiceId: uuid("related_invoice_id"), // credit note → the invoice it corrects
+  issueDate: date("issue_date").notNull(),
+  supplyDate: date("supply_date"),
+  currency: text("currency").notNull(),
+  seller: jsonb("seller").notNull(), // snapshot of the issuer details at issue time
+  customer: jsonb("customer").notNull(), // { name, email, company, address, vatNumber, country }
+  lines: jsonb("lines").notNull(), // [{ description, quantity, net, vatRateBps, vat, gross, note }]
+  netTotal: money("net_total").notNull(),
+  vatTotal: money("vat_total").notNull(),
+  grossTotal: money("gross_total").notNull(),
+  status: text("status").notNull().default("ISSUED"), // ISSUED | VOIDED
+  pdfObjectId: uuid("pdf_object_id").references(() => storageObjects.id),
+  pdfSha256: text("pdf_sha256"),
+  voidReason: text("void_reason"),
+  voidedBy: uuid("voided_by").references(() => users.id),
+  voidedAt: timestamp("voided_at", { withTimezone: true }),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+}, (t) => [
+  uniqueIndex("acct_customer_invoices_number_uq").on(t.organisationId, t.number),
+  index("acct_customer_invoices_bt_idx").on(t.balanceTransactionRef),
+  index("acct_customer_invoices_org_idx").on(t.organisationId, t.livemode, t.issueDate.desc()),
+  check("acct_customer_invoices_totals_ck", sql`${t.grossTotal} = ${t.netTotal} + ${t.vatTotal}`),
+]);
+
+/** AI bookkeeping reviews (OpenAI): what was asked about, the model's structured findings, and who ran it. */
+export const acctAiReviews = pgTable("acct_ai_reviews", {
+  id: id(),
+  organisationId: org(),
+  livemode: boolean("livemode").notNull(),
+  rangeFrom: date("range_from").notNull(),
+  rangeTo: date("range_to").notNull(),
+  model: text("model").notNull(),
+  status: text("status").notNull(), // SUCCEEDED | FAILED
+  result: jsonb("result"), // { summary, overallStatus, findings[], questionsForAccountant[], goodPractice[] }
+  error: text("error"),
+  promptTokens: integer("prompt_tokens"),
+  completionTokens: integer("completion_tokens"),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: createdAt(),
+}, (t) => [index("acct_ai_reviews_org_idx").on(t.organisationId, t.createdAt.desc())]);

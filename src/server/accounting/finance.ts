@@ -17,11 +17,12 @@ import { getAcctSettings, isLive, type Mode } from "./core";
  */
 
 export type Range = { from?: string | null; to?: string | null };
-export type SettlementStatus = "NOTHING_DUE" | "NOT_SETTLED" | "PARTIALLY_PAID" | "FULLY_PAID" | "OVERPAID";
-export const SETTLEMENT_STATUSES: SettlementStatus[] = ["NOT_SETTLED", "PARTIALLY_PAID", "FULLY_PAID", "OVERPAID", "NOTHING_DUE"];
+export type SettlementStatus = "NOTHING_DUE" | "NOT_SETTLED" | "PARTIALLY_PAID" | "FULLY_PAID" | "OVERPAID" | "ORGANISER_OWES";
+export const SETTLEMENT_STATUSES: SettlementStatus[] = ["NOT_SETTLED", "PARTIALLY_PAID", "FULLY_PAID", "OVERPAID", "ORGANISER_OWES", "NOTHING_DUE"];
 
 export function settlementStatus(due: number, paid: number): SettlementStatus {
   if (paid > due && paid > 0) return "OVERPAID";
+  if (due < 0) return "ORGANISER_OWES"; // e.g. booking fees refunded to customers that the organiser must cover
   if (due <= 0 && paid <= 0) return "NOTHING_DUE";
   if (paid === 0) return "NOT_SETTLED";
   return paid === due ? "FULLY_PAID" : "PARTIALLY_PAID";
@@ -34,14 +35,14 @@ export type Figures = {
   bookingFees: number; eventFees: number; otherRevenue: number; bilitRevenue: number;
   processingFees: number; feesRecharged: number; bilitProcessingFees: number;
   organiserShare: number; deductions: number; expensesBilit: number; expensesOrganiser: number; otherCosts: number;
-  organiserDue: number; organiserPaid: number; remaining: number; pendingPayments: number;
+  organiserDue: number; organiserPaid: number; remaining: number; pendingPayments: number; bookingFeesRefunded: number;
   bilitProfit: number; settlement: SettlementStatus;
 };
 
 const ZERO = (currency: string): Figures => ({
   currency, tickets: 0, orders: 0, grossSales: 0, refunds: 0, chargebacks: 0, netSales: 0, bookingFees: 0, eventFees: 0, otherRevenue: 0, bilitRevenue: 0,
   processingFees: 0, feesRecharged: 0, bilitProcessingFees: 0, organiserShare: 0, deductions: 0, expensesBilit: 0, expensesOrganiser: 0, otherCosts: 0,
-  organiserDue: 0, organiserPaid: 0, remaining: 0, pendingPayments: 0, bilitProfit: 0, settlement: "NOTHING_DUE",
+  organiserDue: 0, organiserPaid: 0, remaining: 0, pendingPayments: 0, bookingFeesRefunded: 0, bilitProfit: 0, settlement: "NOTHING_DUE",
 });
 
 type LedgerRow = { dim: string; currency: string; key: string | null; type: string; src: string | null; inp: boolean; d: string; c: string };
@@ -49,7 +50,7 @@ type BtRow = { dim: string; currency: string; inp: boolean; tickets: string; ord
 const n = (v: unknown) => Number(v ?? 0);
 
 /** Fold ledger + Stripe aggregates into figures. Period figures use `inp` rows; settlement (due/paid) is cumulative to `to`. */
-function fold(ledger: LedgerRow[], bts: BtRow[], pending: Array<{ dim: string; currency: string; amount: string }>) {
+function fold(ledger: LedgerRow[], bts: BtRow[], pending: Array<{ dim: string; currency: string; amount: string }>, feeRefunds: Array<{ dim: string; currency: string; amount: string }> = []) {
   const out = new Map<string, Figures>();
   const get = (dim: string, cur: string) => { const k = `${dim}|${cur}`; let f = out.get(k); if (!f) { f = ZERO(cur); out.set(k, f); } return f; };
   for (const r of ledger) {
@@ -81,6 +82,7 @@ function fold(ledger: LedgerRow[], bts: BtRow[], pending: Array<{ dim: string; c
     f.tickets += n(b.tickets); f.orders += n(b.orders); f.bookingFees += n(b.commission);
   }
   for (const p of pending) get(p.dim, p.currency).pendingPayments += n(p.amount);
+  for (const r of feeRefunds) get(r.dim, r.currency).bookingFeesRefunded += n(r.amount);
   for (const f of out.values()) {
     f.netSales = f.grossSales - f.refunds - f.chargebacks;
     f.bilitRevenue = f.bookingFees + f.eventFees + f.otherRevenue;
@@ -98,7 +100,8 @@ async function aggregate(orgId: string, mode: Mode, dim: "event" | "organiser", 
   const from = r.from ?? null, to = r.to ?? null;
   const evF = (c: SQL) => filter.eventIds ? (filter.eventIds.length ? sql` and ${c} in (${sql.join(filter.eventIds.map((x) => sql`${x}::uuid`), sql`, `)})` : sql` and false`) : sql``;
   const orgF = (c: SQL) => filter.organiserId ? sql` and ${c} = ${filter.organiserId}::uuid` : sql``;
-  const [ledger, bts, pending] = await Promise.all([
+  const saleCol = dim === "event" ? sql.raw("s.event_id") : sql.raw("s.organiser_id");
+  const [ledger, bts, pending, feeRefunds] = await Promise.all([
     db.execute<LedgerRow>(sql`
       select ${col}::text as dim, e.currency, a.system_key as key, a.type, e.source_type as src, ${from ? sql`e.entry_date >= ${from}::date` : sql`true`} as inp,
         sum(l.debit)::text as d, sum(l.credit)::text as c
@@ -118,8 +121,17 @@ async function aggregate(orgId: string, mode: Mode, dim: "event" | "organiser", 
       select ${payCol}::text as dim, p.currency, sum(p.amount)::text as amount from acct_organiser_payments p
       where p.organisation_id = ${orgId} and p.livemode = ${isLive(mode)} and p.status = 'PENDING' and ${payCol} is not null ${evF(sql.raw("p.event_id"))} ${orgF(sql.raw("p.organiser_id"))}
       group by 1, 2`),
+    // Booking fee handed back to customers (refunded beyond the ticket price). Under the non-refundable policy this is
+    // charged to the organiser, so it is what Bilit recovers from them.
+    db.execute<{ dim: string; currency: string; amount: string }>(sql`
+      with c as (
+        select ${saleCol}::text as dim, s.currency, s.amount - coalesce(s.commission_amount, 0) as ticket,
+          (select coalesce(sum(-r.amount), 0) from stripe_balance_transactions r where r.stripe_account_ref = s.stripe_account_ref and r.charge_id = s.charge_id and r.kind in ('REFUND', 'DISPUTE', 'DISPUTE_REVERSAL')) as refunded
+        from stripe_balance_transactions s
+        where s.organisation_id = ${orgId} and s.livemode = ${isLive(mode)} and s.kind = 'SALE' and s.match_status = 'MATCHED' and ${saleCol} is not null ${evF(sql.raw("s.event_id"))} ${orgF(sql.raw("s.organiser_id"))})
+      select dim, currency, sum(greatest(0, refunded - ticket))::text as amount from c group by 1, 2`),
   ]);
-  return fold(ledger.rows, bts.rows, pending.rows);
+  return fold(ledger.rows, bts.rows, pending.rows, feeRefunds.rows);
 }
 
 // ---------- events ----------

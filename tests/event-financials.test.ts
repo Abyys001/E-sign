@@ -26,6 +26,7 @@ describe("settlement status and reporting conversion", () => {
     expect(settlementStatus(1000, 1000)).toBe("FULLY_PAID");
     expect(settlementStatus(1000, 1001)).toBe("OVERPAID");
     expect(settlementStatus(0, 50)).toBe("OVERPAID");
+    expect(settlementStatus(-350, 0)).toBe("ORGANISER_OWES");
   });
   it("converts for reporting only when a rate exists, respecting currency exponents", () => {
     const fx = { reportingCurrency: "gbp", rates: { eur: "0.85", jpy: "0.0052" } };
@@ -43,6 +44,10 @@ async function setup() {
   setStripeGatewayFactory(() => fake);
   const [acc] = await db.insert(schema.stripeAccounts).values({ organisationId: org.id, livemode: false, secretKeyEnc: encrypt(`sk_test_${randomBytes(12).toString("hex")}`), keyHint: "sk_test_…abcd", status: "CONNECTED", stripeAccountId: "acct_1EVTFIN" }).returning();
   const actor = { orgId: org.id, userId: user.id, ctx: ctxFor() };
+  // Pro-rata commission reversal on refunds (policy "booking fee refundable"); the default policy is tested separately.
+  const { ensureLedgerSetup } = await import("@/server/accounting/core");
+  await ensureLedgerSetup(db, org.id);
+  await db.update(schema.acctSettings).set({ bookingFeeRefundable: true }).where(eq(schema.acctSettings.organisationId, org.id));
   const organiser = await createOrganiser(actor, { name: "Persian Concerts Ltd", email: null, companyName: null, vatNumber: null, address: null, internalRef: null, notes: null, active: true, bankDetails: null });
   // 7 % booking fee, Stripe fees borne by Bilit — the Bilit model.
   const event = await createEvent(actor, { name: "Persian Concert London", code: `PCL-${randomBytes(2).toString("hex").toUpperCase()}`, currency: "gbp", organiserId: organiser.id, startsOn: "2026-10-30", status: "ACTIVE", notes: null, agreement: { percentBps: 700, percentBasis: "GROSS", fixedPerTicket: 0, fixedEventFee: 0, stripeFeesBorneBy: "BILIT", chargebacksBorneBy: "ORGANISER", refundsReverseCommission: true, notes: null } });

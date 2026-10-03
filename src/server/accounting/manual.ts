@@ -45,7 +45,10 @@ export async function matchTransaction(a: Actor, btId: string, input: z.infer<ty
     let original: { amount: number; commission: number } | null = null;
     if (row.kind !== "SALE" && row.chargeId) {
       const [o] = await tx.select().from(schema.stripeBalanceTransactions).where(and(eq(schema.stripeBalanceTransactions.stripeAccountRef, acc.id), eq(schema.stripeBalanceTransactions.chargeId, row.chargeId), eq(schema.stripeBalanceTransactions.kind, "SALE")));
-      if (o?.matchStatus === "MATCHED" && o.eventId === ev.id) original = { amount: o.amount, commission: o.commissionAmount ?? 0 };
+      if (o?.matchStatus === "MATCHED" && o.eventId === ev.id) {
+        const [rf] = await tx.select({ k: schema.stripeRefunds.keepBookingFee }).from(schema.stripeRefunds).where(and(eq(schema.stripeRefunds.stripeAccountRef, acc.id), eq(schema.stripeRefunds.refundId, row.sourceId ?? "")));
+        original = { amount: o.amount, commission: rf?.k || !ctx.settings.bookingFeeRefundable ? 0 : o.commissionAmount ?? 0 };
+      }
     }
     let qty: number | null = row.ticketQuantity;
     if (row.kind === "SALE" && row.chargeId) {
@@ -289,7 +292,7 @@ export async function rematchUnmatched(orgId: string, opts: { userId?: string | 
         const [row] = await tx.select().from(bt).where(eq(bt.id, id)).for("update");
         if (!row || row.matchStatus !== "UNMATCHED" || row.matchMethod === "MANUAL") return;
         const ctx = await offlineContext(tx, acc);
-        const al = await allocateDependent(tx, ctx, row.chargeId);
+        const al = await allocateDependent(tx, ctx, row.chargeId, row.sourceId);
         if (al.matchStatus !== "MATCHED") return;
         const up = await repost(tx, ctx, row, al, { userId: opts.userId, reason: "Refund linked to its (now matched) sale" });
         await tx.insert(schema.acctMatchHistory).values({ organisationId: orgId, balanceTransactionRef: row.id, action: "AUTO_MATCH", fromEventId: row.eventId, toEventId: al.eventId, fromOrganiserId: row.organiserId, toOrganiserId: al.organiserId, fromStatus: row.reconciliationStatus, toStatus: up.reconciliationStatus, reason: "Inherited from original sale", userId: opts.userId ?? null });
@@ -376,7 +379,7 @@ export async function setBookingFee(a: Actor, eventId: string, input: z.infer<ty
           sql`exists (select 1 from stripe_balance_transactions o where o.stripe_account_ref = ${bt.stripeAccountRef} and o.charge_id = ${bt.chargeId} and o.kind = 'SALE' and o.agreement_id = ${ag!.id})`)).for("update");
         for (const row of manual) {
           const [o] = row.chargeId ? await tx.select().from(bt).where(and(eq(bt.stripeAccountRef, acc.id), eq(bt.chargeId, row.chargeId), eq(bt.kind, "SALE"))) : [];
-          await repost(tx, ctx, row, { eventId, organiserId: row.organiserId, agreement, eventCode: row.eventCode, matchStatus: "MATCHED", matchReason: row.matchReason, matchMethod: row.matchMethod, ticketQuantity: row.ticketQuantity, original: o?.eventId === eventId ? { amount: o.amount, commission: o.commissionAmount ?? 0 } : null }, { userId: a.userId, reason: `Booking fee changed: ${input.reason}` });
+          await repost(tx, ctx, row, { eventId, organiserId: row.organiserId, agreement, eventCode: row.eventCode, matchStatus: "MATCHED", matchReason: row.matchReason, matchMethod: row.matchMethod, ticketQuantity: row.ticketQuantity, original: o?.eventId === eventId ? { amount: o.amount, commission: (!ctx.settings.bookingFeeRefundable || (await tx.select({ k: schema.stripeRefunds.keepBookingFee }).from(schema.stripeRefunds).where(and(eq(schema.stripeRefunds.stripeAccountRef, acc.id), eq(schema.stripeRefunds.refundId, row.sourceId ?? ""))))[0]?.k) ? 0 : o.commissionAmount ?? 0 } : null }, { userId: a.userId, reason: `Booking fee changed: ${input.reason}` });
           reposted++;
         }
       }
@@ -384,4 +387,32 @@ export async function setBookingFee(a: Actor, eventId: string, input: z.infer<ty
     await acctAudit(tx, { ...a, action: "booking_fee.changed", entity: "event", entityId: eventId, old: { percentBps: prev?.percentBps ?? null, basis: prev?.percentBasis ?? null, version: prev?.version ?? null }, new: { percentBps: input.percentBps, basis: ag!.percentBasis, version: ag!.version }, reason: input.reason, extra: { eventId, eventName: ev.name, applyToExisting: input.applyToExisting, applyFrom: input.applyFrom ?? null, reposted } });
     return { agreement: ag!, reposted };
   });
+}
+
+/**
+ * Re-derive every automatically allocated refund/chargeback under the current refund policy (after the policy changes,
+ * or once when it is introduced). Only rows whose booked commission reversal differs are re-posted (reversal + new entry).
+ */
+export async function repostRefundsForPolicy(orgId: string, opts: { userId?: string | null } = {}) {
+  const accs = await db.select().from(schema.stripeAccounts).where(eq(schema.stripeAccounts.organisationId, orgId));
+  let reposted = 0;
+  for (const acc of accs) {
+    const bt = schema.stripeBalanceTransactions;
+    const rows = await db.select({ id: bt.id }).from(bt).where(and(eq(bt.stripeAccountRef, acc.id), inArray(bt.kind, ["REFUND", "DISPUTE", "DISPUTE_REVERSAL"]), eq(bt.matchStatus, "MATCHED"), sql`coalesce(${bt.matchMethod}, '') <> 'MANUAL'`));
+    for (const { id } of rows) {
+      await db.transaction(async (tx) => {
+        const [row] = await tx.select().from(bt).where(eq(bt.id, id)).for("update");
+        if (!row) return;
+        const ctx = await offlineContext(tx, acc);
+        const al = await allocateDependent(tx, ctx, row.chargeId, row.sourceId);
+        if (al.matchStatus !== "MATCHED") return;
+        const expected = !al.agreement!.refundsReverseCommission || al.original?.commission === 0 ? 0 : null;
+        if (expected === 0 && (row.commissionAmount ?? 0) === 0) return;
+        if (expected === null && (row.commissionAmount ?? 0) !== 0) return;
+        await repost(tx, ctx, row, al, { userId: opts.userId, reason: "Refund policy: booking fee non-refundable" });
+        reposted++;
+      });
+    }
+  }
+  return { reposted };
 }

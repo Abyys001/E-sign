@@ -40,20 +40,32 @@ const idOf = (x: string | { id: string } | null | undefined) => (typeof x === "s
 const obj = <T,>(x: unknown, kind: string): T | null => (x && typeof x === "object" && (x as { object?: string }).object === kind ? (x as T) : null);
 
 // ---------- Stripe object mirrors (upserts: Stripe is the source of truth for these fields) ----------
+/** Card / wallet summary of a charge (no full card data is ever available or stored). */
+function paymentMethodOf(c: Stripe.Charge) {
+  const d = c.payment_method_details;
+  if (!d) return null;
+  const card = d.card;
+  return { type: d.type, brand: card?.brand ?? null, last4: card?.last4 ?? null, country: card?.country ?? null, funding: card?.funding ?? null, wallet: card?.wallet?.type ?? null, expMonth: card?.exp_month ?? null, expYear: card?.exp_year ?? null, threeDSecure: card?.three_d_secure?.result ?? null };
+}
+
 export async function upsertCharge(tx: Tx | typeof db, acc: StripeAccountRow, c: Stripe.Charge) {
   const v = {
     paymentIntentId: idOf(c.payment_intent), balanceTransactionId: idOf(c.balance_transaction), amount: c.amount, amountCaptured: c.amount_captured ?? 0, amountRefunded: c.amount_refunded ?? 0,
     currency: c.currency, status: c.status, paid: c.paid, refunded: c.refunded, disputed: c.disputed, description: c.description?.slice(0, 1000) ?? null,
     statementDescriptor: c.calculated_statement_descriptor ?? c.statement_descriptor ?? null, customerId: idOf(c.customer as string | { id: string } | null),
     customerName: c.billing_details?.name ?? null, customerEmail: c.billing_details?.email ?? c.receipt_email ?? null, metadata: c.metadata ?? {},
-    failureCode: c.failure_code ?? null, failureMessage: c.failure_message?.slice(0, 500) ?? null, updatedAt: new Date(),
+    failureCode: c.failure_code ?? null, failureMessage: c.failure_message?.slice(0, 500) ?? null,
+    outcome: c.outcome ? { networkStatus: c.outcome.network_status ?? null, type: c.outcome.type ?? null, reason: c.outcome.reason ?? null, riskLevel: c.outcome.risk_level ?? null, riskScore: (c.outcome as { risk_score?: number }).risk_score ?? null, sellerMessage: c.outcome.seller_message ?? null } : null,
+    paymentMethod: paymentMethodOf(c), receiptUrl: c.receipt_url ?? null,
+    billingAddress: c.billing_details?.address ? { line1: c.billing_details.address.line1, line2: c.billing_details.address.line2, city: c.billing_details.address.city, postalCode: c.billing_details.address.postal_code, state: c.billing_details.address.state, country: c.billing_details.address.country } : null,
+    updatedAt: new Date(),
   };
   await tx.insert(schema.stripeCharges).values({ organisationId: acc.organisationId, stripeAccountRef: acc.id, livemode: c.livemode, chargeId: c.id, stripeCreatedAt: new Date(c.created * 1000), ...v })
     .onConflictDoUpdate({ target: [schema.stripeCharges.stripeAccountRef, schema.stripeCharges.chargeId], set: v });
 }
 
 export async function upsertRefund(tx: Tx | typeof db, acc: StripeAccountRow, r: Stripe.Refund) {
-  const v = { chargeId: idOf(r.charge), paymentIntentId: idOf(r.payment_intent), balanceTransactionId: idOf(r.balance_transaction), amount: r.amount, currency: r.currency, status: r.status ?? null, reason: r.reason ?? null, updatedAt: new Date() };
+  const v = { chargeId: idOf(r.charge), paymentIntentId: idOf(r.payment_intent), balanceTransactionId: idOf(r.balance_transaction), amount: r.amount, currency: r.currency, status: r.status ?? null, reason: r.reason ?? null, failureReason: r.failure_reason ?? null, keepBookingFee: r.metadata?.bilit_keep_booking_fee === "1", updatedAt: new Date() };
   await tx.insert(schema.stripeRefunds).values({ organisationId: acc.organisationId, stripeAccountRef: acc.id, livemode: acc.livemode, refundId: r.id, stripeCreatedAt: new Date(r.created * 1000), ...v })
     .onConflictDoUpdate({ target: [schema.stripeRefunds.stripeAccountRef, schema.stripeRefunds.refundId], set: v });
 }
@@ -116,14 +128,23 @@ export function allocateFromSource(ctx: Pick<ImportContext, "settings" | "events
 }
 
 /** Refunds and disputes follow their original sale: same event, organiser and agreement version. */
-export async function allocateDependent(tx: Tx, ctx: ImportContext, chargeId: string | null): Promise<Allocation> {
+/** A refund issued with "Bilit keeps the booking fee": the organiser bears the whole refund, no commission is reversed. */
+async function keepsBookingFee(tx: Tx, ctx: ImportContext, sourceId: string | null | undefined) {
+  if (!sourceId) return false;
+  const [r] = await tx.select({ k: schema.stripeRefunds.keepBookingFee }).from(schema.stripeRefunds).where(and(eq(schema.stripeRefunds.stripeAccountRef, ctx.acc.id), eq(schema.stripeRefunds.refundId, sourceId)));
+  return !!r?.k;
+}
+
+export async function allocateDependent(tx: Tx, ctx: ImportContext, chargeId: string | null, sourceId?: string | null): Promise<Allocation> {
   const base = { eventId: null, organiserId: null, agreement: null, eventCode: null, matchStatus: "UNMATCHED" as const, matchMethod: null, ticketQuantity: null, original: null };
   if (!chargeId) return { ...base, matchReason: "ORIGINAL_MISSING" };
   const [orig] = await tx.select().from(schema.stripeBalanceTransactions).where(and(eq(schema.stripeBalanceTransactions.stripeAccountRef, ctx.acc.id), eq(schema.stripeBalanceTransactions.chargeId, chargeId), eq(schema.stripeBalanceTransactions.kind, "SALE")));
   if (!orig) return { ...base, matchReason: "ORIGINAL_MISSING" };
   if (orig.matchStatus !== "MATCHED" || !orig.agreementId) return { ...base, eventId: orig.eventId, eventCode: orig.eventCode, matchReason: "ORIGINAL_UNMATCHED" };
   const [a] = await tx.select().from(schema.acctAgreements).where(eq(schema.acctAgreements.id, orig.agreementId));
-  return { eventId: orig.eventId, organiserId: orig.organiserId, agreement: agreementOf(a!), eventCode: orig.eventCode, matchStatus: "MATCHED", matchReason: null, matchMethod: "INHERITED", ticketQuantity: null, original: { amount: orig.amount, commission: orig.commissionAmount ?? 0 } };
+  // Platform policy (default): the booking fee is non-refundable — refunds never reduce it; the organiser bears the whole refund.
+  const keep = !ctx.settings.bookingFeeRefundable || await keepsBookingFee(tx, ctx, sourceId);
+  return { eventId: orig.eventId, organiserId: orig.organiserId, agreement: agreementOf(a!), eventCode: orig.eventCode, matchStatus: "MATCHED", matchReason: null, matchMethod: "INHERITED", ticketQuantity: null, original: { amount: orig.amount, commission: keep ? 0 : orig.commissionAmount ?? 0 } };
 }
 
 function reconStatus(kind: BtKind, al: Allocation, classified: boolean): string {
@@ -169,7 +190,7 @@ async function reallocateDependents(tx: Tx, ctx: ImportContext, chargeId: string
   const deps = await tx.select().from(schema.stripeBalanceTransactions).where(and(eq(schema.stripeBalanceTransactions.stripeAccountRef, ctx.acc.id), eq(schema.stripeBalanceTransactions.chargeId, chargeId), inArray(schema.stripeBalanceTransactions.kind, ["REFUND", "DISPUTE", "DISPUTE_REVERSAL"])));
   for (const d of deps) {
     if (d.matchMethod === "MANUAL") continue;
-    const al = await allocateDependent(tx, ctx, chargeId);
+    const al = await allocateDependent(tx, ctx, chargeId, d.sourceId);
     if (al.eventId === d.eventId && al.matchStatus === d.matchStatus && al.agreement?.id === d.agreementId) continue;
     await repost(tx, ctx, d, al, { ...opts, reason: opts.reason ?? "Original sale re-allocated" });
   }
@@ -223,7 +244,7 @@ export async function importBalanceTransaction(ctx: ImportContext, bt: Stripe.Ba
     if (charge && charge.livemode !== ctx.acc.livemode) throw new AppError("invalid_state", "Stripe returned a charge from the other mode; test and live data are never mixed.");
 
     const [existing] = await tx.select().from(schema.stripeBalanceTransactions).where(and(eq(schema.stripeBalanceTransactions.stripeAccountRef, ctx.acc.id), eq(schema.stripeBalanceTransactions.balanceTransactionId, bt.id))).for("update");
-    const al = saleAlloc ?? (kind === "REFUND" || kind === "DISPUTE" || kind === "DISPUTE_REVERSAL" ? await allocateDependent(tx, ctx, chargeId)
+    const al = saleAlloc ?? (kind === "REFUND" || kind === "DISPUTE" || kind === "DISPUTE_REVERSAL" ? await allocateDependent(tx, ctx, chargeId, sourceId)
       : { eventId: null, organiserId: null, agreement: null, eventCode: null, matchStatus: "NOT_APPLICABLE" as const, matchReason: kind === "OTHER" ? "UNCLASSIFIED" : null, matchMethod: null, ticketQuantity: null, original: null });
     if (dispute) await upsertDispute(tx, ctx.acc, dispute, al.matchStatus === "MATCHED" ? { eventId: al.eventId, organiserId: al.organiserId } : undefined);
 

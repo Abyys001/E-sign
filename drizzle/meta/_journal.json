@@ -85,6 +85,13 @@
       "when": 1790726033374,
       "tag": "0011_bookkeeping",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790726034374,
+      "tag": "0012_payments_refunds_invoices",
+      "breakpoints": true
     }
   ]
 }

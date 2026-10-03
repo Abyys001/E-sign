@@ -17,10 +17,10 @@ export type Fig = {
   currency: string; tickets: number; orders: number; grossSales: number; refunds: number; chargebacks: number; netSales: number;
   bookingFees: number; eventFees: number; otherRevenue: number; bilitRevenue: number; processingFees: number; feesRecharged: number; bilitProcessingFees: number;
   organiserShare: number; deductions: number; expensesBilit: number; expensesOrganiser: number; otherCosts: number;
-  organiserDue: number; organiserPaid: number; remaining: number; pendingPayments: number; bilitProfit: number; settlement: Settlement;
+  organiserDue: number; organiserPaid: number; remaining: number; pendingPayments: number; bookingFeesRefunded: number; bilitProfit: number; settlement: Settlement;
 };
-export type Settlement = "NOTHING_DUE" | "NOT_SETTLED" | "PARTIALLY_PAID" | "FULLY_PAID" | "OVERPAID";
-export const SETTLEMENTS: Settlement[] = ["NOT_SETTLED", "PARTIALLY_PAID", "FULLY_PAID", "OVERPAID", "NOTHING_DUE"];
+export type Settlement = "NOTHING_DUE" | "NOT_SETTLED" | "PARTIALLY_PAID" | "FULLY_PAID" | "OVERPAID" | "ORGANISER_OWES";
+export const SETTLEMENTS: Settlement[] = ["NOT_SETTLED", "PARTIALLY_PAID", "FULLY_PAID", "OVERPAID", "ORGANISER_OWES", "NOTHING_DUE"];
 
 type FieldErrors = Record<string, string>;
 const fieldErrors = (e: unknown): FieldErrors => (e instanceof ApiError && Array.isArray(e.details) ? Object.fromEntries((e.details as Array<{ path: string; message: string }>).map((d) => [d.path, d.message])) : {});
@@ -33,6 +33,7 @@ const ST: Record<Settlement, { cls: string; Icon: typeof CheckCircle2 }> = {
   PARTIALLY_PAID: { cls: "border-fin-info/40 bg-fin-info/12 text-fin-info", Icon: TrendingUp },
   FULLY_PAID: { cls: "border-fin-pos/40 bg-fin-pos/12 text-fin-pos", Icon: CheckCircle2 },
   OVERPAID: { cls: "border-fin-neg/40 bg-fin-neg/12 text-fin-neg", Icon: AlertTriangle },
+  ORGANISER_OWES: { cls: "border-fin-neg/40 bg-fin-neg/12 text-fin-neg", Icon: AlertTriangle },
   NOTHING_DUE: { cls: "border-line-strong text-muted", Icon: CircleMinus },
 };
 /** Status always carries an icon and a label, never colour alone. */
@@ -50,7 +51,7 @@ export function SettlementSummary({ f }: { f: Fig }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm text-muted">{t("settlement.label")}</span><SettlementBadge s={f.settlement} /></div>
       <div className="h-2.5 overflow-hidden rounded-full bg-surface-2" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(share)} aria-label={t("paidShare")}>
-        <div className={cn("h-full rounded-full", f.settlement === "OVERPAID" ? "bg-fin-neg" : "bg-fin-pos")} style={{ width: `${share}%` }} />
+        <div className={cn("h-full rounded-full", f.settlement === "OVERPAID" || f.settlement === "ORGANISER_OWES" ? "bg-fin-neg" : "bg-fin-pos")} style={{ width: `${share}%` }} />
       </div>
       <dl className="grid grid-cols-3 gap-2 text-sm">
         <div><dt className="text-xs text-muted">{t("k.organiserDue")}</dt><dd className="font-semibold"><Money v={f.organiserDue} c={f.currency} /></dd></div>
@@ -58,6 +59,7 @@ export function SettlementSummary({ f }: { f: Fig }) {
         <div><dt className="text-xs text-muted">{t("k.remaining")}</dt><dd className={cn("font-semibold", f.remaining < 0 ? "text-fin-neg" : f.remaining > 0 ? "text-fin-warn" : "text-fin-pos")}><Money v={f.remaining} c={f.currency} /></dd></div>
       </dl>
       {f.pendingPayments > 0 && <p className="text-xs text-muted">{t("pendingNote")}: <Money v={f.pendingPayments} c={f.currency} /></p>}
+      {f.bookingFeesRefunded > 0 && <p className="rounded-lg border border-fin-warn/40 bg-fin-warn/10 px-3 py-2 text-xs"><span className="font-medium">{t("feeRecover")}: <Money v={f.bookingFeesRefunded} c={f.currency} /></span><span className="block text-muted">{t("feeRecoverHint")}</span></p>}
     </div>
   );
 }
@@ -86,6 +88,7 @@ export function moneyFlow(f: Fig, t: (k: string) => string): Line[] {
   return [
     { label: t("k.grossSales"), v: f.grossSales },
     { label: t("k.refunds"), v: f.refunds, sign: "-" },
+    ...(f.bookingFeesRefunded ? [{ label: t("flow.feeInRefunds"), v: f.bookingFeesRefunded, muted: true, hint: t("feeRecoverHint") }] : []),
     { label: t("k.chargebacks"), v: f.chargebacks, sign: "-", muted: !f.chargebacks },
     { label: t("k.netSales"), v: f.netSales, total: true },
     { label: t("k.bookingFees"), v: f.bookingFees, sign: "-", hint: t("flow.bookingHint") },
@@ -252,6 +255,7 @@ export function PayOrganiserDialog({ event, f, bookingFeeBps, mode, onClose, onS
             {S(t("k.refunds"), <>−<Money v={f.refunds + f.chargebacks} c={f.currency} /></>)}
             {f.feesRecharged !== 0 && S(t("k.feesRecharged"), <>−<Money v={f.feesRecharged} c={f.currency} /></>)}
             {S(t("k.deductions"), <>−<Money v={f.deductions} c={f.currency} /></>)}
+            {f.bookingFeesRefunded > 0 && S(t("feeRecover"), <Money v={f.bookingFeesRefunded} c={f.currency} />)}
             {S(t("k.organiserDue"), <Money v={f.organiserDue} c={f.currency} />, true)}
             {S(t("k.organiserPaid"), <Money v={f.organiserPaid} c={f.currency} />)}
             {S(t("k.remaining"), <Money v={f.remaining} c={f.currency} />, true)}
@@ -351,12 +355,12 @@ export function AuditList({ items }: { items: AuditItem[] }) {
 export const EXPENSE_CATEGORIES = ["VENUE", "ARTIST", "MARKETING", "SECURITY", "PRODUCTION", "STAFF", "TRANSPORT", "ACCOMMODATION", "OTHER"] as const;
 export type ExpenseRow = { id: string; name: string; category: string; amount: number; currency: string; expenseDate: string; description: string | null; borneBy: string; status: string; hasReceipt: boolean; receiptName: string | null; voidReason: string | null; createdByName: string | null; revision: number };
 
-export function ExpenseDialog({ eventId, currency, mode, hasOrganiser, expense, onClose, onSaved }: { eventId: string; currency: string; mode: string; hasOrganiser: boolean; expense?: ExpenseRow; onClose: () => void; onSaved: () => void }) {
+export function ExpenseDialog({ eventId, currency, mode, expense, onClose, onSaved }: { eventId: string; currency: string; mode: string; hasOrganiser?: boolean; expense?: ExpenseRow; onClose: () => void; onSaved: () => void }) {
   const t = useTranslations("accounting.fin.exp");
   const tf = useTranslations("accounting.fin");
   const c = useTranslations("common");
   const toast = useToast();
-  const [v, setV] = useState({ name: expense?.name ?? "", category: expense?.category ?? "VENUE", amount: expense ? toDecimalString(expense.amount, currency) : "", expenseDate: expense?.expenseDate ?? new Date().toISOString().slice(0, 10), description: expense?.description ?? "", borneBy: expense?.borneBy ?? "BILIT", reason: "" });
+  const [v, setV] = useState({ name: expense?.name ?? "", category: expense?.category ?? "VENUE", amount: expense ? toDecimalString(expense.amount, currency) : "", expenseDate: expense?.expenseDate ?? new Date().toISOString().slice(0, 10), description: expense?.description ?? "", reason: "" });
   const [file, setFile] = useState<File | null>(null);
   const [errs, setErrs] = useState<FieldErrors>({}); const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof v, x: string) => setV((o) => ({ ...o, [k]: x }));
@@ -364,7 +368,7 @@ export function ExpenseDialog({ eventId, currency, mode, hasOrganiser, expense, 
     setBusy(true); setErr(null); setErrs({});
     try {
       let amount: number; try { amount = parseMajor(v.amount, currency); } catch (e) { setErrs({ amount: errMsg(e) }); return; }
-      const base = { name: v.name, category: v.category, amount, expenseDate: v.expenseDate, description: v.description || null, borneBy: v.borneBy };
+      const base = { name: v.name, category: v.category, amount, expenseDate: v.expenseDate, description: v.description || null, borneBy: "BILIT" };
       const row = expense ? await api<{ id: string }>(`/api/accounting/expenses/${expense.id}`, { method: "PATCH", json: { ...base, reason: v.reason } })
         : await api<{ id: string }>("/api/accounting/expenses", { json: { ...base, mode, eventId, currency } });
       if (file) {
@@ -382,7 +386,7 @@ export function ExpenseDialog({ eventId, currency, mode, hasOrganiser, expense, 
         <Field label={t("category")} required>{(p) => <Select {...p} value={v.category} onChange={(e) => set("category", e.target.value)}>{EXPENSE_CATEGORIES.map((k) => <option key={k} value={k}>{t(`cat.${k}`)}</option>)}</Select>}</Field>
         <Field label={`${t("amount")} (${currency.toUpperCase()})`} required error={errs.amount}>{(p) => <Input {...p} inputMode="decimal" value={v.amount} onChange={(e) => set("amount", e.target.value)} />}</Field>
         <Field label={t("date")} required error={errs.expenseDate}>{(p) => <Input {...p} type="date" value={v.expenseDate} onChange={(e) => set("expenseDate", e.target.value)} />}</Field>
-        <div className="sm:col-span-2"><Field label={t("borneBy")} hint={t("borneByHint")} error={errs.borneBy}>{(p) => <Select {...p} value={v.borneBy} onChange={(e) => set("borneBy", e.target.value)}><option value="BILIT">{t("by.BILIT")}</option><option value="ORGANISER" disabled={!hasOrganiser}>{t("by.ORGANISER")}</option></Select>}</Field></div>
+        <p className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted sm:col-span-2">{t("platformNote")}</p>
         <div className="sm:col-span-2"><Field label={t("description")}>{(p) => <Textarea {...p} value={v.description} onChange={(e) => set("description", e.target.value)} className="min-h-16" />}</Field></div>
         <div className="sm:col-span-2"><Field label={expense?.hasReceipt ? t("replaceReceipt") : t("receipt")} hint={t("receiptHint")}>{(p) => <Input {...p} type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="py-1.5" />}</Field>
           {expense?.hasReceipt && <p className="mt-1 flex items-center gap-1 text-xs text-muted"><Paperclip className="size-3.5" aria-hidden />{expense.receiptName}</p>}</div>

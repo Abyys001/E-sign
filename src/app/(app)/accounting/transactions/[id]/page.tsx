@@ -2,8 +2,9 @@
 import Link from "next/link";
 import { use, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { ArrowLeft, Link2, Unlink } from "lucide-react";
+import { ArrowLeft, Link2, Undo2, Unlink } from "lucide-react";
 import { useMe } from "@/components/app/me";
+import { InvoicesCard, PaymentInfo, RefundDialog, type Charge } from "@/components/accounting/payments";
 import { Badge, CopyText, DL, Money, Reason, useMoney } from "@/components/accounting/kit";
 import { MatchDialog } from "@/components/accounting/match";
 import { Button, LinkButton } from "@/components/ui/button";
@@ -25,6 +26,8 @@ type Detail = {
   agreement: { version: number; percentBps: number; percentBasis: string; fixedPerTicket: number; stripeFeesBorneBy: string } | null;
   related: Array<{ id: string; balanceTransactionId: string; kind: string; amount: number; fee: number; net: number; currency: string; stripeCreatedAt: string; reconciliationStatus: string }>;
   sale: { gross: number; refunded: number; disputed: number; fee: number; net: number; commission: number; organiser: number } | null;
+  refunds: Array<{ id: string; refundId: string; amount: number; currency: string; status: string | null; reason: string | null; failureReason: string | null; note: string | null; keepBookingFee: boolean; stripeCreatedAt: string }>;
+  disputes: Array<{ id: string; disputeId: string; amount: number; currency: string; reason: string | null; status: string; stripeCreatedAt: string }>;
   entries: Entry[]; history: Array<{ id: string; action: string; reason: string | null; userName: string | null; createdAt: string; fromStatus: string | null; toStatus: string | null }>;
 };
 
@@ -39,6 +42,7 @@ function TxDetail({ id }: { id: string }) {
   const fm = useMoney();
   const { data, loading, error, reload } = useApi<Detail>(`/api/accounting/transactions/${id}`);
   const [match, setMatch] = useState(false);
+  const [refund, setRefund] = useState(false);
   const [unmatch, setUnmatch] = useState(false);
   const [reason, setReason] = useState("");
   if (loading && !data) return <div className="space-y-4"><Skeleton className="h-10 w-72" /><Skeleton className="h-64" /></div>;
@@ -51,6 +55,7 @@ function TxDetail({ id }: { id: string }) {
       <PageHeader title={<span className="flex items-center gap-3">{t("title")} <Badge s={x.reconciliationStatus} /></span>} description={x.description ?? undefined}
         actions={<><LinkButton href="/accounting/transactions"><ArrowLeft className="size-4 rtl:rotate-180" aria-hidden />{t("back")}</LinkButton>
           {canMatch && x.matchStatus === "MATCHED" && x.kind !== "OTHER" && <Button onClick={() => setUnmatch(true)}><Unlink className="size-4" aria-hidden />{t("unmatch")}</Button>}
+          {can("accounting.manage") && x.kind === "SALE" && data.charge && data.charge.status === "succeeded" && !(data.charge as unknown as Charge).disputed && data.charge.amountRefunded < data.charge.amount && <Button variant="danger" onClick={() => setRefund(true)}><Undo2 className="size-4" aria-hidden />{t("refund")}</Button>}
           {canMatch && <Button variant="primary" onClick={() => setMatch(true)}><Link2 className="size-4" aria-hidden />{x.kind === "OTHER" ? t("classify") : x.matchStatus === "MATCHED" ? t("reassign") : t("match")}</Button>}</>} />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card><CardHeader title={t("stripe")} /><div className="p-5"><DL items={[
@@ -67,6 +72,8 @@ function TxDetail({ id }: { id: string }) {
           [t("tickets"), x.ticketQuantity],
         ]} /></div></Card>
       </div>
+      <PaymentInfo charge={data.charge as unknown as Charge | null} refunds={data.refunds} disputes={data.disputes} btId={x.id} onChanged={() => void reload()} />
+      {x.chargeId && ["SALE", "REFUND", "DISPUTE"].includes(x.kind) && <InvoicesCard saleBtId={x.id} related={data.related.length ? data.related : [x]} charge={data.charge as unknown as Charge | null} />}
       <Card><CardHeader title={t("amounts")} description={s ? t("amountsSale") : undefined} />
         <div className="grid gap-px overflow-hidden rounded-b-card bg-line sm:grid-cols-3 lg:grid-cols-7">
           {(s ? [[t("gross"), s.gross], [t("refund"), -s.refunded], [t("chargeback"), -s.disputed], [t("fee"), -s.fee], [t("net"), s.net], [t("commission"), s.commission], [t("organiserPayable"), s.organiser]]
@@ -85,6 +92,7 @@ function TxDetail({ id }: { id: string }) {
         </div>)}
       </Card>
       {data.history.length > 0 && <Card><CardHeader title={t("history")} /><ul className="divide-y divide-line">{data.history.map((h) => <li key={h.id} className="px-5 py-3 text-sm"><span className="font-medium">{h.action}</span> · {h.userName ?? t("system")} · <span className="text-muted">{fmtDate(h.createdAt, locale)}</span>{h.fromStatus && <> · <Badge s={h.fromStatus} /> → <Badge s={h.toStatus} /></>}{h.reason && <p className="mt-1 text-muted">{h.reason}</p>}</li>)}</ul></Card>}
+      {refund && data.charge && <RefundDialog btId={x.id} charge={data.charge as unknown as Charge} bookingFee={x.commissionAmount ?? 0} onClose={() => setRefund(false)} onDone={() => void reload()} />}
       <MatchDialog tx={x} open={match} onClose={() => setMatch(false)} onDone={reload} />
       <ConfirmDialog open={unmatch} onClose={() => setUnmatch(false)} title={t("unmatchTitle")} description={t("unmatchDesc")} confirmLabel={t("unmatch")}
         onConfirm={async () => { try { await api(`/api/accounting/reconciliation/${x.id}/unmatch`, { json: { reason } }); toast("ok", t("unmatched")); setReason(""); await reload(); } catch (e) { toast("error", errMsg(e)); throw e; } }}>

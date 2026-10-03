@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { faChartPie, faFileInvoiceDollar, faMoneyCheckDollar, faUsers } from "@fortawesome/free-solid-svg-icons";
+import { faChartPie, faFileInvoice, faFileInvoiceDollar, faMoneyCheckDollar, faUsers } from "@fortawesome/free-solid-svg-icons";
 import { useMe } from "@/components/app/me";
 import { Fa } from "@/components/accounting/books";
 import { cn } from "@/components/ui/cn";
@@ -15,6 +15,7 @@ export default function BooksLayout({ children }: { children: React.ReactNode })
   const items = [
     { href: "/accounting/books", label: t("overview"), icon: faChartPie, exact: true },
     { href: "/accounting/books/invoices", label: t("invoices"), icon: faFileInvoiceDollar },
+    { href: "/accounting/books/customer-invoices", label: t("customerInvoices"), icon: faFileInvoice },
     ...(can("accounting.payroll") ? [{ href: "/accounting/books/employees", label: t("employees"), icon: faUsers }, { href: "/accounting/books/payslips", label: t("payslips"), icon: faMoneyCheckDollar }] : []),
   ];
   return (

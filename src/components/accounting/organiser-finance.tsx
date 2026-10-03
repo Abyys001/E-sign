@@ -37,8 +37,8 @@ export function OrganiserFinance({ id, refresh }: { id: string; refresh: number 
           <Stat label={t("orgFin.events")} value={data.eventCount} icon={<CalendarDays className="size-4" aria-hidden />} hint={<>{t("k.tickets")}: {f.tickets.toLocaleString(locale)}</>} />
           <AmountCard label={t("k.grossSales")} v={f.grossSales} c={f.currency} tone="pos" icon={Receipt} />
           <AmountCard label={t("k.bookingFees")} v={f.bookingFees} c={f.currency} tone="pos" icon={Percent} />
-          <AmountCard label={t("k.refunds")} v={f.refunds + f.chargebacks} c={f.currency} tone="neg" icon={Undo2} />
-          <AmountCard label={t("orgFin.expenses")} v={f.expensesOrganiser} c={f.currency} tone="warn" icon={Coins} hint={t("orgFin.expensesHint")} />
+          <AmountCard label={t("k.refunds")} v={f.refunds + f.chargebacks} c={f.currency} tone="neg" icon={Undo2} hint={f.bookingFeesRefunded ? <>{t("feeRecover")}: <Money v={f.bookingFeesRefunded} c={f.currency} /></> : undefined} />
+          <AmountCard label={t("k.expensesBilit")} v={f.expensesBilit} c={f.currency} tone="warn" icon={Coins} hint={t("orgFin.expensesHint")} />
           <AmountCard label={t("k.organiserDue")} v={f.organiserDue} c={f.currency} tone="info" icon={Scale} />
           <AmountCard label={t("k.organiserPaid")} v={f.organiserPaid} c={f.currency} tone="bal" icon={Wallet} />
           <AmountCard label={t("k.remaining")} v={f.remaining} c={f.currency} tone={f.remaining === 0 ? "pos" : "warn"} icon={HandCoins} />

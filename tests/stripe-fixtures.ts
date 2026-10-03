@@ -104,6 +104,22 @@ export class FakeStripe implements StripeGateway {
     for (const b of this.bts) by.set(b.currency, (by.get(b.currency) ?? 0) + b.net);
     return { object: "balance", livemode: this.livemode, available: [...by].map(([currency, amount]) => ({ currency, amount, source_types: {} })), pending: [] } as unknown as Stripe.Balance;
   }
+  /** A declined card payment: a charge with no balance transaction. */
+  failedCharge(o: Parameters<typeof chargeObj>[0]) { const c = chargeObj({ ...o, status: "failed", livemode: o.livemode ?? this.livemode }); this.charges.set(c.id, c); return c; }
+  async listCharges(p: { createdGte?: number; createdLte?: number }) { return { data: [...this.charges.values()].filter((c) => (!p.createdGte || c.created >= p.createdGte) && (!p.createdLte || c.created <= p.createdLte)).reverse(), hasMore: false }; }
+  refundKeys = new Map<string, Stripe.Refund>();
+  readOnlyKey = false;
+  async createRefund(p: { charge: string; amount: number; reason?: string; metadata: Record<string, string> }, idempotencyKey: string) {
+    this.guard("createRefund", p.charge);
+    if (this.readOnlyKey) throw Object.assign(new Error("The provided key does not have the required permissions for this endpoint."), { type: "StripePermissionError" });
+    const done = this.refundKeys.get(idempotencyKey); if (done) return done; // Stripe idempotency
+    const c = this.charges.get(p.charge); if (!c) throw new Error(`No such charge: ${p.charge}`);
+    if (p.amount > c.amount - c.amount_refunded) throw Object.assign(new Error("Refund amount is greater than unrefunded amount on charge"), { type: "StripeInvalidRequestError" });
+    const { refund } = this.refund(c, p.amount);
+    Object.assign(refund, { reason: p.reason ?? null, metadata: p.metadata });
+    this.refundKeys.set(idempotencyKey, refund);
+    return refund;
+  }
   async retrieveAccount() { return { id: "acct_1TESTBILIT", name: "Bilit Test" }; }
   async createWebhookEndpoint() { return { id: "we_test", secret: "whsec_testsecretvalue1234567890" }; }
 }

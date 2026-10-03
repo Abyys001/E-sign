@@ -85,7 +85,7 @@ export default function EventsPage() {
               <Td className="whitespace-nowrap">{e.organiserId ? <Link href={`/accounting/organisers/${e.organiserId}`} className="underline-offset-4 hover:underline">{e.organiserName}</Link> : <span className="text-muted">—</span>}</Td>
               <Td className="text-end tabular-nums">{e.tickets.toLocaleString(locale)}</Td>
               <Td className="text-end"><Money v={e.grossSales} c={e.currency} /></Td>
-              <Td className="text-end">{e.refunds + e.chargebacks ? <Money v={-(e.refunds + e.chargebacks)} c={e.currency} className="text-fin-neg" /> : <span className="text-muted">—</span>}</Td>
+              <Td className="text-end">{e.refunds + e.chargebacks ? <Money v={-(e.refunds + e.chargebacks)} c={e.currency} className="text-fin-neg" /> : <span className="text-muted">—</span>}{e.bookingFeesRefunded > 0 && <span className="block text-xs text-fin-warn">{tf("events.feeRecover")} <Money v={e.bookingFeesRefunded} c={e.currency} /></span>}</Td>
               <Td className="text-end"><Money v={e.netSales} c={e.currency} /></Td>
               <Td className="text-end"><Money v={e.bookingFees} c={e.currency} className="text-fin-pos" /><span className="block text-xs text-muted">{pct(e.bookingFeeBps)}</span></Td>
               <Td className="text-end"><Money v={e.processingFees} c={e.currency} />{e.feesRecharged > 0 && <span className="block text-xs text-muted">{tf("events.recharged")}</span>}</Td>

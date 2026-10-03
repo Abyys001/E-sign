@@ -137,6 +137,9 @@ async function setup(mode: Mode = "test") {
   setStripeGatewayFactory(() => fake);
   const [acc] = await db.insert(schema.stripeAccounts).values({ organisationId: org.id, livemode: mode === "live", secretKeyEnc: encrypt(`sk_${mode}_${randomBytes(12).toString("hex")}`), keyHint: "sk_test_…abcd", status: "CONNECTED", stripeAccountId: "acct_1TESTBILIT" }).returning();
   const actor = { orgId: org.id, userId: user.id, ctx: ctxFor() };
+  // These tests exercise pro-rata commission reversal on refunds (the "booking fee refundable" policy).
+  await ensureLedgerSetup(db, org.id);
+  await db.update(schema.acctSettings).set({ bookingFeeRefundable: true }).where(eq(schema.acctSettings.organisationId, org.id));
   const organiser = await createOrganiser(actor, { name: "Example Events GmbH", email: "finance@example.test", companyName: "Example Events GmbH", vatNumber: "DE123456789", address: null, internalRef: `ORG-${randomBytes(3).toString("hex")}`, notes: null, active: true, bankDetails: { accountHolder: "Example Events GmbH", iban: "DE89370400440532013000", bic: "COBADEFFXXX", bankName: null, notes: null } });
   const event = await createEvent(actor, { name: "Blood In Blood Out Berlin", code: "EVT-BER-2026", currency: "eur", organiserId: organiser.id, startsOn: "2026-10-20", status: "ACTIVE", notes: null, agreement: { percentBps: 500, percentBasis: "GROSS", fixedPerTicket: 0, fixedEventFee: 0, stripeFeesBorneBy: "ORGANISER", chargebacksBorneBy: "ORGANISER", refundsReverseCommission: true, notes: null } });
   const ctx = async () => importContext(acc!, fake);

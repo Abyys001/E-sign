@@ -19,6 +19,8 @@ export interface StripeGateway {
   listPayouts(p: { createdGte?: number; createdLte?: number; startingAfter?: string }): Promise<{ data: Stripe.Payout[]; hasMore: boolean }>;
   retrievePayout(id: string): Promise<Stripe.Payout>;
   retrieveBalance(): Promise<Stripe.Balance>;
+  listCharges(p: { createdGte?: number; createdLte?: number; startingAfter?: string }): Promise<{ data: Stripe.Charge[]; hasMore: boolean }>;
+  createRefund(p: { charge: string; amount: number; reason?: "requested_by_customer" | "duplicate" | "fraudulent"; metadata: Record<string, string> }, idempotencyKey: string): Promise<Stripe.Refund>;
   retrieveAccount(): Promise<{ id: string; name: string | null } | null>;
   createWebhookEndpoint(url: string, events: string[]): Promise<{ id: string; secret: string }>;
 }
@@ -51,6 +53,13 @@ class SdkGateway implements StripeGateway {
   }
   retrievePayout(id: string) { return this.s.payouts.retrieve(id); }
   retrieveBalance() { return this.s.balance.retrieve(); }
+  async listCharges(p: Parameters<StripeGateway["listCharges"]>[0]) {
+    const r = await this.s.charges.list({ limit: 100, starting_after: p.startingAfter, ...(p.createdGte || p.createdLte ? { created: { gte: p.createdGte, lte: p.createdLte } } : {}) });
+    return { data: r.data, hasMore: r.has_more };
+  }
+  createRefund(p: Parameters<StripeGateway["createRefund"]>[0], idempotencyKey: string) {
+    return this.s.refunds.create({ charge: p.charge, amount: p.amount, reason: p.reason, metadata: p.metadata }, { idempotencyKey });
+  }
   async retrieveAccount() {
     try { const a = await this.s.accounts.retrieveCurrent(); return { id: a.id, name: a.settings?.dashboard?.display_name ?? a.business_profile?.name ?? null }; }
     catch (e) { if (e instanceof Stripe.errors.StripePermissionError) return null; throw e; } // restricted keys may not read the account

@@ -225,18 +225,18 @@ function ExpensesTab({ e, onChanged }: { e: Ev; onChanged: () => Promise<void> }
   const [open, setOpen] = useState<ExpenseRow | "new" | null>(null); const [del, setDel] = useState<ExpenseRow | null>(null); const [reason, setReason] = useState("");
   const after = async () => { await Promise.all([reload(), onChanged()]); };
   const active = (data?.items ?? []).filter((x) => x.status === "ACTIVE");
-  const total = (by: string) => active.filter((x) => x.borneBy === by).reduce((s, x) => s + x.amount, 0);
+  const total = active.reduce((s, x) => s + x.amount, 0);
   const manage = can("accounting.manage");
   return (
     <Card>
       <CardHeader title={t("title")} description={t("tabDesc")} action={manage && <Button size="sm" variant="primary" onClick={() => setOpen("new")}><Plus className="size-4" aria-hidden />{t("add")}</Button>} />
-      {active.length > 0 && <div className="flex flex-wrap gap-x-8 gap-y-2 border-b border-line px-5 py-3 text-sm"><span><span className="text-muted">{t("totalBilit")}: </span><Money v={total("BILIT")} c={e.currency} strong /></span><span><span className="text-muted">{t("totalOrganiser")}: </span><Money v={total("ORGANISER")} c={e.currency} strong /></span></div>}
+      {active.length > 0 && <div className="border-b border-line px-5 py-3 text-sm"><span className="text-muted">{t("totalBilit")}: </span><Money v={total} c={e.currency} strong /></div>}
       {loading && !data ? <div className="p-4"><Skeleton className="h-24" /></div> : !data?.items.length ? <EmptyState title={t("empty")} description={t("emptyDesc")} /> : (
-        <TableWrap><Table><thead><tr><Th>{t("date")}</Th><Th>{t("name")}</Th><Th>{t("category")}</Th><Th>{t("borneBy")}</Th><Th className="text-end">{t("amount")}</Th><Th>{t("receipt")}</Th><Th><span className="sr-only">{tf("actions")}</span></Th></tr></thead>
+        <TableWrap><Table><thead><tr><Th>{t("date")}</Th><Th>{t("name")}</Th><Th>{t("category")}</Th><Th className="text-end">{t("amount")}</Th><Th>{t("receipt")}</Th><Th><span className="sr-only">{tf("actions")}</span></Th></tr></thead>
           <tbody>{data.items.map((x) => <Tr key={x.id} className={x.status === "VOIDED" ? "text-muted" : ""}>
             <Td className="whitespace-nowrap">{x.expenseDate}</Td>
             <Td><span className={x.status === "VOIDED" ? "line-through" : "font-medium"}>{x.name}</span>{x.description && <span className="block max-w-xs truncate text-xs text-muted" title={x.description}>{x.description}</span>}{x.status === "VOIDED" && <span className="block text-xs">{t("deleted")}: {x.voidReason}</span>}</Td>
-            <Td>{t(`cat.${x.category}`)}</Td><Td className="text-sm">{t(`by.${x.borneBy}`)}</Td><Td className="text-end"><Money v={x.amount} c={x.currency} strong /></Td>
+            <Td>{t(`cat.${x.category}`)}</Td><Td className="text-end"><Money v={x.amount} c={x.currency} strong /></Td>
             <Td>{x.hasReceipt ? <a href={`/api/accounting/expenses/${x.id}/receipt`} className="inline-flex items-center gap-1 text-sm underline underline-offset-4"><Paperclip className="size-3.5" aria-hidden />{t("download")}</a> : <span className="text-muted">—</span>}</Td>
             <Td className="text-end">{manage && x.status === "ACTIVE" && <div className="flex justify-end gap-1">
               <Button size="sm" variant="ghost" onClick={() => setOpen(x)} aria-label={tf("editItem")}><Pencil className="size-3.5" aria-hidden /></Button>
