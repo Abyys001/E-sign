@@ -18,7 +18,7 @@ import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { api, errMsg, fmtDate, useApi } from "@/lib/api";
 
-type P = { id: string; organiserId: string; organiserName: string; eventName: string | null; eventCode: string | null; amount: number; currency: string; paymentDate: string; bankReference: string | null; method: string; status: string; notes: string | null; voidReason: string | null; createdByName: string | null; createdAt: string };
+type P = { id: string; organiserId: string; organiserName: string; eventId: string | null; eventName: string | null; eventCode: string | null; amount: number; currency: string; paymentDate: string; bankReference: string | null; method: string; status: string; notes: string | null; voidReason: string | null; createdByName: string | null; createdAt: string };
 
 export default function PaymentsPage() {
   const t = useTranslations("accounting.payments");
@@ -59,7 +59,7 @@ export default function PaymentsPage() {
       </Card>
       {open && <PaymentDialog open={open} onClose={() => setOpen(false)} onSaved={() => void reload()} mode={mode} />}
       {view && <PaymentViewDialog id={view} onClose={() => setView(null)} />}
-      {editing && <PaymentEditDialog p={{ ...editing, eventId: null }} onClose={() => setEditing(null)} onSaved={() => void reload()} />}
+      {editing && <PaymentEditDialog p={editing} onClose={() => setEditing(null)} onSaved={() => void reload()} />}
       <ConfirmDialog open={!!voiding} onClose={() => setVoiding(null)} title={tf("payDelete.title")} description={tf("payDelete.desc")} confirmLabel={tf("deleteItem")}
         onConfirm={async () => { try { await api(`/api/accounting/organiser-payments/${voiding!.id}/void`, { json: { reason } }); toast("ok", t("voided")); await reload(); } catch (e) { toast("error", errMsg(e)); throw e; } }}>
         <Field label={t("voidReason")} required>{(p) => <Textarea {...p} value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>

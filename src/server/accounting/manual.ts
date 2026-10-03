@@ -307,7 +307,7 @@ export async function rematchUnmatched(orgId: string, opts: { userId?: string | 
 export const PaymentEdit = z.object({
   amount: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(), paymentDate: IsoDate.optional(),
   bankReference: z.string().trim().max(120).optional().nullable(), method: z.enum(["BANK_TRANSFER", "STRIPE_TRANSFER", "CASH", "OTHER"]).optional(),
-  notes: z.string().trim().max(2000).optional().nullable(), eventId: z.string().uuid().optional().nullable(), reason: Reason,
+  notes: z.string().trim().max(2000).optional().nullable(), eventId: z.string().uuid().optional().nullable(), organiserId: z.string().uuid().optional(), reason: Reason,
 });
 
 export async function editOrganiserPayment(a: Actor, id: string, input: z.infer<typeof PaymentEdit>) {
@@ -317,13 +317,22 @@ export async function editOrganiserPayment(a: Actor, id: string, input: z.infer<
     if (!p) throw new AppError("not_found", "Payment not found");
     if (p.status === "VOIDED") throw new AppError("invalid_state", "A voided payment cannot be edited.");
     const { reason, ...patch } = input;
+    // Linking to an event links the payment to that event's organiser too (the admin picks the event by its code).
     if (patch.eventId) {
       const [e] = await tx.select().from(schema.acctEvents).where(and(eq(schema.acctEvents.id, patch.eventId), eq(schema.acctEvents.organisationId, a.orgId)));
-      if (!e || e.organiserId !== p.organiserId) throw new AppError("validation_failed", "That event does not belong to this organiser.", [{ path: "eventId", message: "Choose one of the organiser's events." }]);
-      if (e.currency !== p.currency) throw new AppError("validation_failed", `The event is in ${e.currency.toUpperCase()}.`, [{ path: "eventId", message: "Currency must match the payment." }]);
+      if (!e) throw new AppError("validation_failed", "Event not found.", [{ path: "eventId", message: "Choose an event." }]);
+      if (!e.organiserId) throw new AppError("validation_failed", "That event has no organiser yet.", [{ path: "eventId", message: "Link an organiser to the event first." }]);
+      if (e.currency !== p.currency) throw new AppError("validation_failed", `The event is in ${e.currency.toUpperCase()} but the payment is in ${p.currency.toUpperCase()}.`, [{ path: "eventId", message: "Currency must match the payment." }]);
+      if (patch.organiserId && patch.organiserId !== e.organiserId) throw new AppError("validation_failed", "That event belongs to a different organiser.", [{ path: "organiserId", message: "Mismatch" }]);
+      patch.organiserId = e.organiserId;
+    } else if (patch.organiserId && patch.organiserId !== p.organiserId) {
+      const [o] = await tx.select({ id: schema.acctOrganisers.id }).from(schema.acctOrganisers).where(and(eq(schema.acctOrganisers.id, patch.organiserId), eq(schema.acctOrganisers.organisationId, a.orgId)));
+      if (!o) throw new AppError("validation_failed", "Organiser not found.", [{ path: "organiserId", message: "Choose an organiser." }]);
+      const curEvent = patch.eventId === null ? null : p.eventId;
+      if (curEvent) throw new AppError("validation_failed", "Remove the event link (or pick one of the new organiser's events) to change the organiser.", [{ path: "eventId", message: "Belongs to the previous organiser" }]);
     }
     const next = { ...p, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) } as typeof p;
-    const keys = ["amount", "paymentDate", "bankReference", "method", "notes", "eventId"] as const;
+    const keys = ["amount", "paymentDate", "bankReference", "method", "notes", "eventId", "organiserId"] as const;
     const changed = keys.filter((k) => (next[k] ?? null) !== (p[k] ?? null));
     if (!changed.length) return p;
     // Anything that changes the ledger (amount, date, event, reference, method) re-posts; a notes-only edit does not.
@@ -335,8 +344,8 @@ export async function editOrganiserPayment(a: Actor, id: string, input: z.infer<
       const entry = await postPayment(tx, a, { ...next, revision }, timezone);
       journalEntryId = entry.id;
     }
-    const [row] = await tx.update(schema.acctOrganiserPayments).set({ amount: next.amount, paymentDate: next.paymentDate, bankReference: next.bankReference, method: next.method, notes: next.notes, eventId: next.eventId, revision, journalEntryId, updatedBy: a.userId, updatedAt: new Date() }).where(eq(schema.acctOrganiserPayments.id, id)).returning();
-    await acctAudit(tx, { ...a, action: "organiser_payment.edited", entity: "organiser_payment", entityId: id, old: Object.fromEntries(changed.map((k) => [k, p[k]])), new: Object.fromEntries(changed.map((k) => [k, next[k]])), reason, extra: { eventId: next.eventId ?? p.eventId, organiserId: p.organiserId, currency: p.currency, reposted: reposts } });
+    const [row] = await tx.update(schema.acctOrganiserPayments).set({ amount: next.amount, paymentDate: next.paymentDate, bankReference: next.bankReference, method: next.method, notes: next.notes, eventId: next.eventId, organiserId: next.organiserId, revision, journalEntryId, updatedBy: a.userId, updatedAt: new Date() }).where(eq(schema.acctOrganiserPayments.id, id)).returning();
+    await acctAudit(tx, { ...a, action: "organiser_payment.edited", entity: "organiser_payment", entityId: id, old: Object.fromEntries(changed.map((k) => [k, p[k]])), new: Object.fromEntries(changed.map((k) => [k, next[k]])), reason, extra: { eventId: next.eventId ?? p.eventId, previousEventId: p.eventId, organiserId: next.organiserId, currency: p.currency, reposted: reposts } });
     return row!;
   });
 }

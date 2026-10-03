@@ -224,3 +224,20 @@ describe("booking fee added on top of the ticket price", () => {
     expect(await balanced(e.org.id)).toBe(0);
   });
 });
+
+describe("linking a payment to an event by code", () => {
+  it("moves the payment to the event's organiser and re-posts it; currency must match", async () => {
+    const e = await setup();
+    const other = await createOrganiser(e.actor, { name: "Other Promoter", email: null, companyName: null, vatNumber: null, address: null, internalRef: null, notes: null, active: true, bankDetails: null });
+    const ev2 = await createEvent(e.actor, { name: "Other Show", code: `OS-${randomBytes(2).toString("hex").toUpperCase()}`, currency: "gbp", organiserId: other.id, startsOn: null, status: "ACTIVE", notes: null, agreement: { percentBps: 1000, percentBasis: "ADDED", fixedPerTicket: 0, fixedEventFee: 0, stripeFeesBorneBy: "BILIT", chargebacksBorneBy: "ORGANISER", refundsReverseCommission: true, notes: null } });
+    const evEur = await createEvent(e.actor, { name: "Euro Show", code: `ES-${randomBytes(2).toString("hex").toUpperCase()}`, currency: "eur", organiserId: other.id, startsOn: null, status: "ACTIVE", notes: null, agreement: { percentBps: 0, percentBasis: "ADDED", fixedPerTicket: 0, fixedEventFee: 0, stripeFeesBorneBy: "BILIT", chargebacksBorneBy: "ORGANISER", refundsReverseCommission: true, notes: null } });
+    const p = await recordOrganiserPayment(e.actor, { mode: "test", organiserId: e.organiser.id, eventId: e.event.id, amount: 1000, currency: "gbp", paymentDate: new Date().toISOString().slice(0, 10), bankReference: null, method: "BANK_TRANSFER", notes: null, status: "PAID" });
+    await expectPg(editOrganiserPayment(e.actor, p.id, { eventId: evEur.id, reason: "wrong event" }), /is in EUR/);
+    const moved = await editOrganiserPayment(e.actor, p.id, { eventId: ev2.id, reason: "Paid for Other Show" });
+    expect(moved).toMatchObject({ eventId: ev2.id, organiserId: other.id });
+    const [a, b] = await Promise.all([eventFinancials(e.org.id, "test", { eventIds: [e.event.id] }), eventFinancials(e.org.id, "test", { eventIds: [ev2.id] })]);
+    expect(a[0]!.organiserPaid).toBe(0);
+    expect(b[0]!.organiserPaid).toBe(1000);
+    expect(await balanced(e.org.id)).toBe(0);
+  });
+});

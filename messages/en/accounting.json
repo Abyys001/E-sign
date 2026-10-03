@@ -976,7 +976,11 @@
     "payEdit": {
       "title": "Edit payment",
       "desc": "Changing the amount, date, method or reference reverses the original ledger entry and posts a corrected one.",
-      "saved": "Payment updated"
+      "saved": "Payment updated",
+      "event": "Event (by event code)",
+      "eventHint": "Links the payment to an event and its organiser. Only {c} events are listed — the payment currency must match.",
+      "noEvent": "Not linked to an event (organiser account only)",
+      "organiserChange": "This moves the payment from {from} to {to}."
     },
     "payView": {
       "title": "Payment",

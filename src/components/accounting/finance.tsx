@@ -283,14 +283,17 @@ export function PaymentEditDialog({ p, onClose, onSaved }: { p: PaymentRow; onCl
   const tp = useTranslations("accounting.payments");
   const c = useTranslations("common");
   const toast = useToast();
-  const [v, setV] = useState({ amount: toDecimalString(p.amount, p.currency), paymentDate: p.paymentDate, method: p.method, bankReference: p.bankReference ?? "", notes: p.notes ?? "", reason: "" });
+  const [v, setV] = useState({ amount: toDecimalString(p.amount, p.currency), paymentDate: p.paymentDate, method: p.method, bankReference: p.bankReference ?? "", notes: p.notes ?? "", eventId: p.eventId ?? "", reason: "" });
+  const { data: evs } = useApi<{ items: Array<{ id: string; name: string; code: string; currency: string; organiserId: string | null; organiserName: string | null }> }>("/api/accounting/events?pageSize=200");
+  const events = (evs?.items ?? []).filter((e) => e.currency === p.currency && e.organiserId);
+  const picked = events.find((e) => e.id === v.eventId);
   const [errs, setErrs] = useState<FieldErrors>({}); const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof v, x: string) => setV((o) => ({ ...o, [k]: x }));
   const submit = async () => {
     setBusy(true); setErr(null); setErrs({});
     try {
       let amount: number; try { amount = parseMajor(v.amount, p.currency); } catch (e) { setErrs({ amount: errMsg(e) }); return; }
-      await api(`/api/accounting/organiser-payments/${p.id}`, { method: "PATCH", json: { amount, paymentDate: v.paymentDate, method: v.method, bankReference: v.bankReference || null, notes: v.notes || null, reason: v.reason } });
+      await api(`/api/accounting/organiser-payments/${p.id}`, { method: "PATCH", json: { amount, paymentDate: v.paymentDate, method: v.method, bankReference: v.bankReference || null, notes: v.notes || null, eventId: v.eventId || null, reason: v.reason } });
       toast("ok", t("payEdit.saved")); onSaved(); onClose();
     } catch (e) { setErrs(fieldErrors(e)); setErr(errMsg(e)); } finally { setBusy(false); }
   };
@@ -302,6 +305,9 @@ export function PaymentEditDialog({ p, onClose, onSaved }: { p: PaymentRow; onCl
         <Field label={tp("date")} required error={errs.paymentDate}>{(x) => <Input {...x} type="date" value={v.paymentDate} onChange={(e) => set("paymentDate", e.target.value)} />}</Field>
         <Field label={tp("method")}>{(x) => <Select {...x} value={v.method} onChange={(e) => set("method", e.target.value)}>{METHODS.map((m) => <option key={m} value={m}>{tp(`m.${m}`)}</option>)}</Select>}</Field>
         <Field label={tp("reference")}>{(x) => <Input {...x} value={v.bankReference} onChange={(e) => set("bankReference", e.target.value)} />}</Field>
+        <div className="sm:col-span-2"><Field label={t("payEdit.event")} hint={t("payEdit.eventHint", { c: p.currency.toUpperCase() })} error={errs.eventId}>{(x) => <Select {...x} value={v.eventId} onChange={(e) => set("eventId", e.target.value)}>
+          <option value="">{t("payEdit.noEvent")}</option>{events.map((e) => <option key={e.id} value={e.id}>{e.code} · {e.name} · {e.organiserName}</option>)}</Select>}</Field>
+          {picked && p.organiserName && picked.organiserName !== p.organiserName && <p className="mt-1 text-xs text-fin-warn">{t("payEdit.organiserChange", { from: p.organiserName, to: picked.organiserName ?? "" })}</p>}</div>
         <div className="sm:col-span-2"><Field label={tp("notes")}>{(x) => <Textarea {...x} value={v.notes} onChange={(e) => set("notes", e.target.value)} className="min-h-16" />}</Field></div>
         <div className="sm:col-span-2"><Field label={t("changeReason")} required error={errs.reason}>{(x) => <Input {...x} value={v.reason} onChange={(e) => set("reason", e.target.value)} />}</Field></div>
         {err && <div className="sm:col-span-2"><Callout tone="warn">{err}</Callout></div>}
