@@ -135,6 +135,8 @@ describe("event financials, settlement and profitability", () => {
     const f = await fig(e);
     const o = await organiserFinancials(e.org.id, "test", e.organiser.id);
     expect(o.eventCount).toBe(1);
+    const { listOrganisers } = await import("@/server/accounting/queries");
+    expect((await listOrganisers(e.org.id, {}, { limit: 10, offset: 0 })).items.find((x) => x.id === e.organiser.id)?.eventCount).toBe(1);
     expect(o.totals[0]).toMatchObject({ grossSales: f.grossSales, bookingFees: f.bookingFees, organiserDue: f.organiserDue, organiserPaid: f.organiserPaid, remaining: f.remaining });
     const ov = await financeOverview(e.org.id, "test", {});
     expect(ov.totals.find((x) => x.currency === "gbp")).toMatchObject({ grossSales: f.grossSales, bilitProfit: f.bilitProfit, bookingFees: f.bookingFees });

@@ -101,7 +101,7 @@ export async function listOrganisers(orgId: string, f: { q?: string; active?: bo
   const o = schema.acctOrganisers;
   const where = and(eq(o.organisationId, orgId), f.active === undefined ? undefined : eq(o.active, f.active), f.q ? or(ilike(o.name, like(f.q)), ilike(o.companyName, like(f.q)), ilike(o.email, like(f.q)), ilike(o.internalRef, like(f.q))) : undefined);
   const [items, total] = await Promise.all([
-    db.select({ o, events: sql<number>`(select count(*)::int from acct_events e where e.organiser_id = ${o.id})` }).from(o).where(where).orderBy(asc(o.name)).limit(page.limit).offset(page.offset),
+    db.select({ o, events: sql<number>`(select count(*)::int from acct_events ev where ev.organiser_id = "acct_organisers"."id")` }).from(o).where(where).orderBy(asc(o.name)).limit(page.limit).offset(page.offset),
     count(o, where),
   ]);
   return { items: items.map((r) => ({ ...organiserView(r.o), eventCount: r.events })), total };
