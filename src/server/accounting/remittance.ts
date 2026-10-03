@@ -73,7 +73,8 @@ export async function remittancePdf(orgId: string, paymentId: string): Promise<{
   if (fig) {
     at(e ? `Settlement for this event as of ${p.paymentDate}` : `Your account as of ${p.paymentDate}`, M, y, { bold: true, size: 11 }); y += 20;
     const rows: Array<[string, number, boolean?]> = [
-      ["Ticket sales (gross)", fig.grossSales], ["Refunds & chargebacks", -(fig.refunds + fig.chargebacks)], ["Booking fees", -fig.bookingFees],
+      // Booking fees are not shown to organisers: ticket sales are stated net of them (what the tickets themselves sold for).
+      ["Ticket sales", fig.grossSales - fig.bookingFees], ["Refunds & chargebacks", -(fig.refunds + fig.chargebacks)],
       ...(fig.feesRecharged ? [["Payment processing fees charged", -fig.feesRecharged] as [string, number]] : []),
       ...(fig.deductions ? [["Other deductions", -fig.deductions] as [string, number]] : []),
       ["Amount due to you", fig.organiserDue, true], ["Paid to date (including this payment)", -fig.organiserPaid], ["Balance remaining", fig.remaining, true],
@@ -82,7 +83,7 @@ export async function remittancePdf(orgId: string, paymentId: string): Promise<{
       if (b) doc.moveTo(M, y - 3).lineTo(M + W, y - 3).lineWidth(b ? 0.8 : 0.3).strokeColor(C.rule).stroke();
       at(k, M, y, { size: 10, bold: b, width: W - 160 }); at(m(v), M, y, { size: 10, bold: b, width: W, align: "right" }); y += 18;
     }
-    if (fig.bookingFeesRefunded > 0) { y += 4; at(`Includes ${m(fig.bookingFeesRefunded)} of booking fees refunded to customers, which are charged to the organiser under the platform's non-refundable booking-fee policy.`, M, y, { size: 8.5, color: C.muted, width: W }); y = doc.y + 6; }
+    if (fig.bookingFeesRefunded > 0) { y += 4; at(`Refunds include ${m(fig.bookingFeesRefunded)} returned to customers on top of the ticket price, which is charged to you.`, M, y, { size: 8.5, color: C.muted, width: W }); y = doc.y + 6; }
     if (fig.remaining < 0) { y += 4; at(`A negative balance means ${m(-fig.remaining)} is owed to ${seller.name}.`, M, y, { size: 8.5, color: "#c0262d", width: W }); y = doc.y + 6; }
   }
   if (p.notes && !/entered on request|recorded in eur on request/i.test(p.notes)) { y += 10; at("Note", M, y, { size: 8, color: C.muted }); at(p.notes, M, y + 11, { size: 9.5, width: W }); y = doc.y + 6; }
