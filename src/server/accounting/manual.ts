@@ -1,11 +1,11 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema, type Tx } from "@/db";
 import { AppError } from "../errors";
 import type { RequestContext } from "../audit";
 import { acctAudit, Currency, ensureLedgerSetup, getAcctSettings, IsoDate, isLive, ModeSchema, type Mode } from "./core";
 import { postEntry, reverseEntry } from "./ledger";
-import { agreementOf, allocateFromSource, eventProblem, loadEvents, repost, type ImportContext } from "./importer";
+import { agreementOf, allocateDependent, allocateFromSource, eventProblem, loadEvents, repost, type ImportContext } from "./importer";
 import { ticketQuantity } from "./matcher";
 import type { StripeAccountRow, StripeGateway } from "./stripe-gateway";
 
@@ -278,7 +278,26 @@ export async function rematchUnmatched(orgId: string, opts: { userId?: string | 
       });
     }
   }
-  return { matched, updated };
+  // Refunds/chargebacks follow their sale: any still unassigned whose sale is now matched are re-derived and re-posted.
+  let refunds = 0;
+  for (const acc of accs) {
+    const bt = schema.stripeBalanceTransactions;
+    const rows = await db.select({ id: bt.id }).from(bt).where(and(eq(bt.stripeAccountRef, acc.id), inArray(bt.kind, ["REFUND", "DISPUTE", "DISPUTE_REVERSAL"]), eq(bt.matchStatus, "UNMATCHED"), sql`coalesce(${bt.matchMethod}, '') <> 'MANUAL'`,
+      sql`exists (select 1 from stripe_balance_transactions s where s.stripe_account_ref = ${bt.stripeAccountRef} and s.charge_id = ${bt.chargeId} and s.kind = 'SALE' and s.match_status = 'MATCHED')`)).limit(20_000);
+    for (const { id } of rows) {
+      await db.transaction(async (tx) => {
+        const [row] = await tx.select().from(bt).where(eq(bt.id, id)).for("update");
+        if (!row || row.matchStatus !== "UNMATCHED" || row.matchMethod === "MANUAL") return;
+        const ctx = await offlineContext(tx, acc);
+        const al = await allocateDependent(tx, ctx, row.chargeId);
+        if (al.matchStatus !== "MATCHED") return;
+        const up = await repost(tx, ctx, row, al, { userId: opts.userId, reason: "Refund linked to its (now matched) sale" });
+        await tx.insert(schema.acctMatchHistory).values({ organisationId: orgId, balanceTransactionRef: row.id, action: "AUTO_MATCH", fromEventId: row.eventId, toEventId: al.eventId, fromOrganiserId: row.organiserId, toOrganiserId: al.organiserId, fromStatus: row.reconciliationStatus, toStatus: up.reconciliationStatus, reason: "Inherited from original sale", userId: opts.userId ?? null });
+        refunds++;
+      });
+    }
+  }
+  return { matched, updated, refunds };
 }
 
 // ---------- organiser payment edits (re-post: reversal of the old entry + a new entry; the history stays) ----------

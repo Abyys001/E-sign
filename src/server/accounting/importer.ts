@@ -116,7 +116,7 @@ export function allocateFromSource(ctx: Pick<ImportContext, "settings" | "events
 }
 
 /** Refunds and disputes follow their original sale: same event, organiser and agreement version. */
-async function allocateDependent(tx: Tx, ctx: ImportContext, chargeId: string | null): Promise<Allocation> {
+export async function allocateDependent(tx: Tx, ctx: ImportContext, chargeId: string | null): Promise<Allocation> {
   const base = { eventId: null, organiserId: null, agreement: null, eventCode: null, matchStatus: "UNMATCHED" as const, matchMethod: null, ticketQuantity: null, original: null };
   if (!chargeId) return { ...base, matchReason: "ORIGINAL_MISSING" };
   const [orig] = await tx.select().from(schema.stripeBalanceTransactions).where(and(eq(schema.stripeBalanceTransactions.stripeAccountRef, ctx.acc.id), eq(schema.stripeBalanceTransactions.chargeId, chargeId), eq(schema.stripeBalanceTransactions.kind, "SALE")));

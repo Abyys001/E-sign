@@ -73,6 +73,8 @@ export async function executeRun(runId: string) {
         if (!page.hasMore || !page.data.length) break;
       }
       summary.payouts = await syncPayouts(ctx, run, c);
+      // Every sync ends by re-linking anything that can now be matched (sales to new events, refunds to their sale).
+      summary.rematch = await rematchUnmatched(acc!.organisationId);
       summary.reconciliation = await reconcile(ctx);
     }
     const status = c.errors > 0 ? "PARTIAL" : "SUCCEEDED";

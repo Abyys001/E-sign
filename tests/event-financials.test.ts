@@ -153,3 +153,24 @@ describe("event financials, settlement and profitability", () => {
     expect(JSON.stringify(p)).not.toMatch(/bilitProfit|processingFees|expensesBilit/);
   });
 });
+
+describe("refunds follow their sale automatically", () => {
+  it("a refund imported while its sale was unmatched is re-linked and recalculated once the event exists", async () => {
+    const e = await setup();
+    const code = `LATE-${randomBytes(2).toString("hex").toUpperCase()}`;
+    const s = e.fake.sale({ amount: 8000, fee: 200, currency: "gbp", description: `Order (z1) for event: Late Show (${code})` });
+    await importBalanceTransaction(await e.ctx(), s.bt);
+    const r = await importBalanceTransaction(await e.ctx(), e.fake.refund(s.charge, 3000).bt);
+    expect(r.row).toMatchObject({ matchStatus: "UNMATCHED", matchReason: "ORIGINAL_UNMATCHED" });
+    // Simulate a refund left behind (e.g. the sale was matched by a path that did not cascade).
+    const { rematchUnmatched } = await import("@/server/accounting/manual");
+    await createEvent(e.actor, { name: "Late Show", code, currency: "gbp", organiserId: e.organiser.id, startsOn: null, status: "ACTIVE", notes: null, agreement: { percentBps: 1000, percentBasis: "GROSS", fixedPerTicket: 0, fixedEventFee: 0, stripeFeesBorneBy: "BILIT", chargebacksBorneBy: "ORGANISER", refundsReverseCommission: true, notes: null } });
+    await rematchUnmatched(e.org.id);
+    const [row] = await db.select().from(schema.stripeBalanceTransactions).where(eq(schema.stripeBalanceTransactions.id, r.row.id));
+    expect(row).toMatchObject({ matchStatus: "MATCHED", matchMethod: "INHERITED", commissionAmount: -300, organiserAmount: -2700 });
+    const [ev] = await db.select().from(schema.acctEvents).where(eq(schema.acctEvents.code, code));
+    const f = (await eventFinancials(e.org.id, "test", { eventIds: [ev!.id] }))[0]!;
+    expect(f).toMatchObject({ grossSales: 8000, refunds: 3000, bookingFees: 500, organiserDue: 4500 });
+    expect(await balanced(e.org.id)).toBe(0);
+  });
+});
