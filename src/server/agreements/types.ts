@@ -1,6 +1,7 @@
 import type { Condition } from "../clauses/condition";
 import type { Module } from "../clauses/types";
 import { PROMOTER_MASTER, PROMOTER_SCHEDULE } from "../clauses/library/promoter";
+import { PROMOTER_GLOBAL } from "../clauses/library/promoter-global";
 
 export type AgreementSelection = { clauseKey: string; required?: boolean; condition?: Condition };
 export type AgreementTypeDef = {
@@ -10,6 +11,8 @@ export type AgreementTypeDef = {
   modules: Module[];
   /** Clauses selected by default. Each is optional in the selector unless `required`. */
   clauses: AgreementSelection[];
+  /** Sections render in clause order with the document's own numbering (e.g. the user's global promoter agreement). */
+  ordered?: boolean;
 };
 
 const CORE_HEAD: AgreementSelection[] = [
@@ -61,5 +64,7 @@ export const AGREEMENT_TYPES: AgreementTypeDef[] = [
     modules: ["core", "ticketing", "venue", "production", "marketing", "artist"], clauses: PROMOTER_MASTER.map((c) => ({ clauseKey: c.key, required: true })) },
   { key: "promoter_event_schedule", name: "Bilit.Events Event Schedule (under the Promoter Master Agreement)", purpose: "Per-event commercial terms that form part of the Promoter & Event Services Master Agreement: event details, ticket prices, booking fee, commission, settlement, advance, reserve, refund and cancellation terms, local law and special conditions.",
     modules: ["core", "ticketing"], clauses: PROMOTER_SCHEDULE.map((c) => ({ clauseKey: c.key, required: true })) },
+  { key: "promoter_global", name: "Bilit.Events Promoter & Event Services Agreement (Global)", purpose: "One agreement per promoter covering all of their events (Bilit's own text, sections 1–64). Only the promoter's company details are needed; event and commercial details are agreed per event in Event Schedules.",
+    modules: ["core", "ticketing"], ordered: true, clauses: PROMOTER_GLOBAL.map((c) => ({ clauseKey: c.key, required: true })) },
 ];
 export const agreementType = (key: string) => AGREEMENT_TYPES.find((a) => a.key === key);

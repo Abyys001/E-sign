@@ -1,3 +1,4 @@
+import { companyVariables } from "../accounting/invoices";
 import { and, desc, eq } from "drizzle-orm";
 import { db, schema, type Tx } from "@/db";
 import { audit, type RequestContext } from "../audit";
@@ -37,8 +38,9 @@ export async function computeCoverage(orgId: string, templateVersionId: string, 
   const mapped = new Set<string>();
   if (schemaJson) for (const f of allFields(schemaJson)) { if (f.variable) mapped.add(f.variable); for (const v of Object.values(f.variableMap ?? {})) mapped.add(v); }
   const fixed = new Set(Object.keys(settings.fixedValues));
+  const company = new Set(Object.keys(await companyVariables(orgId, dbOrTx)));
   const out: Coverage = { needed, fromForm: [], fixed: [], derived: [...derived], auto: [], missing: [] };
-  for (const k of needed) (AUTO_VARIABLES.has(k) ? out.auto : fixed.has(k) ? out.fixed : mapped.has(k) ? out.fromForm : out.missing).push(k);
+  for (const k of needed) (AUTO_VARIABLES.has(k) || company.has(k) ? out.auto : fixed.has(k) ? out.fixed : mapped.has(k) ? out.fromForm : out.missing).push(k);
   return { coverage: out, templateVersion: tv, versions, defs: mergeDefs((tv.variables as VariableDef[]) ?? []) };
 }
 

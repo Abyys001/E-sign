@@ -35,6 +35,9 @@ export async function renderAgreementPdf(d: RenderInput): Promise<RenderedAgreem
   };
   const ensure = (h: number) => { if (doc.y + h > H - M - 20) doc.addPage(); };
 
+  // The logo is drawn for dark backgrounds: give it a dark plate so it stays legible on the white page.
+  const logo = (doc as unknown as { openImage(src: unknown): { width: number; height: number } }).openImage(f.logo); const lw = (logo.width / logo.height) * 26;
+  doc.roundedRect(M - 8, M - 16, lw + 16, 42, 6).fill("#14141b");
   doc.image(f.logo, M, M - 8, { height: 26 });
   doc.y = M + 34;
   text(d.title, { bold: true, size: 17, gap: 0.4 });
@@ -46,7 +49,7 @@ export async function renderAgreementPdf(d: RenderInput): Promise<RenderedAgreem
     text(`${s.number}. ${s.category}`, { bold: true, size: 11, color: C.primary, gap: 0.3 });
     for (const cl of s.clauses) {
       ensure(60);
-      text(`${cl.number}  ${cl.title}`, { bold: true, size: 10, gap: 0.15 });
+      if (cl.title.toUpperCase() !== s.category.toUpperCase()) text(`${cl.number}  ${cl.title}`, { bold: true, size: 10, gap: 0.15 });
       for (const para of cl.body.split("\n")) { if (para.trim()) { ensure(28); text(para, { size: 9.5, gap: 0.25 }); } }
       doc.moveDown(0.4);
     }

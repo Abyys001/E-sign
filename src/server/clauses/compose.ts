@@ -41,6 +41,8 @@ export function composeClauses(args: {
   values: VariableValues;
   customDefs?: VariableDef[];
   optionalVars?: ReadonlySet<string>;
+  /** Keep sections in selection order (agreements with their own fixed numbering) instead of the standard category order. */
+  keepOrder?: boolean;
 }): ComposeResult {
   const defs = mergeDefs(args.customDefs);
   const optional = args.optionalVars ?? new Set<string>();
@@ -65,7 +67,7 @@ export function composeClauses(args: {
 
   const order = [...CATEGORIES] as string[];
   const sections = [...byCat.entries()]
-    .sort((a, b) => (order.indexOf(a[0]) === -1 ? 99 : order.indexOf(a[0])) - (order.indexOf(b[0]) === -1 ? 99 : order.indexOf(b[0])))
+    .sort((a, b) => args.keepOrder ? 0 : (order.indexOf(a[0]) === -1 ? 99 : order.indexOf(a[0])) - (order.indexOf(b[0]) === -1 ? 99 : order.indexOf(b[0])))
     .map(([category, clauses], i): ComposedSection => ({ category, number: i + 1, clauses: clauses.map((c, j) => ({ ...c, number: `${i + 1}.${j + 1}` })) }));
   return { sections, included, excluded, unresolved };
 }

@@ -51,6 +51,8 @@ export const BUILTIN_VARIABLES: VariableDef[] = [
   v("support_email", "Bilit support email", "email", "contract"),
   v("bilit_company_number", "Bilit company number", "text", "parties"),
   v("bilit_country", "Bilit country of registration", "text", "parties"),
+  v("bilit_customer_number", "Bilit customer number", "text", "parties"),
+  v("bilit_zone", "Bilit zone", "text", "parties"),
   v("organiser_trading_name", "Promoter trading name", "text", "parties"),
   v("organiser_country", "Promoter country", "country", "parties"),
   v("master_agreement_ref", "Master agreement reference", "text", "contract"),

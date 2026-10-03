@@ -33,12 +33,17 @@ export type InvoiceSettings = z.infer<typeof InvoiceSettings>;
 export const registrationLines = (s: { companyNumber?: string | null; customerNumber?: string | null; zone?: string | null; vatNumber?: string | null }) =>
   [s.companyNumber && `Company Registration No. ${s.companyNumber}`, s.customerNumber && `Customer No. ${s.customerNumber}`, s.zone && `Zone: ${s.zone}`, s.vatNumber && `VAT No. ${s.vatNumber}`].filter((x): x is string => !!x);
 
-/** Bilit's legal identity for contracts (no accounting feature flag needed). */
-export async function contractCompany(orgId: string) {
-  const [row] = await db.select({ v: schema.acctSettings.invoiceSettings }).from(schema.acctSettings).where(eq(schema.acctSettings.organisationId, orgId));
+/**
+ * Contract variables supplied by the organisation's own company details (Finance settings → Invoices), so intake forms
+ * never ask for them. Only keys with a value are returned. No accounting feature flag needed.
+ */
+export async function companyVariables(orgId: string, dbOrTx: Pick<typeof db, "select"> = db): Promise<Record<string, string>> {
+  const [row] = await dbOrTx.select({ v: schema.acctSettings.invoiceSettings }).from(schema.acctSettings).where(eq(schema.acctSettings.organisationId, orgId));
   const p = InvoiceSettings.safeParse(row?.v ?? {});
   const s = p.success ? p.data : InvoiceSettings.parse({});
-  return { legalName: s.legalName, companyNumber: s.companyNumber, registeredIn: s.registeredIn, address: s.address };
+  const office = s.address ?? (s.registeredIn ? s.registeredIn.replace(/^the /, "").replace(/^./, (c) => c.toUpperCase()) : null);
+  const out: Record<string, string | null> = { organisation_name: s.legalName, bilit_company_number: s.companyNumber, bilit_customer_number: s.customerNumber, bilit_zone: s.zone, bilit_country: s.registeredIn, organisation_address: office };
+  return Object.fromEntries(Object.entries(out).filter((e): e is [string, string] => !!e[1]));
 }
 
 export async function getInvoiceSettings(orgId: string, tx: Tx | typeof db = db): Promise<InvoiceSettings> {
