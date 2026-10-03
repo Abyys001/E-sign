@@ -9,7 +9,7 @@ export type Me = {
   activeOrganisationId: string;
   branding: { orgName: string; logoObjectId: string | null; primaryColor: string | null; supportEmail: string };
   roleKey: string;
-  features: { accounting: boolean };
+  features: { accounting: boolean; organiserPortal?: boolean };
   permissions: string[];
   elevated: boolean;
   settings: { general: { timezone: string; defaultLocale: string }; signing: { allowTyped: boolean; allowDrawn: boolean; allowUploaded: boolean; defaultExpiryDays: number; defaultAuthLevel: string; defaultSigningOrder: string }; sms: { enabled: boolean } };

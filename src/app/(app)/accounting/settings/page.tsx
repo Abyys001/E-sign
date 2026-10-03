@@ -11,10 +11,11 @@ import { useToast } from "@/components/ui/toast";
 import { api, errMsg, useApi } from "@/lib/api";
 
 type Rule = { type: "METADATA"; key: string } | { type: "EXACT" } | { type: "PREFIX"; prefix: string } | { type: "REGEX"; pattern: string };
-type S = { baseCurrency: string; defaultMode: "test" | "live"; matchRules: Rule[]; ticketQuantityKey: string; timezone: string };
+type S = { baseCurrency: string; defaultMode: "test" | "live"; matchRules: Rule[]; ticketQuantityKey: string; timezone: string; reportingCurrency: string | null; fxRates: Record<string, string> };
 
 export default function FinanceSettings() {
   const t = useTranslations("accounting.settings");
+  const tf = useTranslations("accounting.fin");
   const toast = useToast();
   const { can } = useMe();
   const { data, reload } = useApi<S>("/api/accounting/settings");
@@ -24,7 +25,7 @@ export default function FinanceSettings() {
   const admin = can("accounting.admin");
   const setRule = (i: number, r: Rule) => setV({ ...v, matchRules: v.matchRules.map((x, j) => (j === i ? r : x)) });
   const move = (i: number, d: number) => { const r = [...v.matchRules]; const [x] = r.splice(i, 1); r.splice(i + d, 0, x!); setV({ ...v, matchRules: r }); };
-  const save = async () => { setBusy(true); setErr(null); try { await api("/api/accounting/settings", { method: "PATCH", json: { baseCurrency: v.baseCurrency, defaultMode: v.defaultMode, matchRules: v.matchRules, ticketQuantityKey: v.ticketQuantityKey } }); toast("ok", t("saved")); await reload(); } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); } };
+  const save = async () => { setBusy(true); setErr(null); try { await api("/api/accounting/settings", { method: "PATCH", json: { baseCurrency: v.baseCurrency, defaultMode: v.defaultMode, matchRules: v.matchRules, ticketQuantityKey: v.ticketQuantityKey, reportingCurrency: v.reportingCurrency || null, fxRates: Object.fromEntries(Object.entries(v.fxRates).filter(([k, x]) => k && x)) } }); toast("ok", t("saved")); await reload(); } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); } };
   return (
     <div className="space-y-6">
       <PageHeader title={t("title")} description={t("sub")} actions={<LinkButton href="/accounting/stripe">{t("stripe")}</LinkButton>} />
@@ -46,6 +47,15 @@ export default function FinanceSettings() {
         </li>)}</ol>
         {admin && <div className="border-t border-line px-5 py-3"><Button size="sm" disabled={v.matchRules.length >= 10} onClick={() => setV({ ...v, matchRules: [...v.matchRules, { type: "PREFIX", prefix: "EVT-" }] })}><Plus className="size-4" aria-hidden />{t("addRule")}</Button></div>}
       </Card>
+      <Card><CardHeader title={tf("fx.title")} description={tf("fx.desc")} /><div className="space-y-4 p-5">
+        <Field label={tf("fx.currency")} hint={tf("fx.currencyHint")}>{(p) => <Input {...p} disabled={!admin} value={v.reportingCurrency ?? ""} maxLength={3} onChange={(e) => setV({ ...v, reportingCurrency: e.target.value.toLowerCase() || null })} className="w-28 uppercase" placeholder="gbp" />}</Field>
+        {v.reportingCurrency && <ul className="space-y-2">{Object.entries(v.fxRates).map(([c, r], i) => <li key={i} className="flex flex-wrap items-center gap-2 text-sm">
+          <span>1</span><Input aria-label={tf("fx.from")} disabled={!admin} value={c} maxLength={3} onChange={(e) => { const next = Object.entries(v.fxRates); next[i] = [e.target.value.toLowerCase(), r]; setV({ ...v, fxRates: Object.fromEntries(next) }); }} className="w-20 uppercase" />
+          <span>=</span><Input aria-label={tf("fx.rate")} disabled={!admin} value={r} inputMode="decimal" onChange={(e) => setV({ ...v, fxRates: { ...v.fxRates, [c]: e.target.value } })} className="w-32 text-end" /><span className="uppercase">{v.reportingCurrency}</span>
+          {admin && <Button size="icon" variant="ghost" aria-label={tf("fx.remove")} onClick={() => { const n = { ...v.fxRates }; delete n[c]; setV({ ...v, fxRates: n }); }}><Trash2 className="size-4" /></Button>}</li>)}</ul>}
+        {admin && v.reportingCurrency && <Button size="sm" onClick={() => setV({ ...v, fxRates: { ...v.fxRates, "": "" } })} disabled={"" in v.fxRates}><Plus className="size-4" aria-hidden />{tf("fx.add")}</Button>}
+        <p className="text-xs text-muted">{tf("fx.note")}</p>
+      </div></Card>
       <Callout title={t("howTitle")}>{t("how")}</Callout>
       {err && <Callout tone="warn">{err}</Callout>}
       {admin && <div className="flex justify-end"><Button variant="primary" loading={busy} onClick={save}>{t("save")}</Button></div>}

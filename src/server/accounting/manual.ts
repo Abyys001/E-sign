@@ -100,8 +100,8 @@ async function postPayment(tx: Tx, a: Actor, p: typeof schema.acctOrganiserPayme
   const [o] = await tx.select({ name: schema.acctOrganisers.name }).from(schema.acctOrganisers).where(eq(schema.acctOrganisers.id, p.organiserId));
   const { entry } = await postEntry(tx, {
     orgId: a.orgId, livemode: p.livemode, entryType: "ORGANISER_PAYMENT", sourceDate: new Date(`${p.paymentDate}T12:00:00Z`), entryDate: p.paymentDate, currency: p.currency,
-    description: `Payment to organiser ${o?.name ?? ""}${p.bankReference ? ` — ${p.bankReference}` : ""}`, reference: p.bankReference, eventId: p.eventId, organiserId: p.organiserId,
-    sourceType: "organiser_payment", sourceId: p.id, idempotencyKey: `orgpay:${p.id}`, createdBy: a.userId, timezone: tz,
+    description: `Payment to organiser ${o?.name ?? ""}${p.bankReference ? ` — ${p.bankReference}` : ""}${p.revision ? ` (revision ${p.revision})` : ""}`, reference: p.bankReference, eventId: p.eventId, organiserId: p.organiserId,
+    sourceType: "organiser_payment", sourceId: p.id, idempotencyKey: `orgpay:${p.id}${p.revision ? `:r${p.revision}` : ""}`, createdBy: a.userId, timezone: tz,
     postings: [{ account: "organiser_payable", amount: p.amount, eventId: p.eventId, organiserId: p.organiserId, memo: "Paid to organiser" }, { account: "bank", amount: -p.amount, eventId: p.eventId, organiserId: p.organiserId, memo: p.method }],
   });
   return entry;
@@ -139,7 +139,7 @@ export async function markPaymentPaid(a: Actor, id: string, paymentDate?: string
     const [withDate] = await tx.update(schema.acctOrganiserPayments).set({ status: "PAID", paymentDate: paymentDate ?? p.paymentDate, updatedAt: new Date() }).where(eq(schema.acctOrganiserPayments.id, id)).returning();
     const entry = await postPayment(tx, a, withDate!, timezone);
     const [row] = await tx.update(schema.acctOrganiserPayments).set({ journalEntryId: entry.id }).where(eq(schema.acctOrganiserPayments.id, id)).returning();
-    await acctAudit(tx, { ...a, action: "organiser_payment.paid", entity: "organiser_payment", entityId: id, old: { status: "PENDING" }, new: { status: "PAID", paymentDate: row!.paymentDate } });
+    await acctAudit(tx, { ...a, action: "organiser_payment.paid", entity: "organiser_payment", entityId: id, old: { status: "PENDING" }, new: { status: "PAID", paymentDate: row!.paymentDate }, extra: { eventId: p.eventId, amount: p.amount, currency: p.currency } });
     return row!;
   });
 }
@@ -153,7 +153,7 @@ export async function voidOrganiserPayment(a: Actor, id: string, reason: string)
     if (p.status === "VOIDED") throw new AppError("invalid_state", "This payment is already voided.");
     const rev = p.journalEntryId ? await reverseEntry(tx, { orgId: a.orgId, entryId: p.journalEntryId, reason, userId: a.userId, timezone }) : null;
     const [row] = await tx.update(schema.acctOrganiserPayments).set({ status: "VOIDED", voidEntryId: rev?.id ?? null, voidReason: reason, voidedBy: a.userId, voidedAt: new Date(), updatedAt: new Date() }).where(eq(schema.acctOrganiserPayments.id, id)).returning();
-    await acctAudit(tx, { ...a, action: "organiser_payment.voided", entity: "organiser_payment", entityId: id, old: { status: p.status }, new: { status: "VOIDED" }, reason });
+    await acctAudit(tx, { ...a, action: "organiser_payment.voided", entity: "organiser_payment", entityId: id, old: { status: p.status }, new: { status: "VOIDED" }, reason, extra: { eventId: p.eventId, amount: p.amount, currency: p.currency, reference: p.bankReference } });
     return row!;
   });
 }
@@ -227,7 +227,7 @@ export async function postEventFee(a: Actor, eventId: string, mode: Mode, date: 
       postings: [{ account: "organiser_payable", amount: ag.fixedEventFee, ...dims, memo: "Event fee charged to organiser" }, { account: "bilit_commission", amount: -ag.fixedEventFee, ...dims, memo: "Event fee" }],
     });
     if (!created) throw new AppError("conflict", "The event fee for this agreement version has already been charged.");
-    await acctAudit(tx, { ...a, action: "event_fee.posted", entity: "event", entityId: eventId, new: { amount: ag.fixedEventFee, agreementVersion: r.ag.version, mode } });
+    await acctAudit(tx, { ...a, action: "event_fee.posted", entity: "event", entityId: eventId, extra: { eventId }, new: { amount: ag.fixedEventFee, agreementVersion: r.ag.version, mode } });
     return entry;
   });
 }
@@ -279,4 +279,86 @@ export async function rematchUnmatched(orgId: string, opts: { userId?: string | 
     }
   }
   return { matched, updated };
+}
+
+// ---------- organiser payment edits (re-post: reversal of the old entry + a new entry; the history stays) ----------
+export const PaymentEdit = z.object({
+  amount: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(), paymentDate: IsoDate.optional(),
+  bankReference: z.string().trim().max(120).optional().nullable(), method: z.enum(["BANK_TRANSFER", "STRIPE_TRANSFER", "CASH", "OTHER"]).optional(),
+  notes: z.string().trim().max(2000).optional().nullable(), eventId: z.string().uuid().optional().nullable(), reason: Reason,
+});
+
+export async function editOrganiserPayment(a: Actor, id: string, input: z.infer<typeof PaymentEdit>) {
+  return db.transaction(async (tx) => {
+    const { timezone } = await getAcctSettings(a.orgId, tx);
+    const [p] = await tx.select().from(schema.acctOrganiserPayments).where(and(eq(schema.acctOrganiserPayments.id, id), eq(schema.acctOrganiserPayments.organisationId, a.orgId))).for("update");
+    if (!p) throw new AppError("not_found", "Payment not found");
+    if (p.status === "VOIDED") throw new AppError("invalid_state", "A voided payment cannot be edited.");
+    const { reason, ...patch } = input;
+    if (patch.eventId) {
+      const [e] = await tx.select().from(schema.acctEvents).where(and(eq(schema.acctEvents.id, patch.eventId), eq(schema.acctEvents.organisationId, a.orgId)));
+      if (!e || e.organiserId !== p.organiserId) throw new AppError("validation_failed", "That event does not belong to this organiser.", [{ path: "eventId", message: "Choose one of the organiser's events." }]);
+      if (e.currency !== p.currency) throw new AppError("validation_failed", `The event is in ${e.currency.toUpperCase()}.`, [{ path: "eventId", message: "Currency must match the payment." }]);
+    }
+    const next = { ...p, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) } as typeof p;
+    const keys = ["amount", "paymentDate", "bankReference", "method", "notes", "eventId"] as const;
+    const changed = keys.filter((k) => (next[k] ?? null) !== (p[k] ?? null));
+    if (!changed.length) return p;
+    // Anything that changes the ledger (amount, date, event, reference, method) re-posts; a notes-only edit does not.
+    const reposts = p.status === "PAID" && changed.some((k) => k !== "notes");
+    let journalEntryId = p.journalEntryId, revision = p.revision;
+    if (reposts) {
+      if (p.journalEntryId) await reverseEntry(tx, { orgId: a.orgId, entryId: p.journalEntryId, reason: `Payment edited: ${reason}`, userId: a.userId, timezone, idempotencyKey: `reversal:${p.journalEntryId}` });
+      revision = p.revision + 1;
+      const entry = await postPayment(tx, a, { ...next, revision }, timezone);
+      journalEntryId = entry.id;
+    }
+    const [row] = await tx.update(schema.acctOrganiserPayments).set({ amount: next.amount, paymentDate: next.paymentDate, bankReference: next.bankReference, method: next.method, notes: next.notes, eventId: next.eventId, revision, journalEntryId, updatedBy: a.userId, updatedAt: new Date() }).where(eq(schema.acctOrganiserPayments.id, id)).returning();
+    await acctAudit(tx, { ...a, action: "organiser_payment.edited", entity: "organiser_payment", entityId: id, old: Object.fromEntries(changed.map((k) => [k, p[k]])), new: Object.fromEntries(changed.map((k) => [k, next[k]])), reason, extra: { eventId: next.eventId ?? p.eventId, organiserId: p.organiserId, currency: p.currency, reposted: reposts } });
+    return row!;
+  });
+}
+
+// ---------- booking fee (per event) ----------
+export const BookingFeeInput = z.object({ percentBps: z.number().int().min(0).max(10_000), applyToExisting: z.boolean().default(true), reason: Reason });
+
+/**
+ * Change an event's booking fee %. A new agreement version is created (other terms unchanged). With `applyToExisting`
+ * every sale already booked to the event (and its refunds/disputes) is re-posted with the new rate: the old postings are
+ * reversed, never edited, so the change is visible in the ledger and the audit log.
+ */
+export async function setBookingFee(a: Actor, eventId: string, input: z.infer<typeof BookingFeeInput>) {
+  return db.transaction(async (tx) => {
+    const [ev] = await tx.select().from(schema.acctEvents).where(and(eq(schema.acctEvents.id, eventId), eq(schema.acctEvents.organisationId, a.orgId))).for("update");
+    if (!ev) throw new AppError("not_found", "Event not found");
+    const [prev] = ev.currentAgreementId ? await tx.select().from(schema.acctAgreements).where(eq(schema.acctAgreements.id, ev.currentAgreementId)) : [];
+    if (prev && prev.percentBps === input.percentBps && !input.applyToExisting) throw new AppError("invalid_state", "The booking fee is already set to that percentage.");
+    const [m] = await tx.select({ v: sql<number>`coalesce(max(${schema.acctAgreements.version}), 0)::int` }).from(schema.acctAgreements).where(eq(schema.acctAgreements.eventId, eventId));
+    const terms = prev ? { percentBasis: prev.percentBasis, fixedPerTicket: prev.fixedPerTicket, fixedEventFee: prev.fixedEventFee, stripeFeesBorneBy: prev.stripeFeesBorneBy, chargebacksBorneBy: prev.chargebacksBorneBy, refundsReverseCommission: prev.refundsReverseCommission } : {};
+    const [ag] = await tx.insert(schema.acctAgreements).values({ organisationId: a.orgId, eventId, version: (m?.v ?? 0) + 1, percentBps: input.percentBps, ...terms, notes: `Booking fee changed: ${input.reason}`.slice(0, 1000), createdBy: a.userId }).returning();
+    await tx.update(schema.acctEvents).set({ currentAgreementId: ag!.id, updatedAt: new Date() }).where(eq(schema.acctEvents.id, eventId));
+    let reposted = 0;
+    if (input.applyToExisting) {
+      const bt = schema.stripeBalanceTransactions;
+      const accs = await tx.select().from(schema.stripeAccounts).where(eq(schema.stripeAccounts.organisationId, a.orgId));
+      for (const acc of accs) {
+        const ctx = await offlineContext(tx, acc);
+        const agreement = ctx.eventsById.get(eventId)!.agreement!;
+        const sales = await tx.select().from(bt).where(and(eq(bt.stripeAccountRef, acc.id), eq(bt.eventId, eventId), eq(bt.matchStatus, "MATCHED"), eq(bt.kind, "SALE"))).for("update");
+        for (const row of sales) {
+          await repost(tx, ctx, row, { eventId, organiserId: row.organiserId, agreement, eventCode: row.eventCode, matchStatus: "MATCHED", matchReason: row.matchReason, matchMethod: row.matchMethod, ticketQuantity: row.ticketQuantity, original: null }, { userId: a.userId, reason: `Booking fee changed to ${input.percentBps / 100}%: ${input.reason}` });
+          reposted++;
+        }
+        // Refunds/disputes assigned by hand are not re-derived automatically; bring them onto the new rate too.
+        const manual = await tx.select().from(bt).where(and(eq(bt.stripeAccountRef, acc.id), eq(bt.eventId, eventId), eq(bt.matchStatus, "MATCHED"), sql`${bt.kind} <> 'SALE'`, sql`${bt.agreementId} is distinct from ${ag!.id}`)).for("update");
+        for (const row of manual) {
+          const [o] = row.chargeId ? await tx.select().from(bt).where(and(eq(bt.stripeAccountRef, acc.id), eq(bt.chargeId, row.chargeId), eq(bt.kind, "SALE"))) : [];
+          await repost(tx, ctx, row, { eventId, organiserId: row.organiserId, agreement, eventCode: row.eventCode, matchStatus: "MATCHED", matchReason: row.matchReason, matchMethod: row.matchMethod, ticketQuantity: row.ticketQuantity, original: o?.eventId === eventId ? { amount: o.amount, commission: o.commissionAmount ?? 0 } : null }, { userId: a.userId, reason: `Booking fee changed: ${input.reason}` });
+          reposted++;
+        }
+      }
+    }
+    await acctAudit(tx, { ...a, action: "booking_fee.changed", entity: "event", entityId: eventId, old: { percentBps: prev?.percentBps ?? null, version: prev?.version ?? null }, new: { percentBps: input.percentBps, version: ag!.version }, reason: input.reason, extra: { eventId, eventName: ev.name, applyToExisting: input.applyToExisting, reposted } });
+    return { agreement: ag!, reposted };
+  });
 }

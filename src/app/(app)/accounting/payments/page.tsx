@@ -2,10 +2,11 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Banknote, CheckCircle2, Undo2 } from "lucide-react";
+import { Banknote, CheckCircle2, Download, Eye, Pencil, Trash2 } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
-import { Badge, Money, useMode } from "@/components/accounting/kit";
+import { Badge, Money, useExport, useMode } from "@/components/accounting/kit";
+import { PaymentEditDialog, PaymentViewDialog } from "@/components/accounting/finance";
 import { PaymentDialog } from "@/components/accounting/forms";
 import { Button } from "@/components/ui/button";
 import { Card, PageHeader } from "@/components/ui/card";
@@ -28,12 +29,16 @@ export default function PaymentsPage() {
   const { mode, q } = useMode();
   const [status, setStatus] = useState(""); const [page, setPage] = useState(1); const [open, setOpen] = useState(false);
   const [voiding, setVoiding] = useState<P | null>(null); const [reason, setReason] = useState("");
+  const [view, setView] = useState<string | null>(null); const [editing, setEditing] = useState<P | null>(null);
+  const doExport = useExport();
+  const tf = useTranslations("accounting.fin");
   const { data, loading, reload } = useApi<{ items: P[]; total: number; page: number; pageSize: number }>(q(`/api/accounting/organiser-payments?page=${page}&pageSize=50${status ? `&status=${status}` : ""}`));
   const markPaid = async (p: P) => { try { await api(`/api/accounting/organiser-payments/${p.id}`, { method: "PATCH", json: { status: "PAID" } }); toast("ok", t("markedPaid")); await reload(); } catch (e) { toast("error", errMsg(e)); } };
   return (
     <div>
       <PageHeader title={t("title")} description={t("sub")} actions={<>
         <Select aria-label={t("status")} value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="w-auto"><option value="">{t("all")}</option>{["PAID", "PENDING", "VOIDED"].map((s) => <option key={s} value={s}>{t(`st.${s}`)}</option>)}</Select>
+        <Button onClick={() => doExport(ensure, q(`/api/accounting/organiser-payments?x=1${status ? `&status=${status}` : ""}`))}><Download className="size-4" aria-hidden />{tf("export")}</Button>
         {can("accounting.manage") && <Button variant="primary" onClick={() => setOpen(true)}><Banknote className="size-4" aria-hidden />{t("record")}</Button>}</>} />
       <Card>
         {loading && !data ? <div className="space-y-3 p-4">{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-10" />)}</div> : !data?.items.length ? <EmptyState title={t("empty")} description={t("emptyDesc")} /> : <>
@@ -43,13 +48,18 @@ export default function PaymentsPage() {
               <Td><Link href={`/accounting/organisers/${p.organiserId}`} className="font-medium underline-offset-4 hover:underline">{p.organiserName}</Link></Td>
               <Td>{p.eventName ? <>{p.eventName} <code className="text-xs text-muted">{p.eventCode}</code></> : "—"}</Td><Td><code className="text-xs">{p.bankReference ?? "—"}</code></Td><Td className="text-sm">{t(`m.${p.method}`)}</Td>
               <Td className="text-end"><Money v={p.amount} c={p.currency} strong /></Td><Td><Badge s={p.status} />{p.voidReason && <span className="block text-xs text-muted">{p.voidReason}</span>}</Td>
-              <Td className="text-end">{can("accounting.manage") && p.status !== "VOIDED" && <div className="flex justify-end gap-1">
+              <Td className="text-end"><div className="flex justify-end gap-1">
+                <Button size="sm" variant="ghost" onClick={() => setView(p.id)} aria-label={tf("view")}><Eye className="size-3.5" aria-hidden /></Button>
+                {can("accounting.manage") && p.status !== "VOIDED" && <>
                 {p.status === "PENDING" && <Button size="sm" onClick={() => markPaid(p)}><CheckCircle2 className="size-3.5" aria-hidden />{t("markPaid")}</Button>}
-                <Button size="sm" variant="ghost" onClick={async () => { if (await ensure()) { setReason(""); setVoiding(p); } }}><Undo2 className="size-3.5" aria-hidden />{t("void")}</Button></div>}</Td></Tr>)}</tbody></Table></TableWrap>
+                <Button size="sm" variant="ghost" onClick={() => setEditing(p)} aria-label={tf("editItem")}><Pencil className="size-3.5" aria-hidden /></Button>
+                <Button size="sm" variant="ghost" onClick={async () => { if (await ensure()) { setReason(""); setVoiding(p); } }} aria-label={tf("deleteItem")}><Trash2 className="size-3.5" aria-hidden /></Button></>}</div></Td></Tr>)}</tbody></Table></TableWrap>
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPage={setPage} /></>}
       </Card>
       {open && <PaymentDialog open={open} onClose={() => setOpen(false)} onSaved={() => void reload()} mode={mode} />}
-      <ConfirmDialog open={!!voiding} onClose={() => setVoiding(null)} title={t("voidTitle")} description={t("voidDesc")} confirmLabel={t("void")}
+      {view && <PaymentViewDialog id={view} onClose={() => setView(null)} />}
+      {editing && <PaymentEditDialog p={{ ...editing, eventId: null }} onClose={() => setEditing(null)} onSaved={() => void reload()} />}
+      <ConfirmDialog open={!!voiding} onClose={() => setVoiding(null)} title={tf("payDelete.title")} description={tf("payDelete.desc")} confirmLabel={tf("deleteItem")}
         onConfirm={async () => { try { await api(`/api/accounting/organiser-payments/${voiding!.id}/void`, { json: { reason } }); toast("ok", t("voided")); await reload(); } catch (e) { toast("error", errMsg(e)); throw e; } }}>
         <Field label={t("voidReason")} required>{(p) => <Textarea {...p} value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
       </ConfirmDialog>

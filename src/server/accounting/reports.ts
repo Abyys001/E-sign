@@ -107,7 +107,7 @@ export async function eventProfitRows(orgId: string, mode: Mode, r: Range, page:
       sum(case when key = 'other_expenses' then d - c else 0 end)::text as other_costs,
       sum(case when key = 'organiser_payable' and not pay then c - d else 0 end)::text as organiser_payable,
       sum(case when key = 'organiser_payable' and pay then d - c else 0 end)::text as paid,
-      sum(case when type = 'REVENUE' then c - d when type = 'EXPENSE' then d - c else 0 end)::text as profit,
+      sum(case when type in ('REVENUE', 'EXPENSE') then c - d else 0 end)::text as profit,
       coalesce(max(k.k), 0)::text as commission
     from l join acct_events ev on ev.id = l.event_id left join acct_organisers o on o.id = ev.organiser_id left join k on k.event_id = l.event_id and k.currency = l.currency
     group by ev.id, ev.name, ev.code, o.id, o.name, l.currency order by ev.name, l.currency limit ${page.limit} offset ${page.offset}`);

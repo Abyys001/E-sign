@@ -14,7 +14,8 @@
     "org": "سازمان",
     "switchOrg": "تغییر سازمان",
     "newContract": "قرارداد جدید",
-    "finance": "Finance"
+    "finance": "Finance",
+    "myFinances": "My finances"
   },
   "dashboard": {
     "title": "داشبورد",

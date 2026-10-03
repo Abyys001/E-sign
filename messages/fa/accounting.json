@@ -25,7 +25,8 @@
     "reconciliation": "Reconciliation",
     "reports": "Reports",
     "ledger": "Accounting ledger",
-    "settings": "Finance settings"
+    "settings": "Finance settings",
+    "overview": "Overview"
   },
   "range": {
     "label": "Period",
@@ -816,5 +817,350 @@
     "organiserNote": "Events without an organiser are created, but their sales stay unmatched until you link an organiser (from the event or organiser page).",
     "submit": "Create {n} event(s)",
     "done": "{created} event(s) created, {matched} sales matched"
+  },
+  "fin": {
+    "payOrganiser": "Pay organiser",
+    "financialStatus": "Financial status",
+    "changeFee": "Change",
+    "organiser": "Organiser",
+    "currency": "Currency",
+    "ofGross": "of gross ticket sales",
+    "otherCurrency": "Showing {c} activity booked to this {e} event.",
+    "pendingNote": "Pending payments not yet booked",
+    "paidShare": "Share of the amount due already paid",
+    "export": "Export CSV",
+    "view": "View",
+    "editItem": "Edit",
+    "deleteItem": "Delete",
+    "actions": "Actions",
+    "changeReason": "Reason for the change",
+    "settlement": {
+      "label": "Settlement",
+      "title": "Organiser settlement",
+      "NOTHING_DUE": "Nothing due",
+      "NOT_SETTLED": "Not settled",
+      "PARTIALLY_PAID": "Partially paid",
+      "FULLY_PAID": "Fully paid",
+      "OVERPAID": "Overpaid"
+    },
+    "k": {
+      "tickets": "Tickets sold",
+      "orders": "Orders",
+      "grossSales": "Gross ticket sales",
+      "refunds": "Refunds",
+      "chargebacks": "Chargebacks",
+      "netSales": "Net ticket sales",
+      "bookingFeePct": "Booking fee",
+      "bookingFees": "Booking fee collected",
+      "eventFees": "Fixed event fees",
+      "otherRevenue": "Other revenue",
+      "bilitRevenue": "Bilit revenue",
+      "processingFees": "Payment processing fees",
+      "feesRecharged": "Processing fees charged to organiser",
+      "bilitProcessingFees": "Processing fees borne by Bilit",
+      "organiserShare": "Organiser share of sales",
+      "deductions": "Other deductions",
+      "expensesBilit": "Event expenses (Bilit)",
+      "expensesOrganiser": "Expenses deducted from organiser",
+      "otherCosts": "Other costs",
+      "organiserDue": "Amount due to organiser",
+      "organiserPaid": "Already paid",
+      "remaining": "Remaining balance",
+      "pendingPayments": "Pending payments",
+      "bilitProfit": "Bilit net profit"
+    },
+    "kpi": {
+      "gross": "Gross revenue",
+      "bookingFees": "Booking fees",
+      "due": "Organiser due",
+      "dueHint": "After booking fee, refunds and deductions",
+      "paid": "Paid to organiser",
+      "remaining": "Remaining to pay",
+      "profit": "Bilit profit",
+      "profitHint": "Booking fees − Bilit costs"
+    },
+    "tabs": {
+      "label": "Event finance sections",
+      "overview": "Overview",
+      "transactions": "Transactions",
+      "payments": "Organiser payments",
+      "expenses": "Expenses",
+      "refunds": "Refunds",
+      "pl": "Profit & loss",
+      "reports": "Reports",
+      "audit": "Audit log"
+    },
+    "flow": {
+      "title": "Where the money went",
+      "desc": "Customers paid → booking fee → organiser money → paid → remaining.",
+      "bookingHint": "Kept by Bilit",
+      "deductionsHint": "Fixed event fees, expenses charged to the organiser, adjustments"
+    },
+    "pl": {
+      "title": "Event profitability",
+      "desc": "Bilit's profit and loss for {event}, straight from the ledger.",
+      "grossHint": "Customer money; most of it belongs to the organiser",
+      "bookingHint": "Bilit's revenue from this event",
+      "bilitBorne": "Refunds & chargebacks borne by Bilit",
+      "bilitBorneHint": "Where the agreement leaves the loss with Bilit"
+    },
+    "separation": {
+      "title": "Who the money belongs to",
+      "desc": "Ticket revenue, booking fee, organiser money and Bilit profit kept apart.",
+      "customers": "Customers paid (net of refunds)",
+      "bookingFee": "Booking fee",
+      "organiser": "Organiser money",
+      "bilit": "Bilit profit"
+    },
+    "terms": {
+      "title": "Booking fee & commercial terms",
+      "desc": "Each change creates a new version. The booking fee can be re-applied to sales already booked."
+    },
+    "fee": {
+      "title": "Change booking fee",
+      "desc": "The booking fee percentage for this event only.",
+      "percent": "Booking fee",
+      "current": "Currently {v}",
+      "invalid": "Enter a percentage between 0 and 100 with up to two decimals.",
+      "apply": "Re-apply to sales already booked to this event",
+      "applyHelp": "Every booked sale (and its refunds) is re-posted at the new rate: the old postings are reversed, never edited. Do this before settling with the organiser.",
+      "futureHelp": "Only sales imported or matched from now on use the new rate; booked sales keep the rate they were calculated with.",
+      "reason": "Reason",
+      "save": "Save booking fee",
+      "saved": "Booking fee updated ({n} transactions re-posted)"
+    },
+    "pay": {
+      "title": "Pay organiser",
+      "desc": "Settlement for {organiser}. The payment is recorded as its own ledger entry.",
+      "summary": "Settlement summary",
+      "submit": "Record payment",
+      "invalidAmount": "Enter a valid amount",
+      "after": "Remaining after this payment: {v}",
+      "overpay": "This pays {v} more than is due (overpaid)."
+    },
+    "payEdit": {
+      "title": "Edit payment",
+      "desc": "Changing the amount, date, method or reference reverses the original ledger entry and posts a corrected one.",
+      "saved": "Payment updated"
+    },
+    "payView": {
+      "title": "Payment",
+      "recordedBy": "Recorded by",
+      "editedBy": "Last edited by",
+      "ledger": "Ledger entries",
+      "history": "History"
+    },
+    "payDelete": {
+      "title": "Delete this payment?",
+      "desc": "Financial records never disappear: the payment is kept, marked VOIDED, and its ledger entry is reversed."
+    },
+    "payments": {
+      "title": "Organiser payments",
+      "desc": "Every payment for this event, including edited and deleted (voided) ones."
+    },
+    "tx": {
+      "salesTitle": "Ticket sales",
+      "refundsTitle": "Refunds & chargebacks",
+      "traceDesc": "Each row is a Stripe transaction; open it to see the order, charge, fees and ledger postings.",
+      "kind": "Type",
+      "empty": "No transactions",
+      "date": "Date",
+      "order": "Order / customer",
+      "tickets": "Tickets",
+      "amount": "Amount",
+      "bookingFee": "Booking fee",
+      "stripeFee": "Stripe fee",
+      "organiser": "To organiser",
+      "status": "Status"
+    },
+    "exp": {
+      "title": "Expenses",
+      "tabDesc": "Costs for this event. Bilit-borne expenses reduce Bilit's profit; organiser-borne ones are deducted from the amount due.",
+      "add": "Add expense",
+      "edit": "Edit expense",
+      "desc": "Recorded in the event currency and posted to the ledger.",
+      "added": "Expense added",
+      "updated": "Expense updated",
+      "empty": "No expenses",
+      "emptyDesc": "Add venue, artist, marketing and other costs to see the event's true profit.",
+      "name": "Expense",
+      "namePh": "e.g. Venue hire",
+      "category": "Category",
+      "amount": "Amount",
+      "date": "Date",
+      "description": "Description",
+      "borneBy": "Paid by",
+      "borneByHint": "Who carries the cost. Organiser = deducted from their settlement.",
+      "by": {
+        "BILIT": "Bilit (reduces Bilit profit)",
+        "ORGANISER": "Organiser (deducted from settlement)"
+      },
+      "receipt": "Receipt",
+      "replaceReceipt": "Replace receipt",
+      "receiptHint": "PDF, PNG, JPEG or WebP, up to 10 MB",
+      "receiptFailed": "Saved, but the receipt upload failed",
+      "download": "Download",
+      "totalBilit": "Paid by Bilit",
+      "totalOrganiser": "Deducted from organiser",
+      "deleted": "Deleted",
+      "deleteTitle": "Delete this expense?",
+      "deleteDesc": "The expense is kept, marked as deleted, and its ledger entry is reversed.",
+      "deleteReason": "Reason",
+      "deletedToast": "Expense deleted",
+      "cat": {
+        "VENUE": "Venue",
+        "ARTIST": "Artist",
+        "MARKETING": "Marketing",
+        "SECURITY": "Security",
+        "PRODUCTION": "Production",
+        "STAFF": "Staff",
+        "TRANSPORT": "Transport",
+        "ACCOMMODATION": "Accommodation",
+        "OTHER": "Other"
+      }
+    },
+    "reports": {
+      "csv": "Download CSV",
+      "open": "Open",
+      "summary": {
+        "title": "Financial summary",
+        "desc": "Sales, booking fee, settlement and profit for this event."
+      },
+      "sales": {
+        "title": "Sales report",
+        "desc": "Every order with refunds, Stripe fee and booking fee."
+      },
+      "transactions": {
+        "title": "Stripe transactions",
+        "desc": "All balance transactions booked to the event."
+      },
+      "payments": {
+        "title": "Organiser payments",
+        "desc": "Payment history including edits and voids."
+      },
+      "ledger": {
+        "title": "Ledger entries",
+        "desc": "Double-entry postings tagged with this event."
+      },
+      "statement": {
+        "title": "Organiser statement",
+        "desc": "Running balance of everything owed to and paid to the organiser."
+      }
+    },
+    "audit": {
+      "title": "Audit log",
+      "desc": "Every financial change to this event, who made it and why.",
+      "empty": "Nothing recorded yet.",
+      "system": "System",
+      "from": "From",
+      "to": "To",
+      "reason": "Reason",
+      "t": {
+        "booking_fee.changed": "Booking fee changed",
+        "agreement.created": "Commercial terms changed",
+        "event.created": "Event created",
+        "event.updated": "Event updated",
+        "event_fee.posted": "Event fee charged",
+        "organiser_payment.recorded": "Organiser payment created",
+        "organiser_payment.paid": "Payment marked as paid",
+        "organiser_payment.edited": "Organiser payment edited",
+        "organiser_payment.voided": "Organiser payment deleted (voided)",
+        "expense.created": "Expense added",
+        "expense.edited": "Expense edited",
+        "expense.deleted": "Expense deleted",
+        "expense.receipt_added": "Receipt attached",
+        "expense.receipt_replaced": "Receipt replaced",
+        "transaction.matched": "Transaction assigned",
+        "transaction.unmatched": "Transaction unassigned"
+      }
+    },
+    "events": {
+      "title": "Events — financials",
+      "sub": "Every event with its sales, booking fee, organiser settlement and Bilit profit. Amounts are never mixed across currencies.",
+      "totals": "Totals · {c}",
+      "event": "Event",
+      "tickets": "Tickets",
+      "gross": "Gross sales",
+      "fee": "Booking fee",
+      "due": "Organiser due",
+      "paid": "Organiser paid",
+      "remaining": "Remaining",
+      "profit": "Bilit profit"
+    },
+    "filters": {
+      "allOrganisers": "All organisers",
+      "allCurrencies": "All currencies",
+      "allStatuses": "All event statuses",
+      "allSettlement": "Any settlement status",
+      "payments": "Payment status",
+      "anyPayments": "Any payment status",
+      "pendingPayments": "Has pending payments",
+      "noPending": "No pending payments"
+    },
+    "overview": {
+      "title": "Financial overview",
+      "sub": "All events: ticket sales, booking fees, organiser payments, expenses and Bilit profit.",
+      "empty": "No financial activity in this period",
+      "emptyDesc": "Choose a longer period or import Stripe transactions.",
+      "totalEvents": "Total events",
+      "activeEvents": "{n} with activity in this period",
+      "ticketSales": "Total ticket sales",
+      "bookingFees": "Total booking fees",
+      "organiserPayments": "Total organiser payments",
+      "expenses": "Total expenses",
+      "profit": "Total Bilit profit",
+      "outstanding": "Outstanding organiser payments",
+      "outstandingHint": "Due but not yet paid, as of the end of the period",
+      "converted": "All currencies converted to {c}",
+      "convertedNote": "Indicative, at the rates in Finance settings. Never used for postings.",
+      "missingRates": "No rate set for {list}; those amounts are left out of the converted totals.",
+      "none": "No profit or loss booked in this period.",
+      "noneOutstanding": "Nothing outstanding.",
+      "charts": {
+        "revenue": "Ticket revenue by month",
+        "fees": "Booking fee revenue by month",
+        "payments": "Organiser payments by month",
+        "profitMonth": "Bilit profit by month",
+        "profitEvent": "Profit by event",
+        "outstanding": "Outstanding organiser balances"
+      }
+    },
+    "orgFin": {
+      "title": "Financial account",
+      "empty": "No financial activity yet",
+      "events": "Total events",
+      "expenses": "Expenses deducted",
+      "expensesHint": "Event costs charged to this organiser",
+      "byEvent": "Settlement by event",
+      "unassigned": "Some payments are not tied to a specific event; they count towards the organiser's total but not to any single event."
+    },
+    "portalUsers": {
+      "title": "Organiser portal access",
+      "desc": "Members who may see this organiser's own figures under “My finances”.",
+      "none": "No one has portal access yet.",
+      "member": "Member",
+      "choose": "Choose a member…",
+      "add": "Give access",
+      "remove": "Remove access",
+      "note": "Portal users see only this organiser's live sales, booking fees, settlement and payments — never Bilit's profit, costs or other organisers. Invite the person under Members first (a Viewer role is enough)."
+    },
+    "portal": {
+      "title": "My finances",
+      "sub": "Sales, booking fees and payments for {name}.",
+      "empty": "No sales yet.",
+      "events": "Your events",
+      "payments": "Payments received"
+    },
+    "fx": {
+      "title": "Reporting currency",
+      "desc": "Optional: show global totals converted into one currency.",
+      "currency": "Reporting currency",
+      "currencyHint": "Leave empty to show each currency separately only",
+      "from": "Currency",
+      "rate": "Rate",
+      "add": "Add rate",
+      "remove": "Remove rate",
+      "note": "Rates are indicative and used only for the converted overview. Every calculation and posting stays in the event's own currency."
+    }
   }
 }

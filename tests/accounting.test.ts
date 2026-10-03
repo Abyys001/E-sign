@@ -314,7 +314,7 @@ describe("payouts, organiser payments, adjustments, periods", () => {
   it("organiser payments reduce the outstanding balance; voiding reverses instead of deleting", async () => {
     const before = (await dimensionSummary(e.org.id, "test", { organiserId: e.organiser.id }))[0]!;
     expect(before.organiserOutstanding).toBe(9180 + 4830 - 250); // 5000 sale: 5000 − 250 commission − 170 fee
-    const pay = await recordOrganiserPayment(e.actor, { mode: "test", organiserId: e.organiser.id, eventId: e.event.id, amount: 10000, currency: "eur", paymentDate: "2026-10-02", bankReference: "BANK-2026-001", method: "BANK_TRANSFER", notes: null, status: "PAID" });
+    const pay = await recordOrganiserPayment(e.actor, { mode: "test", organiserId: e.organiser.id, eventId: e.event.id, amount: 10000, currency: "eur", paymentDate: new Date().toISOString().slice(0, 10), bankReference: "BANK-2026-001", method: "BANK_TRANSFER", notes: null, status: "PAID" });
     const mid = (await dimensionSummary(e.org.id, "test", { organiserId: e.organiser.id }))[0]!;
     expect(mid).toMatchObject({ organiserPayments: 10000, organiserOutstanding: before.organiserOutstanding - 10000, organiserPayable: before.organiserPayable });
     const st = await organiserStatement(e.org.id, "test", e.organiser.id, "eur", {}, { limit: 50, offset: 0 });

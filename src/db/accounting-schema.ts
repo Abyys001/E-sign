@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { pgTable, uuid, text, timestamp, integer, boolean, jsonb, index, uniqueIndex, bigserial, bigint, date, check } from "drizzle-orm/pg-core";
-import { organisations, users } from "./schema";
+import { organisations, storageObjects, users } from "./schema";
 
 /**
  * Accounting & Stripe finance. Money is always integer minor units (bigint, JS number: exact to 2^53) next to a lowercase
@@ -20,6 +20,8 @@ export const acctSettings = pgTable("acct_settings", {
   defaultMode: text("default_mode").notNull().default("test"), // test | live: which Stripe environment the finance screens open on
   matchRules: jsonb("match_rules").notNull().default([]), // ordered event-code extraction rules, see server/accounting/matcher.ts
   ticketQuantityKey: text("ticket_quantity_key").notNull().default("quantity"), // Stripe metadata key holding the ticket count
+  reportingCurrency: text("reporting_currency"), // optional currency for converted (indicative) global totals
+  fxRates: jsonb("fx_rates").notNull().default({}), // { eur: "0.85", usd: "0.74" } = 1 unit of key in the reporting currency; reporting only, never posted
   updatedBy: uuid("updated_by").references(() => users.id),
   updatedAt: updatedAt(),
 });
@@ -363,11 +365,13 @@ export const acctOrganiserPayments = pgTable("acct_organiser_payments", {
   method: text("method").notNull().default("BANK_TRANSFER"), // BANK_TRANSFER | STRIPE_TRANSFER | CASH | OTHER
   notes: text("notes"),
   status: text("status").notNull().default("PAID"), // PENDING | PAID | VOIDED
+  revision: integer("revision").notNull().default(0), // bumped on each edit that re-posts the payment (reversal + new entry)
   journalEntryId: uuid("journal_entry_id").references(() => acctJournalEntries.id),
   voidEntryId: uuid("void_entry_id").references(() => acctJournalEntries.id),
   voidReason: text("void_reason"),
   voidedBy: uuid("voided_by").references(() => users.id),
   voidedAt: timestamp("voided_at", { withTimezone: true }),
+  updatedBy: uuid("updated_by").references(() => users.id),
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: createdAt(), updatedAt: updatedAt(),
 }, (t) => [
@@ -375,6 +379,49 @@ export const acctOrganiserPayments = pgTable("acct_organiser_payments", {
   index("acct_organiser_payments_organiser_idx").on(t.organiserId),
   check("acct_organiser_payments_amount_ck", sql`${t.amount} > 0`),
 ]);
+
+/**
+ * Manually entered event cost (venue, artist, marketing…). Borne by Bilit (reduces Bilit profit) or by the organiser
+ * (deducted from the amount due to them). Posted to the ledger like a payment; edits re-post, deleting voids.
+ */
+export const acctEventExpenses = pgTable("acct_event_expenses", {
+  id: id(),
+  organisationId: org(),
+  livemode: boolean("livemode").notNull(),
+  eventId: uuid("event_id").notNull().references(() => acctEvents.id),
+  organiserId: uuid("organiser_id").references(() => acctOrganisers.id),
+  name: text("name").notNull(),
+  category: text("category").notNull(), // VENUE | ARTIST | MARKETING | SECURITY | PRODUCTION | STAFF | TRANSPORT | ACCOMMODATION | OTHER
+  amount: money("amount").notNull(),
+  currency: text("currency").notNull(),
+  expenseDate: date("expense_date").notNull(),
+  description: text("description"),
+  borneBy: text("borne_by").notNull().default("BILIT"), // BILIT | ORGANISER
+  receiptObjectId: uuid("receipt_object_id").references(() => storageObjects.id),
+  receiptName: text("receipt_name"),
+  status: text("status").notNull().default("ACTIVE"), // ACTIVE | VOIDED
+  revision: integer("revision").notNull().default(0),
+  journalEntryId: uuid("journal_entry_id").references(() => acctJournalEntries.id),
+  voidReason: text("void_reason"),
+  voidedBy: uuid("voided_by").references(() => users.id),
+  voidedAt: timestamp("voided_at", { withTimezone: true }),
+  createdBy: uuid("created_by").references(() => users.id),
+  updatedBy: uuid("updated_by").references(() => users.id),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+}, (t) => [
+  index("acct_event_expenses_event_idx").on(t.eventId, t.expenseDate.desc()),
+  index("acct_event_expenses_org_idx").on(t.organisationId, t.livemode, t.expenseDate.desc()),
+  check("acct_event_expenses_amount_ck", sql`${t.amount} > 0`),
+]);
+
+/** Users who may see one organiser's own figures (organiser portal). Read-only; never grants accounting.view. */
+export const acctOrganiserUsers = pgTable("acct_organiser_users", {
+  organiserId: uuid("organiser_id").notNull().references(() => acctOrganisers.id),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  organisationId: org(),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("acct_organiser_users_uq").on(t.organiserId, t.userId), index("acct_organiser_users_user_idx").on(t.userId)]);
 
 /** Every manual (re)assignment of a Stripe transaction, kept forever. */
 export const acctMatchHistory = pgTable("acct_match_history", {

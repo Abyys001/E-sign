@@ -57,8 +57,9 @@ export function ModeBanner() {
 // ---------- navigation ----------
 const NAV = [
   { href: "/accounting", key: "dashboard", exact: true },
-  { href: "/accounting/transactions", key: "transactions" },
+  { href: "/accounting/overview", key: "overview" },
   { href: "/accounting/events", key: "events" },
+  { href: "/accounting/transactions", key: "transactions" },
   { href: "/accounting/organisers", key: "organisers" },
   { href: "/accounting/payments", key: "payments" },
   { href: "/accounting/stripe", key: "stripe" },

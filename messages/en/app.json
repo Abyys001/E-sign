@@ -14,7 +14,8 @@
     "org": "Organisation",
     "switchOrg": "Switch organisation",
     "newContract": "New contract",
-    "finance": "Finance"
+    "finance": "Finance",
+    "myFinances": "My finances"
   },
   "dashboard": {
     "title": "Dashboard",

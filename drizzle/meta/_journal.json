@@ -71,6 +71,13 @@
       "when": 1790726031374,
       "tag": "0009_accounting",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790726032374,
+      "tag": "0010_event_financials",
+      "breakpoints": true
     }
   ]
 }

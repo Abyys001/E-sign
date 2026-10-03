@@ -73,17 +73,23 @@ export const BILIT_DESCRIPTION_PATTERN = String.raw`for event:.*\(([A-Za-z0-9]+-
 /** Prefer metadata, then the code in Bilit's own order description, then any known event code anywhere in the description. */
 export const DEFAULT_RULES: MatchRule[] = [{ type: "METADATA", key: "event_code" }, { type: "REGEX", pattern: BILIT_DESCRIPTION_PATTERN }, { type: "EXACT" }];
 
-export type AcctSettings = { baseCurrency: string; defaultMode: Mode; matchRules: MatchRule[]; ticketQuantityKey: string; timezone: string };
+export type AcctSettings = { baseCurrency: string; defaultMode: Mode; matchRules: MatchRule[]; ticketQuantityKey: string; timezone: string; reportingCurrency: string | null; fxRates: Record<string, string> };
 
 export async function getAcctSettings(orgId: string, tx: Tx | typeof db = db): Promise<AcctSettings> {
   await ensureLedgerSetup(tx, orgId);
   const [s] = await tx.select().from(schema.acctSettings).where(eq(schema.acctSettings.organisationId, orgId));
   const rules = z.array(MatchRule).safeParse(s?.matchRules);
   const tz = (await getOrgSettings(orgId, tx)).general.timezone;
-  return { baseCurrency: s?.baseCurrency ?? "eur", defaultMode: (s?.defaultMode as Mode) ?? "test", matchRules: rules.success && rules.data.length ? rules.data : DEFAULT_RULES, ticketQuantityKey: s?.ticketQuantityKey ?? "quantity", timezone: tz };
+  const fx = FxRates.safeParse(s?.fxRates);
+  return { baseCurrency: s?.baseCurrency ?? "eur", defaultMode: (s?.defaultMode as Mode) ?? "test", matchRules: rules.success && rules.data.length ? rules.data : DEFAULT_RULES, ticketQuantityKey: s?.ticketQuantityKey ?? "quantity", timezone: tz, reportingCurrency: s?.reportingCurrency ?? null, fxRates: fx.success ? fx.data : {} };
 }
 
+/** Indicative reporting rates: 1 unit of the key currency = value units of the reporting currency. Never used for postings. */
+export const FxRates = z.record(z.string().regex(/^[a-z]{3}$/), z.string().regex(/^\d{1,6}(\.\d{1,8})?$/, "Use a positive decimal rate").refine((v) => Number(v) > 0, "Rate must be positive")).refine((r) => Object.keys(r).length <= 50);
+
 export const SettingsPatch = z.object({
+  reportingCurrency: Currency.nullable().optional(),
+  fxRates: FxRates.optional(),
   baseCurrency: Currency.optional(),
   defaultMode: ModeSchema.optional(),
   matchRules: z.array(MatchRule).min(1).max(10).optional(),

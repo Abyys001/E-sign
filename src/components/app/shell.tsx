@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Bell, Building2, Landmark, Check, ChevronsUpDown, Code2, FileText, LayoutDashboard, LayoutTemplate, Languages, LogOut, Menu, Monitor, Moon, Plus, ScrollText, Search, Settings, ShieldCheck, Sun, Users, X } from "lucide-react";
+import { Bell, Building2, Landmark, Check, ChevronsUpDown, Code2, FileText, LayoutDashboard, LayoutTemplate, Languages, LogOut, Menu, Monitor, Moon, Plus, ScrollText, Search, Settings, ShieldCheck, Sun, Users, Wallet, X } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { Dropdown } from "@/components/ui/dropdown";
 import { LinkButton } from "@/components/ui/button";
@@ -19,6 +19,7 @@ const NAV = [
   { href: "/templates", key: "templates", icon: LayoutTemplate, perm: "templates.view" },
   { href: "/notifications", key: "notifications", icon: Bell, perm: null },
   { href: "/accounting", key: "finance", icon: Landmark, perm: "accounting.view", feature: "accounting" },
+  { href: "/my-finances", key: "myFinances", icon: Wallet, perm: null, feature: "organiserPortal" },
   { href: "/audit", key: "audit", icon: ScrollText, perm: "contracts.audit" },
   { href: "/members", key: "members", icon: Users, perm: "users.manage" },
   { href: "/developers", key: "developers", icon: Code2, perm: "webhooks.manage" },
