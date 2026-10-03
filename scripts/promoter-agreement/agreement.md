@@ -857,15 +857,25 @@ Failure by either Party to enforce a provision shall not constitute a waiver of 
 
 # 50. GOVERNING LAW
 
-Unless otherwise stated in the Event Schedule, this Agreement shall be governed by the laws of **England and Wales**.
+Unless otherwise stated in the Event Schedule, this Agreement and any non-contractual obligations arising out of or in connection with it shall be governed by international commercial law, namely the **UNIDROIT Principles of International Commercial Contracts (2016)**.
+
+Matters not expressly settled by the UNIDROIT Principles shall be governed by the laws of **England and Wales**.
+
+Nothing in this clause deprives any person of the protection of the mandatory laws of the country where an Event takes place, including mandatory consumer protection laws (see clause 53).
 
 ---
 
-# 51. JURISDICTION
+# 51. INTERNATIONAL ARBITRATION
 
-Subject to any mandatory applicable law, the courts of **England and Wales** shall have jurisdiction over disputes arising from or relating to this Agreement.
+Any dispute arising out of or in connection with this Agreement, including any question regarding its existence, validity or termination, which is not resolved under clause 52 shall be referred to and finally resolved by international arbitration under the **Rules of Arbitration of the International Chamber of Commerce (ICC)**.
 
-For international Events, the Parties may expressly agree to an alternative jurisdiction in the applicable Event Schedule.
+The tribunal shall consist of one arbitrator. The seat of arbitration shall be **London, United Kingdom**. The language of the arbitration shall be English.
+
+The award shall be final and binding on the Parties and may be enforced in any court of competent jurisdiction, including under the New York Convention on the Recognition and Enforcement of Foreign Arbitral Awards.
+
+For international Events, the Parties may expressly agree to an alternative seat or arbitral institution in the applicable Event Schedule.
+
+Nothing in this clause prevents either Party from seeking urgent interim or protective relief from any competent court, or from bringing proceedings to recover undisputed debts.
 
 ---
 

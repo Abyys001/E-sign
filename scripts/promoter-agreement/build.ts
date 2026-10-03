@@ -4,6 +4,7 @@
  *
  *   npx tsx scripts/promoter-agreement/build.ts --out /path/agreement.pdf            # render only
  *   npx tsx scripts/promoter-agreement/build.ts --out /path/agreement.pdf --publish  # + create & publish template (org "Bilit")
+ *   npx tsx scripts/promoter-agreement/build.ts --out /path/agreement.pdf --update <templateId>  # publish a new version of it
  *
  * Roles: "bilit" (order 1: fills the Registered Office, Schedules 1–4 and 6, signs) then "promoter" (order 2: party details,
  * Schedule 5 bank details, signs). Company details come from Finance settings → Invoices.
@@ -15,7 +16,7 @@ import PDFDocument from "pdfkit";
 import { db, schema } from "@/db";
 import { C, load } from "@/server/signing/certificate";
 import { getInvoiceSettings, registrationLines } from "@/server/accounting/invoices";
-import { createTemplate, publishVersion, updateDraftVersion } from "@/server/templates/service";
+import { createDraftVersion, createTemplate, publishVersion, updateDraftVersion } from "@/server/templates/service";
 
 type Role = "bilit" | "promoter";
 type FieldOut = { id: string; recipientId: Role; type: string; label: string; required: boolean; rect: { page: number; x: number; y: number; width: number; height: number }; options?: string[]; defaultValue?: string };
@@ -23,6 +24,7 @@ type FieldOut = { id: string; recipientId: Role; type: string; label: string; re
 const args = process.argv.slice(2);
 const outPath = args[args.indexOf("--out") + 1] ?? "promoter-agreement.pdf";
 const publish = args.includes("--publish");
+const updateId = args.includes("--update") ? args[args.indexOf("--update") + 1] : null;
 
 const [org] = await db.select().from(schema.organisations).where(eq(schema.organisations.name, "Bilit"));
 if (!org) throw new Error("Bilit organisation not found");
@@ -196,5 +198,16 @@ if (publish) {
     return template;
   });
   console.log("published template", t.id);
+}
+if (updateId) {
+  const [m] = await db.select().from(schema.memberships).where(eq(schema.memberships.organisationId, org.id)).limit(1);
+  const a = { orgId: org.id, userId: m!.userId, ctx: { ip: "127.0.0.1", userAgent: "admin-script", correlationId: "promoter-agreement-template" } };
+  const payload = fields.map(({ defaultValue, ...f }) => ({ ...f, ...(defaultValue ? { defaultValue } : {}) }));
+  const v = await db.transaction(async (tx) => {
+    const d = await createDraftVersion(tx as never, a as never, updateId);
+    await updateDraftVersion(tx as never, a as never, updateId, d.version, { pdf, fields: payload });
+    return publishVersion(tx as never, a as never, updateId, d.version);
+  });
+  console.log("published new version", v.version, "of template", updateId);
 }
 process.exit(0);
