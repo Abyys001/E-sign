@@ -538,7 +538,10 @@
       "account": "Stripe account",
       "included": "Transactions",
       "recon": "Reconciliation",
-      "manual": "Manual payout"
+      "manual": "Manual payout",
+      "organiser": "Paid to organiser",
+      "link": "Link to organiser",
+      "linkHelp": "If a Stripe payout was money paid to an organiser, use “Link to organiser”: it records an organiser payment with the payout's amount, date and payout id as reference — choose the organiser and event code. Payouts that are Bilit's own money need no link."
     },
     "disputes": {
       "title": "Disputes",

@@ -143,12 +143,13 @@ export function OrganiserDialog({ open, onClose, onSaved, initial, organiserId, 
 }
 
 // ---------- organiser payment ----------
-export function PaymentDialog({ open, onClose, onSaved, mode, organiserId }: { open: boolean; onClose: () => void; onSaved: () => void; mode: string; organiserId?: string }) {
+export type PaymentPrefill = { amount: number; currency: string; paymentDate: string; bankReference: string; method: string; notes?: string };
+export function PaymentDialog({ open, onClose, onSaved, mode, organiserId, prefill }: { open: boolean; onClose: () => void; onSaved: () => void; mode: string; organiserId?: string; prefill?: PaymentPrefill }) {
   const t = useTranslations("accounting.payments");
   const c = useTranslations("common");
   const toast = useToast();
   const today = new Date().toISOString().slice(0, 10);
-  const [v, setV] = useState({ organiserId: organiserId ?? "", eventId: "", amount: "", currency: "eur", paymentDate: today, bankReference: "", method: "BANK_TRANSFER", notes: "", status: "PAID" });
+  const [v, setV] = useState({ organiserId: organiserId ?? "", eventId: "", amount: prefill ? toDecimalString(prefill.amount, prefill.currency) : "", currency: prefill?.currency ?? "eur", paymentDate: prefill?.paymentDate ?? today, bankReference: prefill?.bankReference ?? "", method: prefill?.method ?? "BANK_TRANSFER", notes: prefill?.notes ?? "", status: "PAID" });
   const { data: orgs } = useApi<{ items: Org[] }>(open ? "/api/accounting/organisers?pageSize=200" : null);
   const { data: evs } = useApi<{ items: Array<{ id: string; name: string; code: string; currency: string }> }>(open && v.organiserId ? `/api/accounting/events?pageSize=200&organiserId=${v.organiserId}` : null);
   const [errs, setErrs] = useState<FieldErrors>({});
@@ -169,7 +170,7 @@ export function PaymentDialog({ open, onClose, onSaved, mode, organiserId }: { o
       footer={<><Button onClick={onClose}>{c("cancel")}</Button><Button variant="primary" loading={busy} disabled={!v.organiserId || !v.amount || !v.paymentDate} onClick={submit}>{t("record")}</Button></>}>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label={t("organiser")} required error={errs.organiserId}>{(p) => <Select {...p} value={v.organiserId} onChange={(e) => { set("organiserId", e.target.value); set("eventId", ""); }}><option value="">—</option>{orgs?.items.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</Select>}</Field>
-        <Field label={t("event")} error={errs.eventId} hint={t("eventHint")}>{(p) => <Select {...p} value={v.eventId} onChange={(e) => { const ev = evs?.items.find((x) => x.id === e.target.value); set("eventId", e.target.value); if (ev) set("currency", ev.currency); }}><option value="">{t("noEvent")}</option>{evs?.items.map((e) => <option key={e.id} value={e.id}>{e.code} · {e.name}</option>)}</Select>}</Field>
+        <Field label={t("event")} error={errs.eventId} hint={t("eventHint")}>{(p) => <Select {...p} value={v.eventId} onChange={(e) => { const ev = evs?.items.find((x) => x.id === e.target.value); set("eventId", e.target.value); if (ev && !prefill) set("currency", ev.currency); }}><option value="">{t("noEvent")}</option>{evs?.items.filter((e) => !prefill || e.currency === prefill.currency).map((e) => <option key={e.id} value={e.id}>{e.code} · {e.name}</option>)}</Select>}</Field>
         <Field label={t("amount")} required error={errs.amount}>{(p) => <Input {...p} inputMode="decimal" value={v.amount} onChange={(e) => set("amount", e.target.value)} placeholder="10000.00" />}</Field>
         <Field label={t("currency")} required error={errs.currency}>{(p) => <Input {...p} value={v.currency} maxLength={3} onChange={(e) => set("currency", e.target.value.toLowerCase())} className="uppercase" />}</Field>
         <Field label={t("date")} required error={errs.paymentDate}>{(p) => <Input {...p} type="date" value={v.paymentDate} onChange={(e) => set("paymentDate", e.target.value)} />}</Field>

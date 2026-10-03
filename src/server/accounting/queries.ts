@@ -69,10 +69,13 @@ export async function listPayouts(orgId: string, mode: Mode, page: { limit: numb
   const p = schema.stripePayouts;
   const where = and(eq(p.organisationId, orgId), eq(p.livemode, isLive(mode)), f.status ? eq(p.status, f.status) : undefined, f.from ? gte(p.stripeCreatedAt, new Date(`${f.from}T00:00:00Z`)) : undefined, f.to ? lte(p.stripeCreatedAt, new Date(`${f.to}T23:59:59.999Z`)) : undefined);
   const [items, total] = await Promise.all([
-    db.select({ p, accountId: schema.stripeAccounts.stripeAccountId }).from(p).innerJoin(schema.stripeAccounts, eq(schema.stripeAccounts.id, p.stripeAccountRef)).where(where).orderBy(desc(p.stripeCreatedAt)).limit(page.limit).offset(page.offset),
+    db.select({ p, accountId: schema.stripeAccounts.stripeAccountId,
+      linked: sql<Array<{ id: string; organiser: string; eventCode: string | null; amount: number; currency: string }> | null>`(select json_agg(json_build_object('id', op.id, 'organiser', o.name, 'eventCode', ev.code, 'amount', op.amount, 'currency', op.currency))
+        from acct_organiser_payments op join acct_organisers o on o.id = op.organiser_id left join acct_events ev on ev.id = op.event_id
+        where op.organisation_id = ${p.organisationId} and op.livemode = ${p.livemode} and op.bank_reference = ${p.payoutId} and op.status <> 'VOIDED')` }).from(p).innerJoin(schema.stripeAccounts, eq(schema.stripeAccounts.id, p.stripeAccountRef)).where(where).orderBy(desc(p.stripeCreatedAt)).limit(page.limit).offset(page.offset),
     count(p, where),
   ]);
-  return { items: items.map((r) => ({ ...r.p, stripeAccountId: r.accountId })), total };
+  return { items: items.map((r) => ({ ...r.p, stripeAccountId: r.accountId, linkedPayments: r.linked ?? [] })), total };
 }
 
 export async function listDisputes(orgId: string, mode: Mode, page: { limit: number; offset: number }) {

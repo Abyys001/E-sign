@@ -1,10 +1,11 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { AlertTriangle, Ban, CheckCircle2, CircleDashed, CreditCard, Download, FileText, Landmark, Receipt, RefreshCw, ShieldAlert, Undo2, Wallet } from "lucide-react";
+import { AlertTriangle, Ban, CheckCircle2, CircleDashed, CreditCard, Download, FileText, Landmark, Link2, Receipt, RefreshCw, ShieldAlert, Undo2, Wallet } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { Money, useMode } from "@/components/accounting/kit";
+import { PaymentDialog } from "@/components/accounting/forms";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { cn } from "@/components/ui/cn";
@@ -43,14 +44,18 @@ export function StripeBalance() {
 }
 
 // ---------- Stripe payouts ----------
-type Payout = { id: string; payoutId: string; amount: number; currency: string; status: string; arrivalDate: string | null; stripeCreatedAt: string; automatic: boolean; includedCount: number | null; reconciliationStatus: string; failureMessage: string | null };
+type Payout = { id: string; payoutId: string; amount: number; currency: string; status: string; arrivalDate: string | null; stripeCreatedAt: string; automatic: boolean; includedCount: number | null; reconciliationStatus: string; failureMessage: string | null; linkedPayments: Array<{ id: string; organiser: string; eventCode: string | null; amount: number; currency: string }> };
 const PO_TONE: Record<string, string> = { paid: "text-fin-pos", in_transit: "text-fin-info", pending: "text-fin-info", failed: "text-fin-neg", canceled: "text-muted" };
 /** Stripe payouts to the bank: totals per currency and the latest payouts. */
 export function StripePayouts() {
   const t = useTranslations("accounting.pay.payouts");
   const locale = useLocale();
   const { q } = useMode();
-  const { data } = useApi<{ items: Payout[]; total: number }>(q("/api/accounting/stripe/payouts?pageSize=200"));
+  const tl = useTranslations("accounting.stripe.payouts");
+  const { can } = useMe();
+  const { mode } = useMode();
+  const [link, setLink] = useState<Payout | null>(null);
+  const { data, reload } = useApi<{ items: Payout[]; total: number }>(q("/api/accounting/stripe/payouts?pageSize=200"));
   if (!data) return <Card className="mb-6 p-4"><Skeleton className="h-24" /></Card>;
   const by = new Map<string, { paid: number; transit: number; failed: number; n: number }>();
   for (const p of data.items) { const x = by.get(p.currency) ?? { paid: 0, transit: 0, failed: 0, n: 0 }; if (p.status === "paid") x.paid += p.amount; else if (p.status === "in_transit" || p.status === "pending") x.transit += p.amount; else if (p.status === "failed") x.failed += p.amount; x.n++; by.set(p.currency, x); }
@@ -66,11 +71,16 @@ export function StripePayouts() {
             <p className="mt-1 text-xl font-semibold text-fin-pos"><Money v={x.paid} c={c} /></p><p className="text-xs text-muted">{t("paidToBank")}</p>
             {x.transit > 0 && <p className="mt-1"><Money v={x.transit} c={c} className="text-fin-info" /> <span className="text-xs text-muted">{t("inTransit")}</span></p>}
             {x.failed > 0 && <p className="mt-1"><Money v={x.failed} c={c} className="text-fin-neg" /> <span className="text-xs text-muted">{t("failed")}</span></p>}</div>))}</div>
-        <TableWrap><Table className="text-[13px]"><thead><tr><Th>{t("created")}</Th><Th>{t("arrival")}</Th><Th className="text-end">{t("amount")}</Th><Th>{t("status")}</Th><Th className="text-end">{t("transactions")}</Th><Th>{t("payout")}</Th></tr></thead>
+        <TableWrap><Table className="text-[13px]"><thead><tr><Th>{t("created")}</Th><Th>{t("arrival")}</Th><Th className="text-end">{t("amount")}</Th><Th>{t("status")}</Th><Th className="text-end">{t("transactions")}</Th><Th>{tl("organiser")}</Th><Th>{t("payout")}</Th></tr></thead>
           <tbody>{data.items.slice(0, 10).map((p) => <Tr key={p.id}><Td className="whitespace-nowrap">{fmtDate(p.stripeCreatedAt, locale, { dateStyle: "medium" })}</Td><Td className="whitespace-nowrap">{p.arrivalDate ? fmtDate(p.arrivalDate, locale, { dateStyle: "medium" }) : "—"}</Td>
             <Td className="text-end"><Money v={p.amount} c={p.currency} strong /></Td><Td><span className={cn("font-medium", PO_TONE[p.status])}>{p.status.replace(/_/g, " ")}</span>{p.failureMessage && <span className="block text-xs text-fin-neg">{p.failureMessage}</span>}</Td>
-            <Td className="text-end tabular-nums">{p.includedCount ?? "—"}</Td><Td><code className="text-xs text-muted">{p.payoutId}</code></Td></Tr>)}</tbody></Table></TableWrap>
+            <Td className="text-end tabular-nums">{p.includedCount ?? "—"}</Td>
+            <Td className="min-w-40">{p.linkedPayments.length ? p.linkedPayments.map((l) => <span key={l.id} className="block"><span className="font-medium">{l.organiser}</span>{l.eventCode && <code className="ms-1 text-xs text-muted">{l.eventCode}</code>}</span>)
+              : can("accounting.manage") && !["failed", "canceled"].includes(p.status) ? <Button size="sm" variant="ghost" onClick={() => setLink(p)}><Link2 className="size-3.5" aria-hidden />{tl("link")}</Button> : <span className="text-muted">—</span>}</Td>
+            <Td><code className="text-xs text-muted">{p.payoutId}</code></Td></Tr>)}</tbody></Table></TableWrap>
       </>}
+      {link && <PaymentDialog open onClose={() => setLink(null)} onSaved={() => void reload()} mode={mode}
+        prefill={{ amount: link.amount, currency: link.currency, paymentDate: (link.arrivalDate ?? link.stripeCreatedAt).slice(0, 10), bankReference: link.payoutId, method: "STRIPE_TRANSFER", notes: "Paid out through Stripe" }} />}
     </Card>
   );
 }
