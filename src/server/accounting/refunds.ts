@@ -135,7 +135,7 @@ export async function refundsOverview(orgId: string, mode: Mode, f: z.infer<type
   return {
     total: total.rows[0]?.n ?? 0,
     totals: sums.rows.map((x) => ({ currency: x.currency, count: x.n, amount: n(x.amount), linked: x.linked, unlinkedAmount: n(x.unlinked_amount) })),
-    unlinkedGroups: groups.rows.map((g) => ({ code: g.code, currency: g.currency, count: g.n, amount: n(g.amount), eventName: g.sample?.match(/for event:\s*(.*)\s*\([A-Za-z0-9]+-[0-9]+\)/)?.[1]?.trim() ?? null, organiserHint: g.sample?.match(/\), by (.*)$/)?.[1]?.trim() ?? null, eventExists: g.event_exists })),
+    unlinkedGroups: groups.rows.map((g) => ({ code: g.code, currency: g.currency, count: g.n, amount: n(g.amount), eventName: g.sample?.match(/for event:\s*(.*)\s*\([A-Za-z0-9]+-[0-9]+\)/)?.[1]?.trim() ?? null, eventExists: g.event_exists })),
     items: rows.rows.map((x) => {
       const ticket = n(x.sale_amount) - n(x.sale_fee), so = n(x.refunded_so_far), before = so - n(x.amount);
       // Booking fee part of this refund: what it refunded beyond the ticket price (refunds are applied to the ticket first).

@@ -18,7 +18,7 @@ import { useDebounced } from "@/lib/hooks";
 import { fmtDate, useApi } from "@/lib/api";
 
 type Row = { id: string; kind: string; date: string; amount: number; currency: string; linked: boolean; matchReason: string | null; eventId: string | null; eventCode: string | null; eventName: string | null; saleId: string | null; saleAmount: number; saleFee: number; saleLinked: boolean; customerName: string | null; customerEmail: string | null; description: string | null; refundStatus: string | null; reason: string | null; note: string | null; failureReason: string | null; feeRefunded: number | null; feeKeptByBilit: boolean };
-type Resp = { items: Row[]; total: number; page: number; pageSize: number; totals: Array<{ currency: string; count: number; amount: number; linked: number; unlinkedAmount: number }>; unlinkedGroups: Array<{ code: string | null; currency: string; count: number; amount: number; eventName: string | null; organiserHint: string | null; eventExists: boolean }> };
+type Resp = { items: Row[]; total: number; page: number; pageSize: number; totals: Array<{ currency: string; count: number; amount: number; linked: number; unlinkedAmount: number }>; unlinkedGroups: Array<{ code: string | null; currency: string; count: number; amount: number; eventName: string | null; eventExists: boolean }> };
 type FeeTotals = { totals: Array<{ currency: string; bookingFeesRefunded: number }> };
 type EvRow = { eventId: string; eventName: string; eventCode: string; eventStatus: string; organiserId: string | null; organiserName: string | null; currency: string; refunds: number; chargebacks: number; bookingFeesRefunded: number; feesRecharged: number; remaining: number };
 
@@ -86,7 +86,7 @@ export default function RefundsPage() {
       {data && data.unlinkedGroups.length > 0 && <Card>
         <CardHeader title={t("unlinkedTitle")} description={t("unlinkedDesc")} action={manage && <Button size="sm" variant="primary" onClick={() => setImp(true)}><CalendarPlus className="size-4" aria-hidden />{t("createEvents")}</Button>} />
         <ul className="divide-y divide-line">{data.unlinkedGroups.map((g) => <li key={`${g.code}|${g.currency}`} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
-          <span><code className="font-semibold">{g.code ?? t("noCode")}</code>{g.eventName && <span className="ms-2">{g.eventName}</span>}{g.organiserHint && <span className="ms-2 text-xs text-muted">{t("by", { name: g.organiserHint })}</span>}
+          <span><code className="font-semibold">{g.code ?? t("noCode")}</code>{g.eventName && <span className="ms-2">{g.eventName}</span>}
             <span className="block text-xs text-muted">{g.eventExists ? t("eventExistsHint") : t("noEventHint")}</span></span>
           <span className="flex items-center gap-3"><span className="text-muted">{t("nRefunds", { n: g.count })}</span><Money v={g.amount} c={g.currency} strong /></span></li>)}</ul>
       </Card>}

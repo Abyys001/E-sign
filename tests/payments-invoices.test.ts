@@ -164,7 +164,7 @@ describe("refunds overview", () => {
     expect(o.total).toBe(2);
     const linked = o.items.find((r) => r.linked)!;
     expect(linked).toMatchObject({ amount: 3850, saleAmount: 3850, saleFee: 350, feeRefunded: 350, eventId: x.event.id });
-    expect(o.unlinkedGroups).toEqual([expect.objectContaining({ code: "ZZ-0001", count: 1, amount: 2000, eventName: "Unknown Gig", organiserHint: "Someone", eventExists: false })]);
+    expect(o.unlinkedGroups).toEqual([expect.objectContaining({ code: "ZZ-0001", count: 1, amount: 2000, eventName: "Unknown Gig", eventExists: false })]);
     expect((await refundsOverview(x.org.id, "test", { linked: "no" }, { limit: 50, offset: 0 })).total).toBe(1);
   });
 });
