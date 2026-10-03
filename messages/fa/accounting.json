@@ -544,7 +544,21 @@
       "manual": "Manual payout",
       "organiser": "Paid to organiser",
       "link": "Link to organiser",
-      "linkHelp": "If a Stripe payout was money paid to an organiser, use “Link to organiser”: it records an organiser payment with the payout's amount, date and payout id as reference — choose the organiser and event code. Payouts that are Bilit's own money need no link."
+      "linkHelp": "If a Stripe payout was money paid to an organiser, use “Link to organiser”: it records an organiser payment with the payout's amount, date and payout id as reference — choose the organiser and event code. Payouts that are Bilit's own money need no link.",
+      "selected": "{n} selected",
+      "linkSelected": "Link selected ({n})",
+      "clear": "Clear",
+      "selectAll": "Select all unlinked payouts on this page",
+      "select": "Select payout {id}",
+      "bulkTitle": "Link {n} payouts to an organiser",
+      "bulkDesc": "Each payout becomes its own organiser payment (amount, arrival date, payout id as reference, method Stripe). Payouts already linked are skipped.",
+      "bulkOrganiser": "Organiser",
+      "bulkEvent": "Event for the {c} payouts ({n})",
+      "bulkEventHint": "Optional — otherwise they count towards the organiser's account but not a specific event",
+      "bulkNoEvent": "Not linked to an event",
+      "bulkNotes": "Note (optional)",
+      "bulkConfirm": "These payouts were money paid to this organiser",
+      "bulkDone": "{n} payouts linked{skipped, plural, =0 {} other {, # skipped}}"
     },
     "disputes": {
       "title": "Disputes",

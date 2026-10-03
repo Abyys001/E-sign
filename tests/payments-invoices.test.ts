@@ -168,3 +168,20 @@ describe("refunds overview", () => {
     expect((await refundsOverview(x.org.id, "test", { linked: "no" }, { limit: 50, offset: 0 })).total).toBe(1);
   });
 });
+
+describe("bulk-linking Stripe payouts to an organiser", () => {
+  it("creates one organiser payment per payout, event per currency, skips linked/failed ones", async () => {
+    const x = await setup();
+    const mk = (id: string, amount: number, currency: string, status = "paid") => ({ organisationId: x.org.id, stripeAccountRef: x.acc.id, livemode: false, payoutId: id, amount, currency, status, stripeCreatedAt: new Date("2026-09-20T10:00:00Z"), arrivalDate: new Date("2026-09-21T10:00:00Z") });
+    await db.insert(schema.stripePayouts).values([mk("po_A", 1000, "eur"), mk("po_B", 2000, "eur"), mk("po_C", 3000, "gbp"), mk("po_D", 500, "eur", "failed")]);
+    const { linkPayouts } = await import("@/server/accounting/payout-links");
+    const r = await linkPayouts(x.actor, "test", { payoutIds: ["po_A", "po_B", "po_C", "po_D"], organiserId: x.event.organiserId!, eventByCurrency: { eur: x.event.id, gbp: null }, notes: null });
+    expect(r.created).toBe(3);
+    expect(r.skipped).toEqual([{ payoutId: "po_D", reason: "failed" }]);
+    const again = await linkPayouts(x.actor, "test", { payoutIds: ["po_A"], organiserId: x.event.organiserId!, eventByCurrency: {}, notes: null });
+    expect(again).toMatchObject({ created: 0, skipped: [{ payoutId: "po_A", reason: "already linked" }] });
+    const pays = await db.select().from(schema.acctOrganiserPayments).where(eq(schema.acctOrganiserPayments.organiserId, x.event.organiserId!));
+    expect(pays.map((p) => `${p.bankReference}:${p.amount}:${p.currency}:${p.eventId ? "event" : "none"}:${p.paymentDate}`).sort()).toEqual(["po_A:1000:eur:event:2026-09-21", "po_B:2000:eur:event:2026-09-21", "po_C:3000:gbp:none:2026-09-21"]);
+    expect((await trialBalance(x.org.id, "test")).reduce((s, t) => s + t.balance, 0)).toBe(0);
+  });
+});
