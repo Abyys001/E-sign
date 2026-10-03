@@ -1068,26 +1068,4 @@ Date: ______________________________
 
 ---
 
-# SCHEDULE — PROMOTER BANK DETAILS
-
-Account Name: [●]
-
-Bank Name: [●]
-
-Bank Address: [●]
-
-IBAN: [●]
-
-SWIFT/BIC: [●]
-
-Account Number: [●]
-
-Sort Code: [●]
-
-Currency: [●]
-
-The Promoter warrants that the above bank information is accurate and belongs to the Promoter or its authorised settlement recipient.
-
----
-
 **END OF AGREEMENT**
