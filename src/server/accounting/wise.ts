@@ -131,7 +131,7 @@ async function connection(orgId: string) {
 export async function getWiseStatus(orgId: string) {
   const c = await connection(orgId);
   if (!c) return { connected: false as const };
-  const [n] = await db.select({ toRecord: sql<number>`count(*) filter (where direction = 'OUT' and kind = 'TRANSFER' and organiser_payment_id is null and not ignored and coalesce(status, '') not in ('cancelled', 'bounced_back', 'funds_refunded', 'charged_back'))::int`, total: sql<number>`count(*)::int` })
+  const [n] = await db.select({ toRecord: sql<number>`count(*) filter (where direction = 'OUT' and kind = 'TRANSFER' and organiser_payment_id is null and bill_id is null and not ignored and coalesce(status, '') not in ('cancelled', 'bounced_back', 'funds_refunded', 'charged_back'))::int`, total: sql<number>`count(*)::int` })
     .from(schema.acctWiseTransactions).where(eq(schema.acctWiseTransactions.organisationId, orgId));
   return { connected: true as const, tokenHint: c.tokenHint, profileId: c.profileId, profileName: c.profileName, publicKey: c.scaPublicKey, balances: c.balances as WiseBalance[], status: c.status, statementsOk: c.statementsOk, lastSyncAt: c.lastSyncAt, lastError: c.lastError, toRecord: n?.toRecord ?? 0, total: n?.total ?? 0 };
 }
@@ -302,6 +302,9 @@ export async function syncAllWise() {
   return n;
 }
 
+/** The number Bilit writes in references for a Wise movement ("Wise #<n>"): transfer id or activity resource id. */
+export const wiseRefNumber = (wiseId: string) => wiseId.replace(/^TRANSFER-/, "").replace(/^ACT-[A-Z_]+-/, "").split(":")[0]!;
+
 // ---------- matching ----------
 const norm = (s: string | null | undefined) => (s ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\b(ltd|limited|gmbh|ab|aps|as|llc|fz|fze|inc|bv|sarl|sas|srl|the|and|&)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
 const GENERIC = new Set(["events", "event", "entertainment", "productions", "production", "promotions", "promotion", "music", "group", "media", "live", "company", "co", "international", "global", "services", "management", "agency", "tickets", "ticketing"]);
@@ -323,6 +326,18 @@ function nameScore(a: string, b: string) {
  */
 export async function relinkWise(orgId: string) {
   const w = schema.acctWiseTransactions, p = schema.acctOrganiserPayments;
+  // Supplier invoices / expenses: linked by the Wise number in their payment reference; voided ones lose the link.
+  await db.execute(sql`update acct_wise_transactions t set bill_id = null, updated_at = now() from acct_bills b where b.id = t.bill_id and b.status = 'VOIDED' and t.organisation_id = ${orgId}`);
+  const unbilled = await db.select({ id: w.id, wiseId: w.wiseId }).from(w).where(and(eq(w.organisationId, orgId), eq(w.direction, "OUT"), isNull(w.billId), isNull(w.organiserPaymentId)));
+  if (unbilled.length) {
+    const bills = await db.select({ id: schema.acctBills.id, ref: schema.acctBills.paymentReference }).from(schema.acctBills).where(and(eq(schema.acctBills.organisationId, orgId), eq(schema.acctBills.livemode, true), sql`${schema.acctBills.status} <> 'VOIDED'`, sql`${schema.acctBills.paymentReference} is not null`));
+    const used = new Set((await db.select({ id: w.billId }).from(w).where(and(eq(w.organisationId, orgId), sql`${w.billId} is not null`))).map((r) => r.id));
+    for (const t of unbilled) {
+      const n = wiseRefNumber(t.wiseId);
+      const b = bills.find((x) => !used.has(x.id) && new RegExp(`(^|\\D)${n}(\\D|$)`).test(x.ref ?? ""));
+      if (b) { used.add(b.id); await db.update(w).set({ billId: b.id, updatedAt: new Date() }).where(eq(w.id, t.id)); }
+    }
+  }
   // Payments that were voided lose their link.
   await db.execute(sql`update acct_wise_transactions t set organiser_payment_id = null, updated_at = now() from acct_organiser_payments p where p.id = t.organiser_payment_id and p.status = 'VOIDED' and t.organisation_id = ${orgId}`);
   const outs = await db.select().from(w).where(and(eq(w.organisationId, orgId), eq(w.direction, "OUT"), eq(w.kind, "TRANSFER")));
@@ -345,7 +360,7 @@ export async function relinkWise(orgId: string) {
     const holders = new Map(orgs.map((o) => { let h: string | null = null; try { h = o.bankDetailsEnc ? (JSON.parse(decrypt(o.bankDetailsEnc)) as { accountHolder?: string }).accountHolder ?? null : null; } catch { /* unreadable */ } return [o.id, h]; }));
     const score = (name: string, orgId2: string) => { const o = orgs.find((x) => x.id === orgId2)!; return Math.max(nameScore(name, o.name), o.companyName ? nameScore(name, o.companyName) : 0, holders.get(o.id) ? nameScore(name, holders.get(o.id)!) : 0); };
     for (const t of outs) {
-      if (DEAD.includes(String(t.status)) || linkOf.get(t.id) || t.ignored) continue;
+      if (DEAD.includes(String(t.status)) || linkOf.get(t.id) || t.ignored || t.billId) continue;
       // 2) Otherwise one unlinked bank-transfer payment with the same amount/currency within ±3 days — only when the
       //    recipient's name matches that payment's organiser (never for transfers to Bilit's own accounts or third parties).
       const day = t.occurredAt.toISOString().slice(0, 10);
@@ -378,23 +393,24 @@ export async function relinkWise(orgId: string) {
 }
 
 // ---------- listing / actions ----------
-export const WiseFilter = z.object({ view: z.enum(["torecord", "out", "in", "all", "ignored"]).default("torecord"), q: z.string().trim().max(120).optional() });
+export const WiseFilter = z.object({ view: z.enum(["torecord", "spend", "out", "in", "all", "ignored"]).default("torecord"), q: z.string().trim().max(120).optional() });
 
 export async function listWise(orgId: string, f: z.infer<typeof WiseFilter>, page: { limit: number; offset: number }) {
   await relinkWise(orgId);
   const w = schema.acctWiseTransactions;
   const where = and(eq(w.organisationId, orgId),
-    f.view === "torecord" ? sql`${w.direction} = 'OUT' and ${w.kind} = 'TRANSFER' and ${w.organiserPaymentId} is null and not ${w.ignored} and coalesce(${w.status}, '') not in ('cancelled', 'bounced_back', 'funds_refunded', 'charged_back')`
+    f.view === "torecord" ? sql`${w.direction} = 'OUT' and ${w.kind} = 'TRANSFER' and ${w.organiserPaymentId} is null and ${w.billId} is null and not ${w.ignored} and coalesce(${w.status}, '') not in ('cancelled', 'bounced_back', 'funds_refunded', 'charged_back')`
+      : f.view === "spend" ? sql`${w.direction} = 'OUT' and ${w.kind} in ('CARD', 'OTHER') and ${w.billId} is null and not ${w.ignored} and coalesce(${w.status}, '') <> 'cancelled'`
       : f.view === "out" ? sql`${w.direction} = 'OUT' and not ${w.ignored}` : f.view === "in" ? sql`${w.direction} = 'IN' and not ${w.ignored}` : f.view === "ignored" ? sql`${w.ignored}` : undefined,
     f.q ? sql`(${w.counterparty} ilike ${`%${f.q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`} or ${w.reference} ilike ${`%${f.q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`} or ${w.wiseId} ilike ${`%${f.q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`})` : undefined);
   const sugg = schema.acctOrganisers;
   const [items, [cnt]] = await Promise.all([
-    db.select({ t: w, paymentOrganiserId: schema.acctOrganiserPayments.organiserId, paymentDate: schema.acctOrganiserPayments.paymentDate, paymentStatus: schema.acctOrganiserPayments.status, suggestedName: sugg.name, paymentOrganiserName: sql<string | null>`(select name from acct_organisers o where o.id = ${schema.acctOrganiserPayments.organiserId})` })
-      .from(w).leftJoin(schema.acctOrganiserPayments, eq(schema.acctOrganiserPayments.id, w.organiserPaymentId)).leftJoin(sugg, eq(sugg.id, w.suggestedOrganiserId))
+    db.select({ t: w, paymentOrganiserId: schema.acctOrganiserPayments.organiserId, paymentDate: schema.acctOrganiserPayments.paymentDate, paymentStatus: schema.acctOrganiserPayments.status, suggestedName: sugg.name, billKind: schema.acctBills.kind, billSupplier: schema.acctBills.supplierName, paymentOrganiserName: sql<string | null>`(select name from acct_organisers o where o.id = ${schema.acctOrganiserPayments.organiserId})` })
+      .from(w).leftJoin(schema.acctOrganiserPayments, eq(schema.acctOrganiserPayments.id, w.organiserPaymentId)).leftJoin(sugg, eq(sugg.id, w.suggestedOrganiserId)).leftJoin(schema.acctBills, eq(schema.acctBills.id, w.billId))
       .where(where).orderBy(desc(w.occurredAt)).limit(page.limit).offset(page.offset),
     db.select({ n: sql<number>`count(*)::int` }).from(w).where(where),
   ]);
-  return { items: items.map((r) => { const { raw: _raw, ...t } = r.t; void _raw; return { ...t, paymentOrganiserId: r.paymentOrganiserId, paymentOrganiserName: r.paymentOrganiserName, paymentDate: r.paymentDate, paymentStatus: r.paymentStatus, suggestedName: r.suggestedName }; }), total: cnt?.n ?? 0 };
+  return { items: items.map((r) => { const { raw: _raw, ...t } = r.t; void _raw; return { ...t, paymentOrganiserId: r.paymentOrganiserId, paymentOrganiserName: r.paymentOrganiserName, paymentDate: r.paymentDate, paymentStatus: r.paymentStatus, suggestedName: r.suggestedName, billKind: r.billKind, billSupplier: r.billSupplier, refNumber: wiseRefNumber(r.t.wiseId) }; }), total: cnt?.n ?? 0 };
 }
 
 export async function setWiseIgnored(a: Actor, id: string, input: z.infer<typeof IgnoreInput>) {

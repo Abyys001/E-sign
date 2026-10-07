@@ -302,3 +302,62 @@ describe("Wise bank feed", () => {
     w.setWiseApi(null);
   });
 });
+
+describe("finance chat agent", () => {
+  it("looks things up with tools, proposes a payment without executing it, and executes only on confirm", async () => {
+    const x = await setup();
+    const ag = await import("@/server/accounting/agent");
+    const { setAiChecker, updateAiSettings } = await import("@/server/accounting/ai");
+    setAiChecker(async () => {});
+    await updateAiSettings(x.actor, { enabled: true, model: "gpt-4.1", apiKey: "sk-test1234567890abcdefghijk", instructions: null });
+    const [org] = await db.select().from(schema.acctOrganisers).where(eq(schema.acctOrganisers.organisationId, x.org.id));
+    let turn = 0; const seen: string[] = [];
+    ag.setAgentLlm(async ({ messages }) => {
+      turn++;
+      const last = messages[messages.length - 1]!;
+      if (last.role === "tool") seen.push(String(last.content));
+      if (turn === 1) return { message: { role: "assistant", content: null, tool_calls: [{ id: "c1", type: "function", function: { name: "search_organisers", arguments: JSON.stringify({ query: "concerts" }) } }] } };
+      if (turn === 2) return { message: { role: "assistant", content: null, tool_calls: [{ id: "c2", type: "function", function: { name: "propose_record_payment", arguments: JSON.stringify({ organiserId: org!.id, amount: 20, currency: "EUR", paymentDate: "2026-10-07", method: "BANK_TRANSFER", bankReference: "Wise #9", status: "PAID" }) } }] } };
+      return { message: { role: "assistant", content: "I prepared the payment — please confirm." } };
+    });
+    const r = await ag.runAgentChat(x.actor, "test", { messages: [{ role: "user", content: "Record €20 paid to Concerts today by Wise #9" }] });
+    expect(seen[0]).toContain("Concerts Ltd"); expect(seen[0]).toContain("€35.00"); // balance shown to the model
+    expect(seen.join(" ")).not.toContain("ali@example.test");
+    expect(r.steps).toEqual(["organisers"]);
+    expect(r.proposals).toHaveLength(1);
+    expect(r.proposals[0]!.action).toMatchObject({ kind: "record_payment", amount: 2000, currency: "eur", mode: "test" });
+    expect(await db.select().from(schema.acctOrganiserPayments).where(eq(schema.acctOrganiserPayments.organisationId, x.org.id))).toHaveLength(0);
+    await ag.executeAction(x.actor, r.proposals[0]!.action);
+    expect(await db.select().from(schema.acctOrganiserPayments).where(eq(schema.acctOrganiserPayments.organisationId, x.org.id))).toHaveLength(1);
+    ag.setAgentLlm(null); setAiChecker(null);
+  });
+});
+
+describe("Wise → expense / supplier invoice", () => {
+  it("links a Wise transfer to the expense booked with its Wise number, and the agent can propose + book an expense", async () => {
+    const x = await setup();
+    const w = await import("@/server/accounting/wise");
+    const ag = await import("@/server/accounting/agent");
+    const { createBill } = await import("@/server/accounting/books");
+    const { ensureLedgerSetup } = await import("@/server/accounting/core");
+    await db.transaction((tx) => ensureLedgerSetup(tx, x.org.id));
+    const [acc] = await db.select().from(schema.acctAccounts).where(and(eq(schema.acctAccounts.organisationId, x.org.id), eq(schema.acctAccounts.type, "EXPENSE"), eq(schema.acctAccounts.code, "6900")));
+    const [t] = await db.insert(schema.acctWiseTransactions).values({ organisationId: x.org.id, wiseId: "TRANSFER-555", source: "TRANSFER", direction: "OUT", kind: "TRANSFER", status: "outgoing_payment_sent", occurredAt: new Date("2026-09-22T10:00:00Z"), amount: 40000, currency: "gbp", counterparty: "UNI TRAVEL LONDON LTD", reference: "Inv-035" }).returning();
+    expect((await w.listWise(x.org.id, { view: "torecord" }, { limit: 50, offset: 0 })).items.map((i) => i.id)).toContain(t!.id);
+    await createBill(x.actor, { mode: "live", kind: "BILL", supplierName: "Uni Travel London Ltd", supplierVat: null, country: "GB", invoiceNumber: "Inv-035", invoiceDate: "2026-09-22", dueDate: null, currency: "gbp", netAmount: 40000, vatAmount: 0, accountId: acc!.id, eventId: null, description: null, paidFrom: "BANK", paidDate: "2026-09-22", paymentReference: "Wise #555" });
+    const after = await w.listWise(x.org.id, { view: "all" }, { limit: 50, offset: 0 });
+    expect(after.items.find((i) => i.id === t!.id)).toMatchObject({ billKind: "BILL", billSupplier: "Uni Travel London Ltd" });
+    expect((await w.listWise(x.org.id, { view: "torecord" }, { limit: 50, offset: 0 })).items.map((i) => i.id)).not.toContain(t!.id);
+    // Agent proposal → confirm books an expense.
+    const { setAiChecker, updateAiSettings } = await import("@/server/accounting/ai");
+    setAiChecker(async () => {});
+    await updateAiSettings(x.actor, { enabled: true, model: "gpt-4.1", apiKey: "sk-test1234567890abcdefghijk", instructions: null });
+    let n = 0;
+    ag.setAgentLlm(async () => (++n === 1 ? { message: { role: "assistant", content: null, tool_calls: [{ id: "e1", type: "function", function: { name: "propose_record_expense", arguments: JSON.stringify({ docKind: "EXPENSE", supplierName: "Hetzner", date: "2026-10-04", currency: "eur", total: 144.89, vat: null, accountId: acc!.id, paidFrom: "CARD", bankReference: "Wise #4432" }) } }] } } : { message: { role: "assistant", content: "Please confirm." } }));
+    const r = await ag.runAgentChat(x.actor, "live", { messages: [{ role: "user", content: "Book the Hetzner card payment as an expense" }] });
+    expect(r.proposals[0]!.action).toMatchObject({ kind: "record_expense", netAmount: 14489, vatAmount: 0, mode: "live" });
+    const done = await ag.executeAction(x.actor, r.proposals[0]!.action);
+    expect(done.done).toBe("Expense booked");
+    ag.setAgentLlm(null); setAiChecker(null);
+  });
+});

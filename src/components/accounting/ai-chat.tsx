@@ -2,13 +2,16 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { Bot, Loader2, MessageCircle, Send, Trash2, X } from "lucide-react";
+import { Bot, Check, CheckCircle2, Loader2, MessageCircle, Search, Send, Trash2, X } from "lucide-react";
+import { useElevation } from "@/components/app/elevate";
+import { useMe } from "@/components/app/me";
 import { useMode } from "@/components/accounting/kit";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { api, errMsg, useApi } from "@/lib/api";
 
-type Msg = { role: "user" | "assistant"; content: string; error?: boolean };
+type Proposal = { id: string; summary: string; action: Record<string, unknown> & { kind: string }; needsElevation: boolean; state?: "done" | "dismissed" | "error" | "busy"; note?: string };
+type Msg = { role: "user" | "assistant"; content: string; error?: boolean; steps?: string[]; proposals?: Proposal[] };
 const KEY = "bilit.finance.aichat";
 const load = (): Msg[] => { try { return JSON.parse(sessionStorage.getItem(KEY) ?? "[]") as Msg[]; } catch { return []; } };
 const save = (m: Msg[]) => { try { sessionStorage.setItem(KEY, JSON.stringify(m.slice(-40))); } catch { /* storage may be unavailable */ } };
@@ -40,12 +43,25 @@ export function ChatPanel({ compact = false }: { compact?: boolean }) {
   // Restore the conversation after mount (not during server render), then keep it in this tab's session storage.
   useEffect(() => { setMsgs(load()); setLoaded(true); }, []);
   useEffect(() => { if (loaded) save(msgs); end.current?.scrollIntoView({ block: "end" }); }, [msgs, loaded]);
+  const ensure = useElevation();
+  const { can } = useMe();
   const ask = async (question: string) => {
     const qn = question.trim(); if (!qn || busy) return;
     const next = [...msgs.filter((m) => !m.error), { role: "user" as const, content: qn }];
     setMsgs(next); setInput(""); setBusy(true);
-    try { const r = await api<{ answer: string }>(q("/api/accounting/ai/chat"), { json: { messages: next.slice(-12).map(({ role, content }) => ({ role, content })) } }); setMsgs([...next, { role: "assistant", content: r.answer }]); }
-    catch (e) { setMsgs([...next, { role: "assistant", content: errMsg(e), error: true }]); } finally { setBusy(false); }
+    try {
+      // History sent to the agent: text only; proposals are summarised so it knows what is waiting or done.
+      const history = next.slice(-20).map(({ role, content, proposals }) => ({ role, content: proposals?.length ? `${content}\n\n[Proposals: ${proposals.map((p) => `${p.id} ${p.summary} — ${p.state === "done" ? "CONFIRMED and done" : p.state === "dismissed" ? "dismissed by admin" : p.state === "error" ? `failed: ${p.note}` : "not confirmed yet"}`).join("; ")}]` : content }));
+      const r = await api<{ answer: string; steps: string[]; proposals: Proposal[] }>(q("/api/accounting/ai/agent"), { json: { messages: history } });
+      setMsgs([...next, { role: "assistant", content: r.answer, steps: r.steps, proposals: r.proposals }]);
+    } catch (e) { setMsgs([...next, { role: "assistant", content: errMsg(e), error: true }]); } finally { setBusy(false); }
+  };
+  const setProposal = (mi: number, pid: string, patch: Partial<Proposal>) => setMsgs((ms) => ms.map((m, i) => (i === mi ? { ...m, proposals: m.proposals?.map((p) => (p.id === pid ? { ...p, ...patch } : p)) } : m)));
+  const confirm = async (mi: number, p: Proposal) => {
+    if (p.needsElevation && !(await ensure())) return;
+    setProposal(mi, p.id, { state: "busy" });
+    try { const r = await api<{ done: string }>("/api/accounting/ai/agent/execute", { json: { action: p.action } }); setProposal(mi, p.id, { state: "done", note: r.done }); }
+    catch (e) { setProposal(mi, p.id, { state: "error", note: errMsg(e) }); }
   };
   if (ai.data && !ai.data.enabled) return <div className="p-4 text-sm"><p className="mb-2 font-medium">{t("setupTitle")}</p><p className="text-muted">{t("setup")}</p><Link href="/accounting/settings" className="mt-2 inline-block underline underline-offset-4">{t("openSettings")}</Link></div>;
   const suggestions = [t("s1"), t("s2"), t("s3"), t("s4"), t("s5"), t("s6")];
@@ -54,7 +70,21 @@ export function ChatPanel({ compact = false }: { compact?: boolean }) {
       <div className="scroll-thin min-h-0 flex-1 space-y-3 overflow-y-auto p-4 text-sm">
         {!msgs.length && <div className="space-y-3"><p className="text-muted">{t("intro")}</p><div className="flex flex-wrap gap-2">{suggestions.map((s) => <button key={s} type="button" onClick={() => void ask(s)} className="rounded-full border border-line-strong px-3 py-1.5 text-start text-xs hover:border-accent hover:bg-accent-soft">{s}</button>)}</div></div>}
         {msgs.map((m, i) => <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
-          <div className={cn("max-w-[88%] rounded-2xl px-3.5 py-2.5", m.role === "user" ? "bg-fg text-bg" : m.error ? "border border-fin-neg/40 bg-fin-neg/10" : "bg-surface-2")}>{m.role === "assistant" && !m.error ? <Answer text={m.content} /> : <p className="whitespace-pre-wrap">{m.content}</p>}</div>
+          <div className={cn("max-w-[92%] rounded-2xl px-3.5 py-2.5", m.role === "user" ? "bg-fg text-bg" : m.error ? "border border-fin-neg/40 bg-fin-neg/10" : "bg-surface-2")}>
+            {m.steps && m.steps.length > 0 && <p className="mb-1.5 flex items-start gap-1.5 text-[11px] text-muted"><Search className="mt-0.5 size-3 shrink-0" aria-hidden />{t("checked", { what: m.steps.join(", ") })}</p>}
+            {m.role === "assistant" && !m.error ? <Answer text={m.content} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
+            {m.proposals?.map((p) => <div key={p.id} className="mt-2.5 rounded-xl border border-line-strong bg-surface p-3">
+              <p className="text-xs font-medium">{p.summary}</p>
+              {p.state === "done" ? <p className="mt-2 flex items-center gap-1.5 text-xs"><CheckCircle2 className="size-3.5" aria-hidden />{p.note}</p>
+                : p.state === "dismissed" ? <p className="mt-2 text-xs text-muted">{t("dismissed")}</p>
+                : !can("accounting.manage") ? <p className="mt-2 text-xs text-muted">{t("noPermission")}</p>
+                : <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="primary" loading={p.state === "busy"} onClick={() => void confirm(i, p)}><Check className="size-3.5" aria-hidden />{t("confirm")}</Button>
+                  <Button size="sm" variant="ghost" disabled={p.state === "busy"} onClick={() => setProposal(i, p.id, { state: "dismissed" })}>{t("dismiss")}</Button>
+                  {p.state === "error" && <span className="text-xs">{p.note}</span>}
+                </div>}
+            </div>)}
+          </div>
         </div>)}
         {busy && <div className="flex items-center gap-2 text-muted"><Loader2 className="size-4 animate-spin" aria-hidden />{t("thinking")}</div>}
         <div ref={end} />

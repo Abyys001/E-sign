@@ -51,7 +51,8 @@ export type BillRow = {
 };
 const VAT_RATES = ["0", "5", "7", "10", "19", "20", "21", "25"];
 
-export function BillDialog({ kind, mode, bill, onClose, onSaved }: { kind: "BILL" | "EXPENSE"; mode: string; bill?: BillRow; onClose: () => void; onSaved: () => void }) {
+export type BillPrefill = { supplierName: string; invoiceDate: string; currency: string; total: number; description: string; paymentReference: string; paidFrom: "BANK" | "CARD" };
+export function BillDialog({ kind, mode, bill, prefill, onClose, onSaved }: { kind: "BILL" | "EXPENSE"; mode: string; bill?: BillRow; prefill?: BillPrefill; onClose: () => void; onSaved: () => void }) {
   const t = useTranslations("accounting.books.doc");
   const c = useTranslations("common");
   const toast = useToast();
@@ -59,16 +60,21 @@ export function BillDialog({ kind, mode, bill, onClose, onSaved }: { kind: "BILL
   const { data: sup } = useApi<{ items: Array<{ name: string; vat: string | null; country: string | null; accountId: string; currency: string }> }>("/api/accounting/bills/suppliers");
   const { data: evs } = useApi<{ items: Array<{ id: string; name: string; code: string; currency: string }> }>("/api/accounting/events?pageSize=200");
   const [v, setV] = useState({
-    supplierName: bill?.supplierName ?? "", supplierVat: bill?.supplierVat ?? "", country: bill?.country ?? "", invoiceNumber: bill?.invoiceNumber ?? "",
-    invoiceDate: bill?.invoiceDate ?? today(), dueDate: bill?.dueDate ?? "", currency: bill?.currency ?? "gbp",
-    net: bill ? toDecimalString(bill.netAmount, bill.currency) : "", vat: bill ? toDecimalString(bill.vatAmount, bill.currency) : "", rate: "",
-    accountId: bill?.accountId ?? "", eventId: bill?.eventId ?? "", description: bill?.description ?? "", paidFrom: bill?.paidFrom ?? "BANK", alreadyPaid: false, paidDate: today(), paymentReference: "", reason: "",
+    supplierName: bill?.supplierName ?? prefill?.supplierName ?? "", supplierVat: bill?.supplierVat ?? "", country: bill?.country ?? "", invoiceNumber: bill?.invoiceNumber ?? "",
+    invoiceDate: bill?.invoiceDate ?? prefill?.invoiceDate ?? today(), dueDate: bill?.dueDate ?? "", currency: bill?.currency ?? prefill?.currency ?? "gbp",
+    net: bill ? toDecimalString(bill.netAmount, bill.currency) : prefill ? toDecimalString(prefill.total, prefill.currency) : "", vat: bill ? toDecimalString(bill.vatAmount, bill.currency) : "", rate: "",
+    accountId: bill?.accountId ?? "", eventId: bill?.eventId ?? "", description: bill?.description ?? prefill?.description ?? "", paidFrom: bill?.paidFrom ?? prefill?.paidFrom ?? "BANK", alreadyPaid: !!prefill, paidDate: prefill?.invoiceDate ?? today(), paymentReference: prefill?.paymentReference ?? "", reason: "",
   });
   const [file, setFile] = useState<File | null>(null);
   const [errs, setErrs] = useState<FieldErrors>({}); const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   const set = <K extends keyof typeof v>(k: K, x: (typeof v)[K]) => setV((o) => ({ ...o, [k]: x }));
   const net = tryMajor(v.net, v.currency), vat = tryMajor(v.vat, v.currency);
-  const applyRate = (r: string) => { setV((o) => { const n = tryMajor(o.net, o.currency); return { ...o, rate: r, vat: n === null ? o.vat : toDecimalString(Math.round((n * Number(r)) / 100), o.currency) }; }); };
+  const applyRate = (r: string) => {
+    if (prefill && !bill) { // amount paid from the bank is VAT-inclusive: split it into net + VAT
+      setV((o) => { const total = prefill.total; const vatM = Math.round((total * Number(r)) / (100 + Number(r))); return { ...o, rate: r, net: toDecimalString(total - vatM, o.currency), vat: toDecimalString(vatM, o.currency) }; }); return;
+    }
+    setV((o) => { const n = tryMajor(o.net, o.currency); return { ...o, rate: r, vat: n === null ? o.vat : toDecimalString(Math.round((n * Number(r)) / 100), o.currency) }; });
+  };
   const pickSupplier = (name: string) => {
     const s = sup?.items.find((x) => x.name.toLowerCase() === name.toLowerCase());
     setV((o) => ({ ...o, supplierName: name, ...(s && !bill ? { supplierVat: o.supplierVat || s.vat || "", country: o.country || s.country || "", accountId: o.accountId || s.accountId, currency: s.currency } : {}) }));

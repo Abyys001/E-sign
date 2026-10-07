@@ -704,6 +704,7 @@ export const acctWiseTransactions = pgTable("acct_wise_transactions", {
   organiserPaymentId: uuid("organiser_payment_id").references(() => acctOrganiserPayments.id),
   suggestedOrganiserId: uuid("suggested_organiser_id").references(() => acctOrganisers.id),
   stripePayoutId: text("stripe_payout_id"), // incoming money matched to a Stripe payout
+  billId: uuid("bill_id").references(() => acctBills.id), // booked as a supplier invoice / expense
   ignored: boolean("ignored").notNull().default(false),
   ignoredReason: text("ignored_reason"),
   ignoredBy: uuid("ignored_by").references(() => users.id),
