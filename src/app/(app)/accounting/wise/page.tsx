@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { ArrowDownLeft, ArrowUpRight, Banknote, Bot, FileText, Receipt, EyeOff, Landmark, RefreshCw, RotateCcw, Settings } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Banknote, Bot, FileText, HandCoins, Receipt, EyeOff, Landmark, RefreshCw, RotateCcw, Settings } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { Money } from "@/components/accounting/kit";
@@ -23,7 +23,7 @@ import { api, errMsg, fmtDate, useApi } from "@/lib/api";
 import { toDecimalString } from "@/lib/money";
 
 type Status = { connected: false } | { connected: true; tokenHint: string | null; profileId: string | null; profileName: string | null; publicKey: string | null; balances: Array<{ id: string; currency: string; amount: number }>; status: string; statementsOk: boolean; lastSyncAt: string | null; lastError: string | null; toRecord: number; total: number };
-type Tx = { id: string; wiseId: string; direction: "IN" | "OUT"; kind: string; status: string | null; occurredAt: string; amount: number; currency: string; sourceAmount: number | null; sourceCurrency: string | null; fee: number | null; counterparty: string | null; reference: string | null; description: string | null; organiserPaymentId: string | null; paymentOrganiserId: string | null; paymentOrganiserName: string | null; suggestedOrganiserId: string | null; suggestedName: string | null; stripePayoutId: string | null; ignored: boolean; ignoredReason: string | null; billId: string | null; billKind: string | null; billSupplier: string | null; refNumber: string };
+type Tx = { id: string; wiseId: string; direction: "IN" | "OUT"; kind: string; status: string | null; occurredAt: string; amount: number; currency: string; sourceAmount: number | null; sourceCurrency: string | null; fee: number | null; counterparty: string | null; reference: string | null; description: string | null; organiserPaymentId: string | null; paymentOrganiserId: string | null; paymentOrganiserName: string | null; suggestedOrganiserId: string | null; suggestedName: string | null; stripePayoutId: string | null; ignored: boolean; ignoredReason: string | null; billId: string | null; billKind: string | null; billSupplier: string | null; partnerPaymentId: string | null; partnerName: string | null; refNumber: string };
 const VIEWS = ["torecord", "spend", "out", "in", "ignored", "all"] as const;
 
 export default function WisePage() {
@@ -40,9 +40,10 @@ export default function WisePage() {
   const [rec, setRec] = useState<{ tx: Tx; prefill: PaymentPrefill } | null>(null);
   const [bill, setBill] = useState<{ kind: "BILL" | "EXPENSE"; prefill: BillPrefill } | null>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [bulk, setBulk] = useState<"expense" | "bill" | "organiser" | "ignore" | null>(null);
-  const [bulkV, setBulkV] = useState({ accountId: "", organiserId: "", reason: "" }); const [bulkBusy, setBulkBusy] = useState(false); const [bulkErr, setBulkErr] = useState<string | null>(null);
+  const [bulk, setBulk] = useState<"expense" | "bill" | "organiser" | "partner" | "ignore" | null>(null);
+  const [bulkV, setBulkV] = useState({ accountId: "", organiserId: "", partnerId: "", reason: "" }); const [bulkBusy, setBulkBusy] = useState(false); const [bulkErr, setBulkErr] = useState<string | null>(null);
   const accounts = useExpenseAccounts();
+  const partnersL = useApi<{ items: Array<{ id: string; name: string; sharePercent: number }> }>(bulk === "partner" ? "/api/accounting/profit-share/partners" : null);
   const orgs = useApi<{ items: Array<{ id: string; name: string }> }>(bulk === "organiser" ? "/api/accounting/organisers?pageSize=200" : null);
   const [agentText, setAgentText] = useState<string | null>(null); const [agentBusy, setAgentBusy] = useState(false);
   const [ign, setIgn] = useState<Tx | null>(null); const [reason, setReason] = useState("");
@@ -73,7 +74,7 @@ export default function WisePage() {
   };
   const recordBill = (tx: Tx, kind: "BILL" | "EXPENSE") => setBill({ kind, prefill: { supplierName: tx.counterparty ?? "", invoiceDate: tx.occurredAt.slice(0, 10), currency: tx.currency, total: tx.amount, paymentReference: `Wise #${tx.refNumber}`, paidFrom: tx.kind === "CARD" ? "CARD" : "BANK",
     description: [tx.kind === "CARD" ? `Wise card payment${tx.description ? ` (${tx.description})` : ""}` : `Wise transfer to ${tx.counterparty ?? "recipient"}`, tx.reference ? `reference “${tx.reference}”` : null, tx.fee ? `Wise fee ${toDecimalString(tx.fee, tx.sourceCurrency ?? tx.currency)} ${(tx.sourceCurrency ?? tx.currency).toUpperCase()}` : null].filter(Boolean).join(", ") } });
-  const eligible = (x: Tx) => x.direction === "OUT" && !x.organiserPaymentId && !x.billId && !x.ignored;
+  const eligible = (x: Tx) => x.direction === "OUT" && !x.organiserPaymentId && !x.billId && !x.partnerPaymentId && !x.ignored;
   const pageEligible = (list.data?.items ?? []).filter(eligible);
   const toggle = (id: string) => setSel((o) => { const n = new Set(o); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const allOnPage = pageEligible.length > 0 && pageEligible.every((x) => sel.has(x.id));
@@ -82,7 +83,7 @@ export default function WisePage() {
   const runBulk = async () => {
     setBulkBusy(true); setBulkErr(null);
     try {
-      const r = await api<{ done: number; failed: Array<{ id: string; error: string }>; total: number }>("/api/accounting/wise/bulk", { json: { ids: [...sel], action: bulk, reason: bulkV.reason || null, accountId: bulkV.accountId || null, organiserId: bulkV.organiserId || null } });
+      const r = await api<{ done: number; failed: Array<{ id: string; error: string }>; total: number }>("/api/accounting/wise/bulk", { json: { ids: [...sel], action: bulk, reason: bulkV.reason || null, accountId: bulkV.accountId || null, organiserId: bulkV.organiserId || null, partnerId: bulkV.partnerId || null } });
       toast(r.failed.length ? "error" : "ok", t("bulkDone", { done: r.done, total: r.total }));
       if (r.failed.length) { setBulkErr(r.failed.map((f) => `${(list.data?.items ?? []).find((x) => x.id === f.id)?.counterparty ?? f.id}: ${f.error}`).join("\n")); setSel(new Set(r.failed.map((f) => f.id))); }
       else { setSel(new Set()); setBulk(null); }
@@ -131,6 +132,7 @@ export default function WisePage() {
               <Button size="sm" onClick={() => { setBulkErr(null); setBulk("expense"); }}><Receipt className="size-3.5" aria-hidden />{t("expense")}</Button>
               <Button size="sm" onClick={() => { setBulkErr(null); setBulk("bill"); }}><FileText className="size-3.5" aria-hidden />{t("invoice")}</Button>
               <Button size="sm" onClick={() => { setBulkErr(null); setBulk("organiser"); }}><Banknote className="size-3.5" aria-hidden />{t("record")}</Button>
+              <Button size="sm" onClick={() => { setBulkErr(null); setBulk("partner"); }}><HandCoins className="size-3.5" aria-hidden />{t("partnerPay")}</Button>
               <Button size="sm" onClick={() => { setBulkErr(null); setBulk("ignore"); }}><EyeOff className="size-3.5" aria-hidden />{t("ignore")}</Button>
               <Button size="sm" variant="ghost" onClick={() => setSel(new Set())}>{t("clearSel")}</Button>
             </span>
@@ -146,18 +148,19 @@ export default function WisePage() {
                   {x.sourceCurrency && x.sourceCurrency !== x.currency && x.sourceAmount != null && <span className="block text-xs text-muted"><Money v={x.sourceAmount} c={x.sourceCurrency} /></span>}
                   {x.fee ? <span className="block text-xs text-muted">{t("fee")} <Money v={x.fee} c={x.sourceCurrency ?? x.currency} /></span> : null}</Td>
                 <Td className="min-w-44 text-sm">
-                  {x.billId ? <span>{t(x.billKind === "BILL" ? "bookedBill" : "bookedExpense")} <Link href="/accounting/books/invoices" className="font-medium underline-offset-4 hover:underline">{x.billSupplier}</Link></span>
+                  {x.partnerPaymentId ? <span>{t("bookedPartner")} <Link href="/accounting/profit-share" className="font-medium underline-offset-4 hover:underline">{x.partnerName}</Link></span>
+                    : x.billId ? <span>{t(x.billKind === "BILL" ? "bookedBill" : "bookedExpense")} <Link href="/accounting/books/invoices" className="font-medium underline-offset-4 hover:underline">{x.billSupplier}</Link></span>
                     : x.organiserPaymentId ? <span>{t("recordedFor")} <Link href={`/accounting/organisers/${x.paymentOrganiserId}?tab=payments`} className="font-medium underline-offset-4 hover:underline">{x.paymentOrganiserName}</Link></span>
                     : x.stripePayoutId ? <span>{t("stripePayout")} <code className="text-xs">{x.stripePayoutId}</code></span>
                     : x.ignored ? <span>{t("ignoredAs", { reason: x.ignoredReason ?? "" })}</span>
                     : x.direction === "OUT" && x.kind === "TRANSFER" ? <span className="text-muted">{x.suggestedName ? t("suggested", { name: x.suggestedName }) : t("notRecorded")}</span> : <span className="text-muted">—</span>}
                 </Td>
                 <Td className="text-end"><div className="flex justify-end gap-1">
-                  {manage && !x.organiserPaymentId && !x.billId && !x.ignored && x.direction === "OUT" && x.kind === "TRANSFER" && <Button size="sm" variant="primary" onClick={() => record(x)}><Banknote className="size-3.5" aria-hidden />{t("record")}</Button>}
-                  {manage && !x.organiserPaymentId && !x.billId && !x.ignored && x.direction === "OUT" && <>
+                  {manage && !x.organiserPaymentId && !x.billId && !x.partnerPaymentId && !x.ignored && x.direction === "OUT" && x.kind === "TRANSFER" && <Button size="sm" variant="primary" onClick={() => record(x)}><Banknote className="size-3.5" aria-hidden />{t("record")}</Button>}
+                  {manage && !x.organiserPaymentId && !x.billId && !x.partnerPaymentId && !x.ignored && x.direction === "OUT" && <>
                     <Button size="sm" onClick={() => recordBill(x, "EXPENSE")} title={t("expenseHint")}><Receipt className="size-3.5" aria-hidden />{t("expense")}</Button>
                     <Button size="sm" onClick={() => recordBill(x, "BILL")} title={t("invoiceHint")}><FileText className="size-3.5" aria-hidden />{t("invoice")}</Button></>}
-                  {manage && !x.organiserPaymentId && !x.billId && !x.ignored && <Button size="sm" variant="ghost" onClick={() => { setReason(""); setIgn(x); }} aria-label={t("ignore")} title={t("ignore")}><EyeOff className="size-3.5" aria-hidden /></Button>}
+                  {manage && !x.organiserPaymentId && !x.billId && !x.partnerPaymentId && !x.ignored && <Button size="sm" variant="ghost" onClick={() => { setReason(""); setIgn(x); }} aria-label={t("ignore")} title={t("ignore")}><EyeOff className="size-3.5" aria-hidden /></Button>}
                   {manage && x.ignored && <Button size="sm" variant="ghost" onClick={async () => { try { await api(`/api/accounting/wise/transactions/${x.id}/ignore`, { json: { ignored: false } }); await reloadAll(); } catch (e) { toast("error", errMsg(e)); } }} aria-label={t("unignore")} title={t("unignore")}><RotateCcw className="size-3.5" aria-hidden /></Button>}
                 </div></Td></Tr>)}</tbody></Table></TableWrap>
             <Pagination page={list.data.page} pageSize={list.data.pageSize} total={list.data.total} onPage={setPage} /></>}
@@ -167,10 +170,11 @@ export default function WisePage() {
 
       {agentText && <PaymentAgentDialog open onClose={() => setAgentText(null)} onSaved={() => void reloadAll()} initialText={agentText} autoRun forceMode="live" />}
       {bulk && <Modal open onClose={() => setBulk(null)} title={t(`bulk.${bulk}.title`, { n: sel.size })} description={t(`bulk.${bulk}.desc`)}
-        footer={<><Button onClick={() => setBulk(null)}>{t("cancel")}</Button><Button variant="primary" loading={bulkBusy} disabled={(bulk === "expense" || bulk === "bill") ? !bulkV.accountId : bulk === "organiser" ? !bulkV.organiserId : bulkV.reason.trim().length < 3} onClick={runBulk}>{t(`bulk.${bulk}.go`, { n: sel.size })}</Button></>}>
+        footer={<><Button onClick={() => setBulk(null)}>{t("cancel")}</Button><Button variant="primary" loading={bulkBusy} disabled={(bulk === "expense" || bulk === "bill") ? !bulkV.accountId : bulk === "organiser" ? !bulkV.organiserId : bulk === "partner" ? !bulkV.partnerId : bulkV.reason.trim().length < 3} onClick={runBulk}>{t(`bulk.${bulk}.go`, { n: sel.size })}</Button></>}>
         <div className="space-y-4">
           {(bulk === "expense" || bulk === "bill") && <Field label={t("category")} required>{(p) => <Select {...p} value={bulkV.accountId} onChange={(e) => setBulkV({ ...bulkV, accountId: e.target.value })}><option value="">—</option>{accounts.map((a2) => <option key={a2.id} value={a2.id}>{a2.code} · {a2.name}</option>)}</Select>}</Field>}
           {bulk === "organiser" && <Field label={t("organiser")} required>{(p) => <Select {...p} value={bulkV.organiserId} onChange={(e) => setBulkV({ ...bulkV, organiserId: e.target.value })}><option value="">—</option>{orgs.data?.items.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</Select>}</Field>}
+          {bulk === "partner" && <Field label={t("partnerLabel")} required>{(p) => <Select {...p} value={bulkV.partnerId} onChange={(e) => setBulkV({ ...bulkV, partnerId: e.target.value })}><option value="">—</option>{partnersL.data?.items.map((o) => <option key={o.id} value={o.id}>{o.name} · {o.sharePercent}%</option>)}</Select>}</Field>}
           {bulk === "ignore" && <Field label={t("ignoreReason")} required>{(p) => <Textarea {...p} value={bulkV.reason} onChange={(e) => setBulkV({ ...bulkV, reason: e.target.value })} placeholder={t("ignorePlaceholder")} />}</Field>}
           <ul className="scroll-thin max-h-56 divide-y divide-line overflow-y-auto rounded-xl border border-line text-sm">{selected.map((x) => <li key={x.id} className="flex justify-between gap-3 px-3 py-1.5"><span className="truncate">{x.occurredAt.slice(0, 10)} · {x.counterparty ?? x.wiseId}</span><Money v={x.amount} c={x.currency} /></li>)}</ul>
           <p className="text-xs text-muted">{t("bulkNote")}</p>

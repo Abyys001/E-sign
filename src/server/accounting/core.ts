@@ -57,6 +57,9 @@ export const SYSTEM_ACCOUNTS = {
   bank_charges: { code: "6700", name: "Bank Charges", type: "EXPENSE" },
   utilities: { code: "6800", name: "Utilities & Telecoms", type: "EXPENSE" },
   event_costs: { code: "6900", name: "Event Production Costs", type: "EXPENSE" },
+  // profit share (e.g. web developer's % of each event's profit)
+  profit_share: { code: "6950", name: "Profit Share (Partners)", type: "EXPENSE" },
+  profit_share_payable: { code: "2400", name: "Profit Share Payable", type: "LIABILITY" },
 } as const;
 export type SystemAccount = keyof typeof SYSTEM_ACCOUNTS;
 export type AccountIds = Record<SystemAccount, string>;

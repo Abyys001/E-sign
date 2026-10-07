@@ -388,3 +388,35 @@ describe("Wise bulk booking", () => {
     expect(bills.find((b) => b.paymentReference === "Wise #77")).toMatchObject({ paidFrom: "CARD", totalAmount: 1234 });
   });
 });
+
+describe("profit share (developer % of event profit)", () => {
+  it("accrues % of each event's profit before shares, trues up on changes, payments reduce what is owed", async () => {
+    const x = await setup();
+    const ps = await import("@/server/accounting/profit-share");
+    const before = (await eventFinancials(x.org.id, "test", { eventIds: [x.event.id] }))[0]!;
+    const profit = before.bilitProfit;
+    expect(profit).toBeGreaterThan(0);
+    const p = await ps.savePartner(x.actor, null, ps.PartnerInput.parse({ name: "Morteza", role: "Web developer", sharePercent: 10 }));
+    const o1 = await ps.partnerOverview(x.org.id, "test", p.id);
+    const share = Math.round(profit * 0.1);
+    expect(o1.totals[0]).toMatchObject({ currency: "eur", earned: share, paid: 0, owed: share, profit });
+    expect((await ps.syncProfitShares(x.org.id, "test")).posted).toBe(0); // idempotent
+    // The share is a Bilit cost but never reduces its own base.
+    const after = (await eventFinancials(x.org.id, "test", { eventIds: [x.event.id] }))[0]!;
+    expect(after.bilitProfit).toBe(profit - share);
+    expect(after.profitShare).toBe(share);
+    // Changing the % books only the difference.
+    await ps.savePartner(x.actor, p.id, ps.PartnerInput.parse({ name: "Morteza", sharePercent: 20 }));
+    const o2 = await ps.partnerOverview(x.org.id, "test", p.id);
+    expect(o2.totals[0]!.earned).toBe(Math.round(profit * 0.2));
+    const pay = await ps.recordPartnerPayment(x.actor, ps.PartnerPaymentInput.parse({ mode: "test", partnerId: p.id, amount: 10, currency: "eur", paymentDate: "2026-10-07", bankReference: "Wise #42" }));
+    expect((await ps.partnerOverview(x.org.id, "test", p.id)).totals[0]).toMatchObject({ paid: 10, owed: Math.round(profit * 0.2) - 10 });
+    await ps.voidPartnerPayment(x.actor, pay.id, "test");
+    expect((await ps.partnerOverview(x.org.id, "test", p.id)).totals[0]).toMatchObject({ paid: 0 });
+    const tb = await trialBalance(x.org.id, "test");
+    const sum = tb.filter((r) => r.currency === "eur").reduce((s, r) => s + r.debit - r.credit, 0);
+    expect(sum).toBe(0);
+    const pdf = await ps.partnerStatementPdf(x.org.id, "test", p.id);
+    expect(pdf.bytes.subarray(0, 4).toString()).toBe("%PDF");
+  });
+});

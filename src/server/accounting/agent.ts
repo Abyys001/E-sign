@@ -10,6 +10,7 @@ import { aiConfig } from "./ai";
 import { acctAudit, getAcctSettings, IsoDate, localDate, type Mode } from "./core";
 import { eventFinancials, financeOverview, organiserBalances, organiserFinancials } from "./finance";
 import { createBill } from "./books";
+import { listPartners, partnerOverview, recordPartnerPayment } from "./profit-share";
 import { editOrganiserPayment, markPaymentPaid, recordOrganiserPayment, voidOrganiserPayment } from "./manual";
 import { listPayments, listTransactions } from "./queries";
 import { getWiseStatus, listWise, setWiseIgnored, syncWise } from "./wise";
@@ -35,6 +36,7 @@ export const AgentAction = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("edit_payment"), paymentId: z.string().uuid(), amount: z.number().int().positive().nullable(), paymentDate: IsoDate.nullable(), bankReference: z.string().max(120).nullable(), notes: z.string().max(2000).nullable(), eventId: z.string().uuid().nullable().optional(), reason: z.string().min(3).max(1000) }),
   z.object({ kind: z.literal("void_payment"), paymentId: z.string().uuid(), reason: z.string().min(3).max(1000) }),
   z.object({ kind: z.literal("record_expense"), mode: z.enum(["test", "live"]), docKind: z.enum(["EXPENSE", "BILL"]), supplierName: z.string().min(1).max(200), invoiceNumber: z.string().max(80).nullable(), date: IsoDate, currency: z.string().regex(/^[a-z]{3}$/), netAmount: z.number().int().min(0), vatAmount: z.number().int().min(0), accountId: z.string().uuid(), eventId: z.string().uuid().nullable(), description: z.string().max(2000).nullable(), paidFrom: z.enum(["BANK", "CARD", "CASH", "EMPLOYEE"]), paymentReference: z.string().max(120).nullable() }),
+  z.object({ kind: z.literal("partner_payment"), mode: z.enum(["test", "live"]), partnerId: z.string().uuid(), amount: z.number().int().positive(), currency: z.string().regex(/^[a-z]{3}$/), paymentDate: IsoDate, method: Method, bankReference: z.string().max(120).nullable(), notes: z.string().max(2000).nullable() }),
   z.object({ kind: z.literal("wise_ignore"), wiseTransactionId: z.string().uuid(), reason: z.string().min(3).max(500) }),
 ]);
 export type AgentActionT = z.infer<typeof AgentAction>;
@@ -50,6 +52,7 @@ Rules:
 - To change anything use the propose_* tools. A proposal is NOT done — tell the admin it is waiting for their confirmation (a Confirm button appears under your message). Never say a change was made unless the conversation shows it was confirmed.
 - Before proposing a payment: find the organiser (search_organisers), check their balance and existing payments for duplicates (organiser_account / list_payments), and when it came from Wise or Stripe, find the source transaction and use its number as the bank reference (e.g. "Wise #2417781233", Stripe payout id). Company policy: record a payment as made, against the organiser as a whole, NOT split across events, unless the admin says which event it is for. Fees and FX: record the amount in the currency of the organiser's balance; note the other side and any fee in the notes.
 - A Wise or bank payment can also be a cost of Bilit's: book it with propose_record_expense — EXPENSE when there is no invoice to keep track of, BILL when there is a supplier invoice (paid, so the admin can attach the PDF later). Pick the category with expense_categories; split out VAT only when the admin says the supplier charged VAT.
+- Profit share: some partners (e.g. Morteza, the web developer) earn a % of each event's profit; it is booked automatically as a cost owed to them. Use profit_share to answer questions about it and propose_partner_payment when Bilit paid them (e.g. Wise "To Morteza Dev").
 - If something is ambiguous, ask one short question instead of guessing. Flag accounting concerns (overpayment, duplicates, missing references, money that never left) like a careful accountant would.
 - Answer in the language of the question. Use short lists or small markdown tables when helpful.`;
 
@@ -70,6 +73,8 @@ const TOOLS = [
   fn("propose_mark_paid", "Propose marking a PENDING payment as paid (optionally with the actual date and bank reference).", { paymentId: { type: "string" }, paymentDate: { type: ["string", "null"] }, bankReference: { type: ["string", "null"] } }, ["paymentId"]),
   fn("propose_edit_payment", "Propose editing a payment (amount in major units, date, reference, notes, event). Give a reason.", { paymentId: { type: "string" }, amount: { type: ["number", "null"] }, paymentDate: { type: ["string", "null"] }, bankReference: { type: ["string", "null"] }, notes: { type: ["string", "null"] }, eventId: { type: ["string", "null"] }, reason: { type: "string" } }, ["paymentId", "reason"]),
   fn("propose_void_payment", "Propose voiding (cancelling) a recorded payment; the ledger entry is reversed and history kept.", { paymentId: { type: "string" }, reason: { type: "string" } }, ["paymentId", "reason"]),
+  fn("profit_share", "Profit-share partners (e.g. Morteza, web developer, 10% of each event's profit): share earned, paid and still owed per currency, per event and per month, and payments made. Without partnerId returns the list of partners.", { partnerId: { type: "string" } }),
+  fn("propose_partner_payment", "Propose recording a payment Bilit made to a profit-share partner (reduces what is owed). Amount in major units, in the currency of the share being paid off.", { partnerId: { type: "string" }, amount: { type: "number" }, currency: { type: "string" }, paymentDate: { type: "string" }, method: { type: "string", enum: ["BANK_TRANSFER", "STRIPE_TRANSFER", "CASH", "OTHER"] }, bankReference: { type: ["string", "null"] }, notes: { type: ["string", "null"] } }, ["partnerId", "amount", "currency", "paymentDate"]),
   fn("expense_categories", "Expense categories (chart of accounts) to book supplier invoices / expenses against.", {}),
   fn("propose_record_expense", "Propose booking a payment Bilit made to a supplier as an EXPENSE (paid, no invoice to track) or a supplier invoice BILL (already paid). Amounts in major units; total = net + vat. For Wise movements use bankReference \"Wise #<number>\" so it links to the Wise transaction.", { docKind: { type: "string", enum: ["EXPENSE", "BILL"] }, supplierName: { type: "string" }, invoiceNumber: { type: ["string", "null"] }, date: { type: "string" }, currency: { type: "string" }, total: { type: "number" }, vat: { type: ["number", "null"] }, accountId: { type: "string" }, eventId: { type: ["string", "null"] }, description: { type: ["string", "null"] }, paidFrom: { type: "string", enum: ["BANK", "CARD", "CASH", "EMPLOYEE"] }, bankReference: { type: ["string", "null"] } }, ["docKind", "supplierName", "date", "currency", "total", "accountId"]),
   fn("propose_wise_ignore", "Propose marking a Wise transfer as NOT an organiser payment (own account, supplier, salary, loan…).", { wiseTransactionId: { type: "string" }, reason: { type: "string" } }, ["wiseTransactionId", "reason"]),
@@ -171,6 +176,25 @@ async function runTool(c: Ctx, name: string, args: Record<string, unknown>): Pro
       const action = parseAs("void_payment", { paymentId: p.id, reason: S(args.reason) ?? "Voided via finance assistant" });
       return propose(c, `Void payment ${m(p.amount, p.currency)} to ${await orgName(p.organiserId)} (${p.paymentDate}, ${p.bankReference ?? "no ref"}) — reason: ${action.reason}`, action, true);
     }
+    case "profit_share": {
+      const ps = await listPartners(a.orgId);
+      const id = S(args.partnerId);
+      if (!id) return ps.map((p) => ({ partnerId: p.id, name: p.name, role: p.role, sharePercent: p.shareBps / 100, appliesFrom: p.appliesFrom, lossesCount: p.lossesCount, active: p.active }));
+      if (!ps.some((p) => p.id === id)) return { error: "Partner not found — call profit_share without partnerId." };
+      const o = await partnerOverview(a.orgId, mode, id);
+      return { partner: o.partner.name, sharePercent: o.partner.sharePercent, totals: o.totals.map((x) => ({ currency: x.currency, eventProfit: m(x.profit, x.currency), earned: m(x.earned, x.currency), paid: m(x.paid, x.currency), owed: m(x.owed, x.currency) })),
+        monthly: o.monthly.slice(0, 36).map((x) => ({ month: x.month, currency: x.currency, profit: m(x.profit, x.currency), share: m(x.share, x.currency) })),
+        events: o.events.slice(0, 80).map((e) => ({ code: e.code, name: e.name, date: e.date, currency: e.currency, profit: m(e.profitBefore, e.currency), share: m(e.share, e.currency) })),
+        payments: o.payments.map((p) => ({ date: p.paymentDate, amount: m(p.amount, p.currency), reference: p.bankReference, status: p.status })) };
+    }
+    case "propose_partner_payment": {
+      const ps = await listPartners(a.orgId); const p = ps.find((x) => x.id === S(args.partnerId));
+      if (!p) return { error: "Partner not found." };
+      const currency = String(args.currency ?? "").toLowerCase();
+      if (!/^[a-z]{3}$/.test(currency) || !(Number(args.amount) > 0) || !D(args.paymentDate)) return { error: "Need a valid amount, 3-letter currency and YYYY-MM-DD date." };
+      const action = parseAs("partner_payment", { mode, partnerId: p.id, amount: toMinor(Number(args.amount), currency), currency, paymentDate: D(args.paymentDate), method: Method.catch("BANK_TRANSFER").parse(args.method ?? "BANK_TRANSFER"), bankReference: S(args.bankReference)?.slice(0, 120) ?? null, notes: S(args.notes)?.slice(0, 2000) ?? null });
+      return propose(c, `Record profit-share payment of ${m(action.amount, currency)} to ${p.name} on ${action.paymentDate}${action.bankReference ? `, ref ${action.bankReference}` : ""} — ${mode.toUpperCase()} books`, action, false);
+    }
     case "expense_categories": {
       const rows = await db.select().from(schema.acctAccounts).where(and(eq(schema.acctAccounts.organisationId, a.orgId), eq(schema.acctAccounts.type, "EXPENSE"), eq(schema.acctAccounts.active, true)));
       return rows.filter((x) => !["stripe_fees", "stripe_fee_recharges", "refunds", "chargebacks", "wages", "employer_payroll_costs"].includes(x.systemKey ?? "")).map((x) => ({ accountId: x.id, code: x.code, name: x.name }));
@@ -213,7 +237,7 @@ const openAi: Llm = async ({ apiKey, model, messages, tools }) => {
   return { message: body?.choices?.[0]?.message ?? { role: "assistant", content: "" }, tokens: body?.usage?.total_tokens };
 };
 
-const STEP_LABEL: Record<string, string> = { expense_categories: "expense categories", search_organisers: "organisers", organiser_account: "organiser account", list_events: "events", list_payments: "payments", wise_transactions: "Wise transactions", wise_status: "Wise balances", sync_wise: "synced Wise", stripe_payouts: "Stripe payouts", stripe_transactions: "Stripe transactions", books_overview: "books overview", health_checks: "bookkeeping checks" };
+const STEP_LABEL: Record<string, string> = { profit_share: "profit share", expense_categories: "expense categories", search_organisers: "organisers", organiser_account: "organiser account", list_events: "events", list_payments: "payments", wise_transactions: "Wise transactions", wise_status: "Wise balances", sync_wise: "synced Wise", stripe_payouts: "Stripe payouts", stripe_transactions: "Stripe transactions", books_overview: "books overview", health_checks: "bookkeeping checks" };
 
 export async function runAgentChat(a: Actor, mode: Mode, input: z.infer<typeof AgentChatInput>) {
   const cfg = await aiConfig(a.orgId);
@@ -258,6 +282,7 @@ export async function executeAction(a: Actor, action: AgentActionT) {
     }
     case "edit_payment": return { done: "Payment updated", result: await editOrganiserPayment(a, action.paymentId, { ...(action.amount != null ? { amount: action.amount } : {}), ...(action.paymentDate ? { paymentDate: action.paymentDate } : {}), ...(action.bankReference ? { bankReference: action.bankReference } : {}), ...(action.notes ? { notes: action.notes } : {}), ...(action.eventId !== undefined ? { eventId: action.eventId } : {}), reason: action.reason }) };
     case "void_payment": return { done: "Payment voided", result: await voidOrganiserPayment(a, action.paymentId, action.reason) };
+    case "partner_payment": { const { kind: _k2, ...rest } = action; void _k2; return { done: "Partner payment recorded", result: await recordPartnerPayment(a, rest) }; }
     case "record_expense": {
       const r = await createBill(a, { mode: action.mode, kind: action.docKind, supplierName: action.supplierName, supplierVat: null, country: null, invoiceNumber: action.invoiceNumber, invoiceDate: action.date, dueDate: null, currency: action.currency, netAmount: action.netAmount, vatAmount: action.vatAmount, accountId: action.accountId, eventId: action.eventId, description: action.description, paidFrom: action.paidFrom, paidDate: action.docKind === "BILL" ? action.date : null, paymentReference: action.paymentReference });
       return { done: action.docKind === "BILL" ? "Supplier invoice booked (paid)" : "Expense booked", result: r };

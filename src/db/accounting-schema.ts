@@ -705,8 +705,48 @@ export const acctWiseTransactions = pgTable("acct_wise_transactions", {
   suggestedOrganiserId: uuid("suggested_organiser_id").references(() => acctOrganisers.id),
   stripePayoutId: text("stripe_payout_id"), // incoming money matched to a Stripe payout
   billId: uuid("bill_id").references(() => acctBills.id), // booked as a supplier invoice / expense
+  partnerPaymentId: uuid("partner_payment_id").references(() => acctPartnerPayments.id), // paid to a profit-share partner
   ignored: boolean("ignored").notNull().default(false),
   ignoredReason: text("ignored_reason"),
   ignoredBy: uuid("ignored_by").references(() => users.id),
   createdAt: createdAt(), updatedAt: updatedAt(),
 }, (t) => [uniqueIndex("acct_wise_transactions_uq").on(t.organisationId, t.wiseId), index("acct_wise_transactions_date_idx").on(t.organisationId, t.occurredAt)]);
+
+// ---------- profit share ----------
+/** A person/company entitled to a share of each event's Bilit profit (e.g. the web developer: 10%). */
+export const acctProfitPartners = pgTable("acct_profit_partners", {
+  id: id(),
+  organisationId: org(),
+  name: text("name").notNull(),
+  role: text("role"),
+  email: text("email"),
+  shareBps: integer("share_bps").notNull(), // 1000 = 10%
+  appliesFrom: date("applies_from"), // events starting on/after this date; null = all events
+  lossesCount: boolean("losses_count").notNull().default(false), // false: an event with a loss gives a 0 share
+  active: boolean("active").notNull().default(true),
+  notes: text("notes"),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+}, (t) => [index("acct_profit_partners_org_idx").on(t.organisationId), check("acct_profit_partners_bps_ck", sql`${t.shareBps} >= 0 and ${t.shareBps} <= 10000`)]);
+
+/** Money Bilit paid a profit-share partner; reduces Profit Share Payable via its own ledger entry. */
+export const acctPartnerPayments = pgTable("acct_partner_payments", {
+  id: id(),
+  organisationId: org(),
+  livemode: boolean("livemode").notNull(),
+  partnerId: uuid("partner_id").notNull().references(() => acctProfitPartners.id),
+  amount: money("amount").notNull(),
+  currency: text("currency").notNull(),
+  paymentDate: date("payment_date").notNull(),
+  method: text("method").notNull().default("BANK_TRANSFER"),
+  bankReference: text("bank_reference"),
+  notes: text("notes"),
+  status: text("status").notNull().default("PAID"), // PAID | VOIDED
+  journalEntryId: uuid("journal_entry_id").references(() => acctJournalEntries.id),
+  voidEntryId: uuid("void_entry_id").references(() => acctJournalEntries.id),
+  voidReason: text("void_reason"),
+  voidedBy: uuid("voided_by").references(() => users.id),
+  voidedAt: timestamp("voided_at", { withTimezone: true }),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: createdAt(),
+}, (t) => [index("acct_partner_payments_partner_idx").on(t.partnerId, t.paymentDate), check("acct_partner_payments_amount_ck", sql`${t.amount} > 0`)]);
