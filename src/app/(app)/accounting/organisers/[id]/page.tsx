@@ -3,13 +3,14 @@ import Link from "next/link";
 import { Suspense, use, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { ArrowLeft, Banknote, CalendarPlus, Download, Eye, Pencil } from "lucide-react";
+import { ArrowLeft, Banknote, Bot, CalendarPlus, Download, Eye, Pencil } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { Badge, DL, Money, RangePicker, rangeFor, rangeQuery, useExport, useMode, type RangeKey } from "@/components/accounting/kit";
 import { OrganiserFinance, PortalUsers } from "@/components/accounting/organiser-finance";
 import { OrganiserContracts, OrganiserPayments, OrganiserRefunds, OrganiserReports } from "@/components/accounting/organiser-tabs";
 import { LinkEventsDialog, OrganiserDialog, PaymentDialog } from "@/components/accounting/forms";
+import { PaymentAgentDialog } from "@/components/accounting/payment-agent";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardHeader, PageHeader } from "@/components/ui/card";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
@@ -32,6 +33,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) { 
 
 function OrganiserDetail({ id }: { id: string }) {
   const t = useTranslations("accounting.organisers");
+  const ta = useTranslations("accounting.payagent");
   const locale = useLocale();
   const toast = useToast();
   const ensure = useElevation();
@@ -44,7 +46,7 @@ function OrganiserDetail({ id }: { id: string }) {
   const setTab = (v: TabId) => router.replace(`/accounting/organisers/${id}${v === "overview" ? "" : `?tab=${v}`}`, { scroll: false });
   const { data, loading, error, reload } = useApi<D>(q(`/api/accounting/organisers/${id}`));
   const [refresh, setRefresh] = useState(0);
-  const [edit, setEdit] = useState(false); const [pay, setPay] = useState(false); const [linkOpen, setLinkOpen] = useState(false);
+  const [edit, setEdit] = useState(false); const [pay, setPay] = useState(false); const [agent, setAgent] = useState(false); const [linkOpen, setLinkOpen] = useState(false);
   const [bank, setBank] = useState<Record<string, string | null> | null>(null);
   const [cur, setCur] = useState<string>(""); const [page, setPage] = useState(1);
   const [range, setRange] = useState<{ key: RangeKey; from?: string; to?: string }>({ key: "all" });
@@ -59,7 +61,7 @@ function OrganiserDetail({ id }: { id: string }) {
     <div className="space-y-6">
       <PageHeader title={<span className="flex items-center gap-3">{o.name} <Badge s={o.active ? "ACTIVE" : "INACTIVE"} /></span>} description={o.companyName ?? undefined}
         actions={<><LinkButton href="/accounting/organisers"><ArrowLeft className="size-4 rtl:rotate-180" aria-hidden />{t("back")}</LinkButton>
-          {can("accounting.manage") && <><Button onClick={() => setEdit(true)}><Pencil className="size-4" aria-hidden />{t("edit")}</Button><Button variant="primary" onClick={() => setPay(true)}><Banknote className="size-4" aria-hidden />{t("recordPayment")}</Button></>}</>} />
+          {can("accounting.manage") && <><Button onClick={() => setEdit(true)}><Pencil className="size-4" aria-hidden />{t("edit")}</Button><Button onClick={() => setAgent(true)}><Bot className="size-4" aria-hidden />{ta("open")}</Button><Button variant="primary" onClick={() => setPay(true)}><Banknote className="size-4" aria-hidden />{t("recordPayment")}</Button></>}</>} />
       <Tabs tabs={TABS.map((k) => ({ id: k, label: t(`tabs.${k}`) }))} value={tab} onChange={setTab} label={t("tabs.label")} />
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="space-y-6">
       {tab === "overview" && <OrganiserFinance id={id} refresh={refresh} />}
@@ -99,6 +101,7 @@ function OrganiserDetail({ id }: { id: string }) {
       </div>
       {edit && <OrganiserDialog open={edit} onClose={() => setEdit(false)} onSaved={() => void reload()} organiserId={id} hasBank={o.hasBankDetails} initial={{ name: o.name, email: o.email ?? "", companyName: o.companyName ?? "", vatNumber: o.vatNumber ?? "", address: o.address ?? "", internalRef: o.internalRef ?? "", notes: o.notes ?? "", active: o.active }} />}
       {linkOpen && <LinkEventsDialog organiserId={id} onClose={() => setLinkOpen(false)} onSaved={() => { void reload(); void st.reload(); }} />}
+      {agent && <PaymentAgentDialog open={agent} onClose={() => setAgent(false)} onSaved={() => { void reload(); void st.reload(); setRefresh((x) => x + 1); }} organiserId={id} />}
       {pay && <PaymentDialog open={pay} onClose={() => setPay(false)} onSaved={() => { void reload(); void st.reload(); setRefresh((x) => x + 1); }} mode={mode} organiserId={id} />}
       <span className="sr-only">{locale}</span>
     </div>

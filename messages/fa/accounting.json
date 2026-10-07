@@ -1925,5 +1925,40 @@
     "setupTitle": "AI accountant not set up",
     "setup": "Add an OpenAI API key and enable the AI accountant in Finance settings to ask questions here.",
     "openSettings": "Open Finance settings"
+  },
+  "payagent": {
+    "open": "AI payment agent",
+    "title": "AI payment agent",
+    "desc": "Paste a bank / Wise / Stripe confirmation or type an instruction (e.g. “Paid Demian €8,000 by Wise yesterday, ref 2372969752”). The AI bookkeeper reads it, matches the organiser, checks the balance and duplicates, and proposes the payment. Nothing is posted until you confirm.",
+    "textLabel": "Payment instruction or pasted text",
+    "textHint": "One or several payments. Include who, how much, currency, date and the transfer reference if you have them.",
+    "placeholder": "e.g. Sent €2,500 to Pegasus Events for the Vienna show via Wise on 3 Oct, transfer #2401188234\n\nor paste the Wise / bank confirmation here…",
+    "privacy": "The text and the organiser balances are sent to OpenAI; ticket buyers' details are not",
+    "analyse": "Analyse",
+    "notReady": "The AI accountant is not set up. Add an OpenAI key under Finance settings → AI accountant.",
+    "openSettings": "Open Finance settings",
+    "checks": "Accountant's checks",
+    "question": "Question:",
+    "none": "No payment to an organiser was found in the text.",
+    "row": "Payment {n}",
+    "done": "recorded",
+    "confidence": "Confidence",
+    "conf": {
+      "high": "high",
+      "medium": "medium",
+      "low": "low — check carefully"
+    },
+    "balOrganiser": "Organiser balance:",
+    "balEvent": "Event balance:",
+    "due": "Due",
+    "paid": "Paid",
+    "remaining": "Remaining",
+    "after": "After this payment",
+    "dupOk": "I confirm this is a separate transfer, not a duplicate",
+    "why": "Why the agent chose this",
+    "again": "Start again with new text",
+    "model": "Model: {model}",
+    "record": "{n, plural, =0 {Record payments} one {Record # payment} other {Record # payments}}",
+    "recorded": "{n, plural, one {# payment recorded} other {# payments recorded}}"
   }
 }

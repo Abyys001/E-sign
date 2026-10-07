@@ -2,12 +2,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Banknote, CheckCircle2, Download, Eye, FileDown, Pencil, Trash2 } from "lucide-react";
+import { Banknote, Bot, CheckCircle2, Download, Eye, FileDown, Pencil, Trash2 } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { Badge, Money, useExport, useMode } from "@/components/accounting/kit";
 import { PaymentEditDialog, PaymentViewDialog } from "@/components/accounting/finance";
 import { PaymentDialog } from "@/components/accounting/forms";
+import { PaymentAgentDialog } from "@/components/accounting/payment-agent";
 import { Button } from "@/components/ui/button";
 import { Card, PageHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm";
@@ -27,11 +28,12 @@ export default function PaymentsPage() {
   const ensure = useElevation();
   const { can } = useMe();
   const { mode, q } = useMode();
-  const [status, setStatus] = useState(""); const [page, setPage] = useState(1); const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState(""); const [page, setPage] = useState(1); const [open, setOpen] = useState(false); const [agent, setAgent] = useState(false);
   const [voiding, setVoiding] = useState<P | null>(null); const [reason, setReason] = useState("");
   const [view, setView] = useState<string | null>(null); const [editing, setEditing] = useState<P | null>(null);
   const doExport = useExport();
   const tf = useTranslations("accounting.fin");
+  const ta = useTranslations("accounting.payagent");
   const { data, loading, reload } = useApi<{ items: P[]; total: number; page: number; pageSize: number }>(q(`/api/accounting/organiser-payments?page=${page}&pageSize=50${status ? `&status=${status}` : ""}`));
   const markPaid = async (p: P) => { try { await api(`/api/accounting/organiser-payments/${p.id}`, { method: "PATCH", json: { status: "PAID" } }); toast("ok", t("markedPaid")); await reload(); } catch (e) { toast("error", errMsg(e)); } };
   return (
@@ -39,6 +41,7 @@ export default function PaymentsPage() {
       <PageHeader title={t("title")} description={t("sub")} actions={<>
         <Select aria-label={t("status")} value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="w-auto"><option value="">{t("all")}</option>{["PAID", "PENDING", "VOIDED"].map((s) => <option key={s} value={s}>{t(`st.${s}`)}</option>)}</Select>
         <Button onClick={() => doExport(ensure, q(`/api/accounting/organiser-payments?x=1${status ? `&status=${status}` : ""}`))}><Download className="size-4" aria-hidden />{tf("export")}</Button>
+        {can("accounting.manage") && <Button onClick={() => setAgent(true)}><Bot className="size-4" aria-hidden />{ta("open")}</Button>}
         {can("accounting.manage") && <Button variant="primary" onClick={() => setOpen(true)}><Banknote className="size-4" aria-hidden />{t("record")}</Button>}</>} />
       <Card>
         {loading && !data ? <div className="space-y-3 p-4">{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-10" />)}</div> : !data?.items.length ? <EmptyState title={t("empty")} description={t("emptyDesc")} /> : <>
@@ -58,6 +61,7 @@ export default function PaymentsPage() {
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPage={setPage} /></>}
       </Card>
       {open && <PaymentDialog open={open} onClose={() => setOpen(false)} onSaved={() => void reload()} mode={mode} />}
+      {agent && <PaymentAgentDialog open={agent} onClose={() => setAgent(false)} onSaved={() => void reload()} />}
       {view && <PaymentViewDialog id={view} onClose={() => setView(null)} />}
       {editing && <PaymentEditDialog p={editing} onClose={() => setEditing(null)} onSaved={() => void reload()} />}
       <ConfirmDialog open={!!voiding} onClose={() => setVoiding(null)} title={tf("payDelete.title")} description={tf("payDelete.desc")} confirmLabel={tf("deleteItem")}

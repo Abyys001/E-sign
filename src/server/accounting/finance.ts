@@ -187,6 +187,12 @@ export async function organiserFinancials(orgId: string, mode: Mode, organiserId
   return { eventCount: eventCount[0]?.n ?? 0, totals, events };
 }
 
+/** Settlement balance (due / paid / remaining) of every organiser, per currency, all time. */
+export async function organiserBalances(orgId: string, mode: Mode) {
+  const figs = await aggregate(orgId, mode, "organiser", {}, {});
+  return [...figs.entries()].map(([k, v]) => ({ organiserId: k.split("|")[0]!, ...v })).filter((x) => x.organiserId && x.organiserId !== "null");
+}
+
 // ---------- overview ----------
 export type FxConfig = { reportingCurrency: string | null; rates: Record<string, string> };
 

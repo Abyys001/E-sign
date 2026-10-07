@@ -161,6 +161,15 @@ const openAiCompleter: Completer = async ({ apiKey, model, system, user }) => {
   return { content: body?.choices?.[0]?.message?.content ?? "", promptTokens: body?.usage?.prompt_tokens, completionTokens: body?.usage?.completion_tokens };
 };
 
+/** Key + model for other AI features (e.g. the payment agent); throws when the AI accountant is not set up. */
+export async function aiConfig(orgId: string) {
+  const s = await stored(orgId);
+  if (!s.enabled || !s.apiKeyEnc) throw new AppError("invalid_state", "Set up the AI accountant (OpenAI key) under Finance settings → AI accountant first.");
+  return { apiKey: decrypt(s.apiKeyEnc), model: s.model ?? "gpt-4.1", instructions: s.instructions ?? null };
+}
+/** JSON-mode completion (same injectable completer as the review). */
+export const completeJson: Completer = (a) => (g.__aiCompleter ?? openAiCompleter)(a);
+
 export async function runAiReview(a: Actor, mode: Mode, range: Range) {
   const s = await stored(a.orgId);
   if (!s.enabled || !s.apiKeyEnc) throw new AppError("invalid_state", "Enable the AI review and add an OpenAI API key under Finance settings → AI accountant.");

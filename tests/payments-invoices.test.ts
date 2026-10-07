@@ -203,3 +203,39 @@ describe("AI finance chat", () => {
     setAiChat(null); setAiChecker(null);
   });
 });
+
+describe("AI payment agent", () => {
+  it("turns pasted text into checked organiser-payment proposals (balance, overpayment, duplicates), never posting by itself", async () => {
+    const x = await setup();
+    const { setAiCompleter, setAiChecker, updateAiSettings } = await import("@/server/accounting/ai");
+    const { analysePaymentText } = await import("@/server/accounting/payment-agent");
+    const { recordOrganiserPayment } = await import("@/server/accounting/manual");
+    await expectPg(analysePaymentText(x.actor, "test", { text: "paid Concerts 20 euro" }), /Set up the AI accountant/);
+    setAiChecker(async () => {});
+    await updateAiSettings(x.actor, { enabled: true, model: "gpt-4.1", apiKey: "sk-test1234567890abcdefghijk", instructions: null });
+    const [org] = await db.select().from(schema.acctOrganisers).where(eq(schema.acctOrganisers.organisationId, x.org.id));
+    let system = "", user = "";
+    const answer = (amount: number, ref: string) => JSON.stringify({ understanding: "Bilit paid Concerts Ltd.", accountantNote: "ok", warnings: [], questions: [], payments: [
+      { organiserId: org!.id, organiserGuess: "Concerts", eventId: x.event.id, amount, currency: "EUR", paymentDate: "2026-09-15", method: "BANK_TRANSFER", status: "PAID", bankReference: ref, notes: "Settlement", confidence: "high", reasoning: "name" },
+      { organiserId: randomUUID(), organiserGuess: "Nobody Promotions", amount: 10, currency: "eur", paymentDate: "yesterday", method: "WIRE", status: "PAID" },
+    ] });
+    setAiCompleter(async (a) => { system = a.system; user = a.user; return { content: answer(20, "Wise #123") }; });
+    const r = await analysePaymentText(x.actor, "test", { text: "Paid Concerts €20 via Wise on 15/9, #123" });
+    expect(system).toContain("Concerts Ltd"); expect(system).toContain("senior bookkeeper");
+    expect(system).not.toContain("ali@example.test"); expect(system).not.toContain("Ali Rezaei");
+    expect(user).toContain("#123");
+    expect(r.proposals[0]).toMatchObject({ organiserId: org!.id, eventId: x.event.id, amount: 2000, currency: "eur", paymentDate: "2026-09-15", balance: { remaining: 3500, after: 1500, scope: "event" }, duplicates: [] });
+    expect(r.proposals[1]).toMatchObject({ organiserId: null, method: "BANK_TRANSFER" });
+    expect(r.proposals[1]!.issues.map((i) => i.level)).toContain("error");
+    // Nothing was posted by the agent.
+    expect(await db.select().from(schema.acctOrganiserPayments).where(eq(schema.acctOrganiserPayments.organisationId, x.org.id))).toHaveLength(0);
+    // Once recorded, the same reference is flagged as a duplicate; paying more than owed is flagged as overpayment.
+    await recordOrganiserPayment(x.actor, { mode: "test", organiserId: org!.id, eventId: x.event.id, amount: 2000, currency: "eur", paymentDate: "2026-09-15", bankReference: "Wise #123", method: "BANK_TRANSFER", notes: null, status: "PAID" });
+    setAiCompleter(async () => ({ content: answer(50, "WISE 123") }));
+    const r2 = await analysePaymentText(x.actor, "test", { text: "again" });
+    expect(r2.proposals[0]!.duplicates).toHaveLength(1);
+    expect(r2.proposals[0]!.balance).toMatchObject({ remaining: 1500, after: -3500 });
+    expect(r2.proposals[0]!.issues.some((i) => /Overpayment/.test(i.text))).toBe(true);
+    setAiCompleter(null); setAiChecker(null);
+  });
+});
