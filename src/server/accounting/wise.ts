@@ -424,3 +424,48 @@ export async function setWiseIgnored(a: Actor, id: string, input: z.infer<typeof
     return row!;
   });
 }
+
+// ---------- bulk ----------
+export const BulkInput = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(200),
+  action: z.enum(["ignore", "expense", "bill", "organiser"]),
+  reason: z.string().trim().max(500).optional().nullable(),
+  accountId: z.string().uuid().optional().nullable(),
+  organiserId: z.string().uuid().optional().nullable(),
+});
+
+/**
+ * Book many Wise movements in one go: one expense / paid supplier invoice / organiser payment per movement (each with
+ * its own "Wise #<n>" reference so it links back), or mark them as not organiser payments. Each item is its own
+ * transaction; failures are reported per item and do not stop the rest.
+ */
+export async function bulkWise(a: Actor, input: z.infer<typeof BulkInput>) {
+  if (input.action === "ignore" && !input.reason) throw new AppError("validation_failed", "Say what these transfers were (e.g. own account, salary, loan).", [{ path: "reason", message: "Give a reason" }]);
+  if ((input.action === "expense" || input.action === "bill") && !input.accountId) throw new AppError("validation_failed", "Choose an expense category.", [{ path: "accountId", message: "Choose a category" }]);
+  if (input.action === "organiser" && !input.organiserId) throw new AppError("validation_failed", "Choose the organiser.", [{ path: "organiserId", message: "Choose an organiser" }]);
+  const { createBill } = await import("./books");
+  const { recordOrganiserPayment } = await import("./manual");
+  const w = schema.acctWiseTransactions;
+  const rows = await db.select().from(w).where(and(eq(w.organisationId, a.orgId), sql`${w.id} in (${sql.join(input.ids.map((id) => sql`${id}::uuid`), sql`, `)})`));
+  const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+  for (const t of rows) {
+    try {
+      if (t.organiserPaymentId || t.billId) throw new AppError("invalid_state", "Already in the books.");
+      if (input.action === "ignore") { await setWiseIgnored(a, t.id, { ignored: true, reason: input.reason }); results.push({ id: t.id, ok: true }); continue; }
+      if (t.direction !== "OUT") throw new AppError("invalid_state", "Only money going out can be booked.");
+      if (t.ignored) throw new AppError("invalid_state", "Marked as other — undo that first.");
+      const ref = `Wise #${wiseRefNumber(t.wiseId)}`, date = t.occurredAt.toISOString().slice(0, 10);
+      const fee = t.fee ? `, Wise fee ${(t.fee / 10 ** currencyExponent(t.sourceCurrency ?? t.currency)).toFixed(currencyExponent(t.sourceCurrency ?? t.currency))} ${(t.sourceCurrency ?? t.currency).toUpperCase()}` : "";
+      const desc = `${t.kind === "CARD" ? "Wise card payment" : "Wise transfer"} to ${t.counterparty ?? "recipient"}${t.reference ? `, reference “${t.reference}”` : ""}${t.sourceCurrency && t.sourceCurrency !== t.currency && t.sourceAmount != null ? `, paid from ${(t.sourceAmount / 10 ** currencyExponent(t.sourceCurrency)).toFixed(currencyExponent(t.sourceCurrency))} ${t.sourceCurrency.toUpperCase()}` : ""}${fee}`;
+      if (input.action === "organiser") {
+        await recordOrganiserPayment(a, { mode: "live", organiserId: input.organiserId!, eventId: null, amount: t.amount, currency: t.currency, paymentDate: date, bankReference: ref, method: "BANK_TRANSFER", notes: desc, status: "PAID" });
+      } else {
+        const kind = input.action === "bill" ? "BILL" : "EXPENSE";
+        await createBill(a, { mode: "live", kind, supplierName: (t.counterparty ?? "Unknown payee").slice(0, 200), supplierVat: null, country: null, invoiceNumber: kind === "BILL" ? t.reference?.slice(0, 80) ?? null : null, invoiceDate: date, dueDate: null, currency: t.currency, netAmount: t.amount, vatAmount: 0, accountId: input.accountId!, eventId: null, description: desc, paidFrom: t.kind === "CARD" ? "CARD" : "BANK", paidDate: kind === "BILL" ? date : null, paymentReference: ref });
+      }
+      results.push({ id: t.id, ok: true });
+    } catch (e) { results.push({ id: t.id, ok: false, error: e instanceof Error ? e.message.slice(0, 200) : "failed" }); }
+  }
+  await relinkWise(a.orgId);
+  return { done: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok), total: input.ids.length };
+}

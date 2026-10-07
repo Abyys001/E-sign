@@ -2040,6 +2040,37 @@
     "expenseHint": "Book as a paid expense (no supplier invoice to track)",
     "invoiceHint": "Book as a supplier invoice, already paid from Wise — attach the PDF",
     "bookedExpense": "Expense —",
-    "bookedBill": "Supplier invoice —"
+    "bookedBill": "Supplier invoice —",
+    "selected": "{n} selected",
+    "clearSel": "Clear",
+    "selectAll": "Select all on this page",
+    "selectRow": "Select {name}",
+    "cancel": "Cancel",
+    "category": "Expense category",
+    "organiser": "Organiser",
+    "bulkDone": "{done} of {total} booked",
+    "bulkNote": "One record is created per transaction, dated on the Wise date, in its own currency, with “Wise #number” as reference so it stays linked. VAT is not split — edit an item afterwards if the supplier charged VAT.",
+    "bulk": {
+      "expense": {
+        "title": "Book {n} as expenses",
+        "desc": "Each becomes a paid expense in the chosen category, payee = Wise recipient.",
+        "go": "Book {n} expenses"
+      },
+      "bill": {
+        "title": "Book {n} as supplier invoices",
+        "desc": "Each becomes a supplier invoice marked paid from Wise; attach the PDFs later under Bookkeeping → Invoices.",
+        "go": "Book {n} invoices"
+      },
+      "organiser": {
+        "title": "Record {n} organiser payments",
+        "desc": "Each becomes a payment to the chosen organiser (whole organiser, not split by event).",
+        "go": "Record {n} payments"
+      },
+      "ignore": {
+        "title": "Mark {n} as not organiser payments",
+        "desc": "They stay imported but are no longer flagged as missing from the books.",
+        "go": "Mark {n}"
+      }
+    }
   }
 }

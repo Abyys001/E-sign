@@ -361,3 +361,30 @@ describe("Wise → expense / supplier invoice", () => {
     ag.setAgentLlm(null); setAiChecker(null);
   });
 });
+
+describe("Wise bulk booking", () => {
+  it("books several Wise transfers as expenses / organiser payments / ignored, each linked, failures reported per item", async () => {
+    const x = await setup();
+    const w = await import("@/server/accounting/wise");
+    const { ensureLedgerSetup } = await import("@/server/accounting/core");
+    await db.transaction((tx) => ensureLedgerSetup(tx, x.org.id));
+    const [acc] = await db.select().from(schema.acctAccounts).where(and(eq(schema.acctAccounts.organisationId, x.org.id), eq(schema.acctAccounts.code, "6900")));
+    const [org] = await db.select().from(schema.acctOrganisers).where(eq(schema.acctOrganisers.organisationId, x.org.id));
+    const mk = (id: string, amount: number, kind = "TRANSFER", currency = "gbp") => ({ organisationId: x.org.id, wiseId: id, source: "TRANSFER", direction: "OUT", kind, status: "completed", occurredAt: new Date("2026-09-20T10:00:00Z"), amount, currency, counterparty: `Payee ${id}` });
+    const rows = await db.insert(schema.acctWiseTransactions).values([mk("TRANSFER-1001", 5000), mk("ACT-CARD_TRANSACTION-77", 1234, "CARD"), mk("TRANSFER-1002", 2000, "TRANSFER", "eur"), mk("TRANSFER-1003", 700)]).returning();
+    await expectPg(w.bulkWise(x.actor, { ids: [rows[0]!.id], action: "expense" }), /Choose an expense category/);
+    const r = await w.bulkWise(x.actor, { ids: [rows[0]!.id, rows[1]!.id], action: "expense", accountId: acc!.id });
+    expect(r).toMatchObject({ done: 2, failed: [] });
+    const r2 = await w.bulkWise(x.actor, { ids: [rows[2]!.id, rows[0]!.id], action: "organiser", organiserId: org!.id });
+    expect(r2.done).toBe(1); expect(r2.failed[0]!.error).toMatch(/Already in the books/);
+    await w.bulkWise(x.actor, { ids: [rows[3]!.id], action: "ignore", reason: "own account" });
+    const all = (await w.listWise(x.org.id, { view: "all" }, { limit: 50, offset: 0 })).items;
+    const by = (id: string) => all.find((i) => i.wiseId === id)!;
+    expect(by("TRANSFER-1001")).toMatchObject({ billKind: "EXPENSE", billSupplier: "Payee TRANSFER-1001" });
+    expect(by("ACT-CARD_TRANSACTION-77")).toMatchObject({ billKind: "EXPENSE" });
+    expect(by("TRANSFER-1002").organiserPaymentId).toBeTruthy();
+    expect(by("TRANSFER-1003")).toMatchObject({ ignored: true, ignoredReason: "own account" });
+    const bills = await db.select().from(schema.acctBills).where(eq(schema.acctBills.organisationId, x.org.id));
+    expect(bills.find((b) => b.paymentReference === "Wise #77")).toMatchObject({ paidFrom: "CARD", totalAmount: 1234 });
+  });
+});
