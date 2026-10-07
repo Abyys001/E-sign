@@ -662,3 +662,50 @@ export const acctAiReviews = pgTable("acct_ai_reviews", {
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: createdAt(),
 }, (t) => [index("acct_ai_reviews_org_idx").on(t.organisationId, t.createdAt.desc())]);
+
+// ---------- Wise (bank feed) ----------
+/** Read-only Wise API connection (one per organisation). Token and SCA private key are encrypted; never returned. */
+export const acctWiseConnections = pgTable("acct_wise_connections", {
+  id: id(),
+  organisationId: org(),
+  tokenEnc: text("token_enc").notNull(),
+  tokenHint: text("token_hint"),
+  profileId: text("profile_id"),
+  profileName: text("profile_name"),
+  scaPrivateKeyEnc: text("sca_private_key_enc"),
+  scaPublicKey: text("sca_public_key"), // PEM the admin uploads to Wise so balance statements can be read
+  balances: jsonb("balances").notNull().default([]), // [{ id, currency, amount (minor) }]
+  status: text("status").notNull().default("CONNECTED"), // CONNECTED | ERROR
+  statementsOk: boolean("statements_ok").notNull().default(false),
+  lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+}, (t) => [uniqueIndex("acct_wise_connections_org_uq").on(t.organisationId)]);
+
+/** Wise money movements: outgoing transfers (transfers API) and balance-statement lines (deposits, conversions, fees…). */
+export const acctWiseTransactions = pgTable("acct_wise_transactions", {
+  id: id(),
+  organisationId: org(),
+  wiseId: text("wise_id").notNull(), // "TRANSFER-123" for transfers (same key the statement uses), else the statement reference number
+  source: text("source").notNull(), // TRANSFER | STATEMENT
+  direction: text("direction").notNull(), // OUT | IN
+  kind: text("kind").notNull(), // TRANSFER | DEPOSIT | CONVERSION | CARD | FEE | OTHER
+  status: text("status"),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  amount: money("amount").notNull(), // positive, minor units; for transfers the amount the recipient receives
+  currency: text("currency").notNull(),
+  sourceAmount: money("source_amount"), sourceCurrency: text("source_currency"),
+  fee: money("fee"),
+  counterparty: text("counterparty"),
+  reference: text("reference"),
+  description: text("description"),
+  raw: jsonb("raw"),
+  organiserPaymentId: uuid("organiser_payment_id").references(() => acctOrganiserPayments.id),
+  suggestedOrganiserId: uuid("suggested_organiser_id").references(() => acctOrganisers.id),
+  stripePayoutId: text("stripe_payout_id"), // incoming money matched to a Stripe payout
+  ignored: boolean("ignored").notNull().default(false),
+  ignoredReason: text("ignored_reason"),
+  ignoredBy: uuid("ignored_by").references(() => users.id),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+}, (t) => [uniqueIndex("acct_wise_transactions_uq").on(t.organisationId, t.wiseId), index("acct_wise_transactions_date_idx").on(t.organisationId, t.occurredAt)]);

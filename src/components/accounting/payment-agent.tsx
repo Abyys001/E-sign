@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { AlertTriangle, Bot, CircleAlert, Info, Sparkles } from "lucide-react";
@@ -26,16 +26,18 @@ type Row = { include: boolean; dupOk: boolean; done: boolean; organiserId: strin
 const toRow = (p: Proposal): Row => ({ include: true, dupOk: false, done: false, organiserId: p.organiserId ?? "", eventId: p.eventId ?? "", amount: p.amount != null ? toDecimalString(p.amount, p.currency) : "", currency: p.currency, paymentDate: p.paymentDate, method: p.method, status: p.status, bankReference: p.bankReference ?? "", notes: p.notes ?? "", p });
 
 /** AI payment agent: paste a bank/Wise confirmation or type an instruction; the AI bookkeeper proposes checked organiser payments to confirm. */
-export function PaymentAgentDialog({ open, onClose, onSaved, organiserId }: { open: boolean; onClose: () => void; onSaved: () => void; organiserId?: string }) {
+export function PaymentAgentDialog({ open, onClose, onSaved, organiserId, initialText, autoRun, forceMode }: { open: boolean; onClose: () => void; onSaved: () => void; organiserId?: string; initialText?: string; autoRun?: boolean; forceMode?: "live" | "test" }) {
   const t = useTranslations("accounting.payagent");
   const tp = useTranslations("accounting.payments");
   const c = useTranslations("common");
   const toast = useToast();
-  const { mode, q } = useMode();
+  const m = useMode();
+  const mode = forceMode ?? m.mode;
+  const q = (u: string) => (forceMode ? `${u}${u.includes("?") ? "&" : "?"}mode=${forceMode}` : m.q(u));
   const ai = useApi<{ enabled: boolean; hasKey: boolean }>(open ? "/api/accounting/settings/ai" : null);
   const { data: orgs } = useApi<{ items: Array<{ id: string; name: string }> }>(open ? "/api/accounting/organisers?pageSize=200" : null);
   const { data: evs } = useApi<{ items: Array<{ id: string; name: string; code: string; currency: string; organiserId: string | null }> }>(open ? "/api/accounting/events?pageSize=200" : null);
-  const [text, setText] = useState(""); const [busy, setBusy] = useState(false); const [saving, setSaving] = useState(false);
+  const [text, setText] = useState(initialText ?? ""); const [busy, setBusy] = useState(false); const [saving, setSaving] = useState(false);
   const [res, setRes] = useState<Result | null>(null); const [rows, setRows] = useState<Row[]>([]); const [err, setErr] = useState<string | null>(null);
   const set = (i: number, patch: Partial<Row>) => setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...patch } : r)));
 
@@ -46,6 +48,9 @@ export function PaymentAgentDialog({ open, onClose, onSaved, organiserId }: { op
       setRes(r); setRows(r.proposals.map(toRow));
     } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
   };
+  // Opened with prepared text (e.g. from the Wise feed): analyse straight away, once.
+  const [started, setStarted] = useState(false);
+  useEffect(() => { if (open && autoRun && initialText && !started && ai.data?.enabled && ai.data.hasKey) { setStarted(true); void analyse(); } }); // eslint-disable-line react-hooks/exhaustive-deps
   const blocked = (r: Row) => !r.organiserId || !r.amount || !r.paymentDate || !/^[a-z]{3}$/.test(r.currency) || (r.p.duplicates.length > 0 && !r.dupOk);
   const chosen = rows.filter((r) => r.include && !r.done);
   const record = async () => {

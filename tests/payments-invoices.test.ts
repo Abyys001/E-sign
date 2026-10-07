@@ -239,3 +239,56 @@ describe("AI payment agent", () => {
     setAiCompleter(null); setAiChecker(null);
   });
 });
+
+describe("Wise bank feed", () => {
+  it("connects read-only, imports transfers + statement lines, links recorded payments, suggests organisers, matches Stripe payouts", async () => {
+    const x = await setup();
+    const w = await import("@/server/accounting/wise");
+    const { recordOrganiserPayment } = await import("@/server/accounting/manual");
+    const [org] = await db.select().from(schema.acctOrganisers).where(eq(schema.acctOrganisers.organisationId, x.org.id));
+    await db.insert(schema.stripePayouts).values({ organisationId: x.org.id, stripeAccountRef: x.acc.id, livemode: true, payoutId: "po_wise1", amount: 400000, currency: "gbp", status: "paid", stripeCreatedAt: new Date("2026-10-06T19:55:00Z"), arrivalDate: new Date("2026-10-07T00:00:00Z") });
+    let signedWith: string | null = null;
+    w.setWiseApi({
+      profiles: async (token) => { if (token !== "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee") throw new Error("bad token"); return [{ id: "1", type: "PERSONAL", name: "Me" }, { id: "2", type: "BUSINESS", name: "Bilit Platform" }]; },
+      balances: async () => [{ id: "b1", currency: "gbp", amount: 123456 }],
+      transfers: async (_t, pid, p) => (pid === "2" && p.offset === 0 ? [
+        { id: 111, status: "outgoing_payment_sent", created: "2026-10-07 09:00:00", sourceValue: 4010, sourceCurrency: "GBP", targetValue: 4000, targetCurrency: "GBP", reference: "Bilit", targetAccount: 9 },
+        { id: 222, status: "outgoing_payment_sent", created: "2026-10-07 10:00:00", sourceValue: 2200, sourceCurrency: "GBP", targetValue: 2500, targetCurrency: "EUR", reference: null, targetAccount: 10 },
+        { id: 333, status: "cancelled", created: "2026-10-07 11:00:00", sourceValue: 5, sourceCurrency: "GBP", targetValue: 5, targetCurrency: "GBP", targetAccount: 10 },
+      ] : []),
+      recipientName: async (_t, id) => (id === 9 ? "CONCERTS LIMITED" : "Someone Else"),
+      statement: async (_t, _p, _b, _r, key) => { signedWith = key; return [
+        { type: "DEBIT", date: "2026-10-07T09:00:00Z", amount: { value: -4010, currency: "GBP" }, totalFees: { value: 10 }, referenceNumber: "TRANSFER-111", details: { type: "TRANSFER", description: "Sent money to Concerts" } },
+        { type: "CREDIT", date: "2026-10-07T08:00:00Z", amount: { value: 4000, currency: "GBP" }, referenceNumber: "DEPOSIT-77", details: { type: "DEPOSIT", senderName: "Stripe Payments UK" } },
+      ]; },
+    });
+    await expect(w.connectWise(x.actor, w.ConnectInput.parse({ token: "aaaaaaaa-bbbb-cccc-dddd-000000000000" }))).rejects.toThrow(/bad token/);
+    const st = await w.connectWise(x.actor, w.ConnectInput.parse({ token: " aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\n" }));
+    expect(st).toMatchObject({ connected: true, profileId: "2", tokenHint: "aaaa…eeee" });
+    expect(JSON.stringify(await w.getWiseStatus(x.org.id))).not.toContain("bbbb-cccc");
+    // An organiser payment already recorded with the Wise number is linked, not flagged.
+    const pay = await recordOrganiserPayment(x.actor, { mode: "live", organiserId: org!.id, eventId: null, amount: 400000, currency: "gbp", paymentDate: "2026-10-07", bankReference: "Wise - 111", method: "BANK_TRANSFER", notes: null, status: "PAID" });
+    const r = await w.syncWise(x.org.id);
+    expect(r).toMatchObject({ transfers: 3, statementLines: 2, statementsOk: true });
+    expect(signedWith).toContain("PRIVATE KEY");
+    const all = (await w.listWise(x.org.id, { view: "all" }, { limit: 50, offset: 0 })).items;
+    const t111 = all.find((t) => t.wiseId === "TRANSFER-111")!;
+    expect(t111).toMatchObject({ organiserPaymentId: pay.id, amount: 400000, fee: 1000, sourceAmount: 401000, counterparty: "CONCERTS LIMITED" });
+    expect(all.find((t) => t.wiseId.startsWith("DEPOSIT-77"))).toMatchObject({ direction: "IN", stripePayoutId: "po_wise1" });
+    const todo = (await w.listWise(x.org.id, { view: "torecord" }, { limit: 50, offset: 0 })).items;
+    expect(todo.map((t) => t.wiseId)).toEqual(["TRANSFER-222"]); // cancelled transfer and recorded one are not flagged
+    await expectPg(w.setWiseIgnored(x.actor, todo[0]!.id, { ignored: true }), /Say what this transfer was/);
+    await w.setWiseIgnored(x.actor, todo[0]!.id, { ignored: true, reason: "own account" });
+    expect((await w.getWiseStatus(x.org.id)) as { toRecord: number }).toMatchObject({ toRecord: 0 });
+    // Suggestion by recipient name when nothing is recorded yet.
+    await db.update(schema.acctWiseTransactions).set({ organiserPaymentId: null }).where(eq(schema.acctWiseTransactions.id, t111.id));
+    const { voidOrganiserPayment } = await import("@/server/accounting/manual");
+    await voidOrganiserPayment(x.actor, pay.id, "test void");
+    await w.relinkWise(x.org.id);
+    const again = (await w.listWise(x.org.id, { view: "torecord" }, { limit: 50, offset: 0 })).items;
+    expect(again[0]).toMatchObject({ wiseId: "TRANSFER-111", suggestedOrganiserId: org!.id });
+    await w.disconnectWise(x.actor);
+    expect(await w.getWiseStatus(x.org.id)).toEqual({ connected: false });
+    w.setWiseApi(null);
+  });
+});

@@ -1,0 +1,344 @@
+import { createSign, generateKeyPairSync } from "node:crypto";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { z } from "zod";
+import { db, schema } from "@/db";
+import { currencyExponent, parseMajor } from "@/lib/money";
+import type { RequestContext } from "../audit";
+import { decrypt, encrypt } from "../crypto";
+import { AppError } from "../errors";
+import { log } from "../logger";
+import { acctAudit, accountingEnabled } from "./core";
+
+/**
+ * Wise bank feed (read-only). The admin creates a read-only API token in Wise Business and pastes it here; Bilit then
+ * imports outgoing transfers (who was paid, how much, reference) and — once the generated public key is uploaded to
+ * Wise for strong customer authentication — balance statements (incoming Stripe payouts, conversions, fees).
+ * Nothing is ever sent or changed in Wise. Imported transfers are matched to recorded organiser payments; unmatched
+ * ones can be recorded with one click. Wise is real money, so everything here belongs to the LIVE books.
+ */
+type Actor = { orgId: string; userId: string; ctx: RequestContext };
+const BASE = "https://api.wise.com";
+
+// ---------- API client (injectable for tests) ----------
+export type WiseProfile = { id: string; type: string; name: string };
+export type WiseBalance = { id: string; currency: string; amount: number };
+export type WiseTransfer = { id: number; status: string; created: string; sourceValue: number; sourceCurrency: string; targetValue: number; targetCurrency: string; reference?: string | null; targetAccount?: number | null; details?: { reference?: string | null } | null; rate?: number };
+export type WiseStatementLine = { type: "DEBIT" | "CREDIT"; date: string; amount: { value: number; currency: string }; totalFees?: { value: number } | null; referenceNumber: string; details?: { type?: string; description?: string; senderName?: string; paymentReference?: string; recipient?: { name?: string } | null; merchant?: { name?: string } | null } | null };
+export interface WiseApi {
+  profiles(token: string): Promise<WiseProfile[]>;
+  balances(token: string, profileId: string): Promise<WiseBalance[]>;
+  transfers(token: string, profileId: string, p: { createdDateStart: string; offset: number; limit: number }): Promise<WiseTransfer[]>;
+  recipientName(token: string, accountId: number): Promise<string | null>;
+  statement(token: string, profileId: string, b: { id: string; currency: string }, p: { start: string; end: string }, privateKeyPem: string | null): Promise<WiseStatementLine[]>;
+}
+export class WiseScaError extends Error {}
+
+function wiseError(status: number, said: string): AppError {
+  const msg = said.replace(/[A-Za-z0-9]{8}-[A-Za-z0-9-]{20,}/g, "…").slice(0, 300);
+  if (status === 401) return new AppError("validation_failed", `Wise rejected the API token (${msg || "unauthorised"}). Create a new read-only token in Wise → Settings → API tokens.`, [{ path: "token", message: "Invalid or revoked token" }]);
+  if (status === 403) return new AppError("invalid_state", `Wise refused access (${msg || "forbidden"}).`);
+  if (status === 429) return new AppError("invalid_state", "Wise rate limit reached — try again in a minute.");
+  return new AppError("invalid_state", `Wise API error (HTTP ${status}) ${msg}`.trim());
+}
+
+async function call(token: string, path: string, headers: Record<string, string> = {}) {
+  let res: Response;
+  try { res = await fetch(`${BASE}${path}`, { headers: { authorization: `Bearer ${token}`, accept: "application/json", ...headers }, signal: AbortSignal.timeout(30_000) }); }
+  catch { throw new AppError("invalid_state", "Could not reach Wise. Try again in a moment."); }
+  return res;
+}
+async function json<T>(token: string, path: string): Promise<T> {
+  const res = await call(token, path);
+  if (!res.ok) throw wiseError(res.status, await res.text().catch(() => ""));
+  return res.json() as Promise<T>;
+}
+
+const realApi: WiseApi = {
+  async profiles(token) {
+    const rows = await json<Array<{ id: number; type: string; businessName?: string; fullName?: string; details?: { name?: string; firstName?: string; lastName?: string } }>>(token, "/v2/profiles");
+    return rows.map((p) => ({ id: String(p.id), type: String(p.type).toUpperCase(), name: p.businessName ?? p.details?.name ?? p.fullName ?? [p.details?.firstName, p.details?.lastName].filter(Boolean).join(" ") ?? String(p.id) }));
+  },
+  async balances(token, profileId) {
+    const rows = await json<Array<{ id: number; currency: string; amount: { value: number; currency: string } }>>(token, `/v4/profiles/${encodeURIComponent(profileId)}/balances?types=STANDARD`);
+    return rows.map((b) => ({ id: String(b.id), currency: b.currency.toLowerCase(), amount: toMinor(b.amount.value, b.currency) }));
+  },
+  async transfers(token, profileId, p) {
+    return json<WiseTransfer[]>(token, `/v1/transfers?profile=${encodeURIComponent(profileId)}&createdDateStart=${encodeURIComponent(p.createdDateStart)}&limit=${p.limit}&offset=${p.offset}`);
+  },
+  async recipientName(token, accountId) {
+    for (const path of [`/v1/accounts/${accountId}`, `/v2/accounts/${accountId}`]) {
+      const res = await call(token, path);
+      if (!res.ok) continue;
+      const b = await res.json().catch(() => null) as { accountHolderName?: string; name?: { fullName?: string } | string } | null;
+      const n = b?.accountHolderName ?? (typeof b?.name === "string" ? b.name : b?.name?.fullName);
+      if (n) return n;
+    }
+    return null;
+  },
+  async statement(token, profileId, b, p, privateKeyPem) {
+    const path = `/v1/profiles/${encodeURIComponent(profileId)}/balance-statements/${encodeURIComponent(b.id)}/statement.json?currency=${b.currency.toUpperCase()}&intervalStart=${encodeURIComponent(p.start)}&intervalEnd=${encodeURIComponent(p.end)}&type=COMPACT`;
+    let res = await call(token, path);
+    // Strong customer authentication: Wise answers 403 with a one-time token that must be signed with our private key.
+    const ott = res.headers.get("x-2fa-approval");
+    if (res.status === 403 && ott) {
+      if (!privateKeyPem) throw new WiseScaError("Statements need the public key uploaded to Wise.");
+      const signature = createSign("SHA256").update(ott).sign(privateKeyPem, "base64");
+      res = await call(token, path, { "x-2fa-approval": ott, "X-Signature": signature });
+      if (res.status === 403) throw new WiseScaError("Wise did not accept the signature — upload the public key shown on the Wise page to Wise → API tokens → Manage public keys.");
+    }
+    if (!res.ok) throw wiseError(res.status, await res.text().catch(() => ""));
+    const body = await res.json() as { transactions?: WiseStatementLine[] };
+    return body.transactions ?? [];
+  },
+};
+const g = globalThis as { __wiseApi?: WiseApi };
+export const setWiseApi = (a: WiseApi | null) => { g.__wiseApi = a ?? undefined; };
+const api = () => g.__wiseApi ?? realApi;
+
+const toMinor = (value: number, currency: string) => Math.abs(parseMajor(Math.abs(value).toFixed(currencyExponent(currency.toLowerCase())), currency.toLowerCase()));
+const wiseDate = (s: string) => new Date(/Z|[+-]\d\d:?\d\d$/.test(s) ? s : `${s.replace(" ", "T")}Z`); // transfers API returns "2026-10-07 10:12:13" in UTC
+
+// ---------- connection ----------
+const TokenInput = z.preprocess((v) => (typeof v === "string" ? v.replace(/[\s"'`​-‍﻿]/g, "") : v), z.string().min(20, "That does not look like a complete Wise API token").max(200).regex(/^[A-Za-z0-9-]+$/, "A Wise API token contains only letters, digits and dashes"));
+export const ConnectInput = z.object({ token: TokenInput, profileId: z.string().max(40).optional().nullable() });
+export const ProfileInput = z.object({ profileId: z.string().min(1).max(40) });
+export const IgnoreInput = z.object({ ignored: z.boolean(), reason: z.string().trim().max(500).optional().nullable() });
+
+async function connection(orgId: string) {
+  const [c] = await db.select().from(schema.acctWiseConnections).where(eq(schema.acctWiseConnections.organisationId, orgId));
+  return c ?? null;
+}
+
+export async function getWiseStatus(orgId: string) {
+  const c = await connection(orgId);
+  if (!c) return { connected: false as const };
+  const [n] = await db.select({ toRecord: sql<number>`count(*) filter (where direction = 'OUT' and kind = 'TRANSFER' and organiser_payment_id is null and not ignored and coalesce(status, '') not in ('cancelled', 'bounced_back', 'funds_refunded', 'charged_back'))::int`, total: sql<number>`count(*)::int` })
+    .from(schema.acctWiseTransactions).where(eq(schema.acctWiseTransactions.organisationId, orgId));
+  return { connected: true as const, tokenHint: c.tokenHint, profileId: c.profileId, profileName: c.profileName, publicKey: c.scaPublicKey, balances: c.balances as WiseBalance[], status: c.status, statementsOk: c.statementsOk, lastSyncAt: c.lastSyncAt, lastError: c.lastError, toRecord: n?.toRecord ?? 0, total: n?.total ?? 0 };
+}
+
+export async function connectWise(a: Actor, input: z.infer<typeof ConnectInput>) {
+  const profiles = await api().profiles(input.token);
+  if (!profiles.length) throw new AppError("validation_failed", "This token has no Wise profiles.", [{ path: "token", message: "No profiles" }]);
+  const profile = profiles.find((p) => p.id === input.profileId) ?? profiles.find((p) => p.type === "BUSINESS") ?? profiles[0]!;
+  const existing = await connection(a.orgId);
+  // Key pair for strong customer authentication (statements). Kept when reconnecting so the uploaded public key stays valid.
+  let priv = existing?.scaPrivateKeyEnc ?? null, pub = existing?.scaPublicKey ?? null;
+  if (!priv || !pub) {
+    const kp = generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } });
+    priv = encrypt(kp.privateKey); pub = kp.publicKey;
+  }
+  const values = { tokenEnc: encrypt(input.token), tokenHint: `${input.token.slice(0, 4)}…${input.token.slice(-4)}`, profileId: profile.id, profileName: `${profile.name} (${profile.type.toLowerCase()})`, scaPrivateKeyEnc: priv, scaPublicKey: pub, status: "CONNECTED", lastError: null, updatedAt: new Date() };
+  await db.transaction(async (tx) => {
+    if (existing) await tx.update(schema.acctWiseConnections).set(values).where(eq(schema.acctWiseConnections.id, existing.id));
+    else await tx.insert(schema.acctWiseConnections).values({ organisationId: a.orgId, createdBy: a.userId, ...values });
+    await acctAudit(tx, { ...a, action: "wise.connected", entity: "wise", entityId: profile.id, new: { profile: values.profileName, tokenHint: values.tokenHint } });
+  });
+  return { ...(await getWiseStatus(a.orgId)), profiles };
+}
+
+export async function listWiseProfiles(orgId: string) {
+  const c = await connection(orgId);
+  if (!c) throw new AppError("invalid_state", "Connect Wise first.");
+  return api().profiles(decrypt(c.tokenEnc));
+}
+
+export async function setWiseProfile(a: Actor, profileId: string) {
+  const c = await connection(a.orgId);
+  if (!c) throw new AppError("invalid_state", "Connect Wise first.");
+  const p = (await api().profiles(decrypt(c.tokenEnc))).find((x) => x.id === profileId);
+  if (!p) throw new AppError("validation_failed", "That profile is not available for this token.");
+  await db.transaction(async (tx) => {
+    await tx.update(schema.acctWiseConnections).set({ profileId: p.id, profileName: `${p.name} (${p.type.toLowerCase()})`, balances: [], statementsOk: false, lastSyncAt: null, updatedAt: new Date() }).where(eq(schema.acctWiseConnections.id, c.id));
+    await acctAudit(tx, { ...a, action: "wise.profile_changed", entity: "wise", entityId: p.id, old: { profile: c.profileName }, new: { profile: p.name } });
+  });
+  return getWiseStatus(a.orgId);
+}
+
+/** Removes the token and keys. Imported transactions stay (they are part of the audit trail). */
+export async function disconnectWise(a: Actor) {
+  const c = await connection(a.orgId);
+  if (!c) return { connected: false };
+  await db.transaction(async (tx) => {
+    await tx.delete(schema.acctWiseConnections).where(eq(schema.acctWiseConnections.id, c.id));
+    await acctAudit(tx, { ...a, action: "wise.disconnected", entity: "wise", entityId: c.profileId ?? "wise", old: { profile: c.profileName, tokenHint: c.tokenHint } });
+  });
+  return { connected: false };
+}
+
+// ---------- sync ----------
+const KIND: Record<string, string> = { TRANSFER: "TRANSFER", DEPOSIT: "DEPOSIT", MONEY_ADDED: "DEPOSIT", CONVERSION: "CONVERSION", CARD: "CARD", ACCRUAL_CHARGE: "FEE", DIRECT_DEBIT: "OTHER" };
+const DEAD = ["cancelled", "bounced_back", "funds_refunded", "charged_back"];
+const running = new Set<string>();
+
+export async function syncWise(orgId: string, opts: { userId?: string | null; ctx?: RequestContext } = {}) {
+  const c = await connection(orgId);
+  if (!c || !c.profileId) throw new AppError("invalid_state", "Connect Wise first.");
+  if (running.has(orgId)) throw new AppError("conflict", "A Wise sync is already running.");
+  running.add(orgId);
+  const token = decrypt(c.tokenEnc), w = api(), pid = c.profileId;
+  const now = new Date();
+  const since = new Date((c.lastSyncAt ?? new Date(now.getTime() - 400 * 86_400_000)).getTime() - 14 * 86_400_000); // overlap catches late status changes
+  const stats = { transfers: 0, statementLines: 0, statementsOk: c.statementsOk, error: null as string | null };
+  try {
+    const balances = await w.balances(token, pid);
+    // Outgoing transfers.
+    const names = new Map<number, string | null>();
+    for (let offset = 0; offset < 5000; offset += 100) {
+      const page = await w.transfers(token, pid, { createdDateStart: since.toISOString(), offset, limit: 100 });
+      for (const t of page) {
+        let counterparty: string | null = null;
+        if (t.targetAccount) { if (!names.has(t.targetAccount)) names.set(t.targetAccount, await w.recipientName(token, t.targetAccount).catch(() => null)); counterparty = names.get(t.targetAccount) ?? null; }
+        const row = {
+          organisationId: orgId, wiseId: `TRANSFER-${t.id}`, source: "TRANSFER", direction: "OUT", kind: "TRANSFER", status: t.status, occurredAt: wiseDate(t.created),
+          amount: toMinor(t.targetValue, t.targetCurrency), currency: t.targetCurrency.toLowerCase(), sourceAmount: toMinor(t.sourceValue, t.sourceCurrency), sourceCurrency: t.sourceCurrency.toLowerCase(),
+          counterparty, reference: (t.reference ?? t.details?.reference ?? null) || null, raw: { id: t.id, status: t.status, rate: t.rate ?? null, targetAccount: t.targetAccount ?? null },
+        };
+        await db.insert(schema.acctWiseTransactions).values(row).onConflictDoUpdate({ target: [schema.acctWiseTransactions.organisationId, schema.acctWiseTransactions.wiseId], set: {
+          source: "TRANSFER", status: row.status, occurredAt: row.occurredAt, amount: row.amount, currency: row.currency, sourceAmount: row.sourceAmount, sourceCurrency: row.sourceCurrency, reference: row.reference, raw: row.raw,
+          counterparty: sql`coalesce(${row.counterparty}, ${schema.acctWiseTransactions.counterparty})`, updatedAt: new Date() } });
+        stats.transfers++;
+      }
+      if (page.length < 100) break;
+    }
+    // Balance statements (need strong customer authentication; transfers still work without them).
+    const key = c.scaPrivateKeyEnc ? decrypt(c.scaPrivateKeyEnc) : null;
+    try {
+      for (const b of balances) {
+        const lines = await w.statement(token, pid, b, { start: since.toISOString(), end: now.toISOString() }, key);
+        for (const l of lines) {
+          const cur = l.amount.currency.toLowerCase();
+          const dir = l.type === "DEBIT" ? "OUT" : "IN";
+          const fee = l.totalFees?.value ? toMinor(l.totalFees.value, cur) : null;
+          const isTransfer = dir === "OUT" && /^TRANSFER-\d+$/.test(l.referenceNumber);
+          const wiseId = isTransfer ? l.referenceNumber : `${l.referenceNumber}:${cur}:${dir}`;
+          const d = l.details ?? {};
+          const row = {
+            organisationId: orgId, wiseId, source: "STATEMENT", direction: dir, kind: KIND[String(d.type)] ?? "OTHER", status: "completed", occurredAt: new Date(l.date),
+            amount: toMinor(l.amount.value, cur), currency: cur, fee, counterparty: d.senderName ?? d.recipient?.name ?? d.merchant?.name ?? null, reference: d.paymentReference ?? null, description: d.description ?? null,
+            raw: { referenceNumber: l.referenceNumber, type: l.type, detailsType: d.type ?? null },
+          };
+          if (isTransfer) {
+            // Same money as the transfer row: only add what the statement knows (fee, description); the transfer keeps the recipient amount.
+            await db.insert(schema.acctWiseTransactions).values({ ...row, kind: "TRANSFER" }).onConflictDoUpdate({ target: [schema.acctWiseTransactions.organisationId, schema.acctWiseTransactions.wiseId], set: { fee: row.fee, description: row.description, updatedAt: new Date() } });
+          } else {
+            await db.insert(schema.acctWiseTransactions).values(row).onConflictDoUpdate({ target: [schema.acctWiseTransactions.organisationId, schema.acctWiseTransactions.wiseId], set: { amount: row.amount, fee: row.fee, counterparty: row.counterparty, reference: row.reference, description: row.description, updatedAt: new Date() } });
+          }
+          stats.statementLines++;
+        }
+      }
+      stats.statementsOk = true;
+    } catch (e) {
+      if (!(e instanceof WiseScaError)) throw e;
+      stats.statementsOk = false; stats.error = e.message;
+    }
+    await db.update(schema.acctWiseConnections).set({ balances, statementsOk: stats.statementsOk, lastSyncAt: now, status: "CONNECTED", lastError: stats.error, updatedAt: new Date() }).where(eq(schema.acctWiseConnections.id, c.id));
+    await relinkWise(orgId);
+    if (opts.userId) await db.transaction((tx) => acctAudit(tx, { orgId, userId: opts.userId, ctx: opts.ctx, action: "wise.synced", entity: "wise", entityId: pid, new: stats }));
+    return stats;
+  } catch (e) {
+    const msg = (e instanceof Error ? e.message : String(e)).slice(0, 500);
+    await db.update(schema.acctWiseConnections).set({ status: "ERROR", lastError: msg, updatedAt: new Date() }).where(eq(schema.acctWiseConnections.id, c.id));
+    log.warn("accounting.wise_sync_failed", { orgId, error: msg });
+    throw e;
+  } finally { running.delete(orgId); }
+}
+
+/** Scheduled (worker): sync every connected organisation. */
+export async function syncAllWise() {
+  if (!accountingEnabled()) return 0;
+  const cs = await db.select({ orgId: schema.acctWiseConnections.organisationId }).from(schema.acctWiseConnections);
+  let n = 0;
+  for (const c of cs) { try { await syncWise(c.orgId); n++; } catch { /* logged in syncWise */ } }
+  return n;
+}
+
+// ---------- matching ----------
+const norm = (s: string | null | undefined) => (s ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\b(ltd|limited|gmbh|ab|aps|as|llc|fz|fze|inc|bv|sarl|sas|srl|the|and|&)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+function nameScore(a: string, b: string) {
+  const x = norm(a), y = norm(b);
+  if (!x || !y) return 0;
+  if (x === y) return 1;
+  const ta = new Set(x.split(" ").filter((t) => t.length > 1)), tb = new Set(y.split(" ").filter((t) => t.length > 1));
+  const common = [...ta].filter((t) => tb.has(t)).length;
+  return common / Math.max(1, Math.min(ta.size, tb.size));
+}
+
+/**
+ * Link Wise transfers to organiser payments (reference contains the transfer id, else one unlinked bank-transfer payment
+ * with the same amount/currency within ±3 days), suggest the organiser by recipient name, and match incoming money to
+ * Stripe payouts. Only links — the ledger is never touched here.
+ */
+export async function relinkWise(orgId: string) {
+  const w = schema.acctWiseTransactions, p = schema.acctOrganiserPayments;
+  // Payments that were voided lose their link.
+  await db.execute(sql`update acct_wise_transactions t set organiser_payment_id = null, updated_at = now() from acct_organiser_payments p where p.id = t.organiser_payment_id and p.status = 'VOIDED' and t.organisation_id = ${orgId}`);
+  const open = await db.select().from(w).where(and(eq(w.organisationId, orgId), eq(w.direction, "OUT"), eq(w.kind, "TRANSFER"), isNull(w.organiserPaymentId)));
+  if (open.length) {
+    const pays = await db.select().from(p).where(and(eq(p.organisationId, orgId), eq(p.livemode, true), sql`${p.status} <> 'VOIDED'`));
+    const taken = new Set((await db.select({ id: w.organiserPaymentId }).from(w).where(and(eq(w.organisationId, orgId), sql`${w.organiserPaymentId} is not null`))).map((r) => r.id));
+    const orgs = await db.select().from(schema.acctOrganisers).where(eq(schema.acctOrganisers.organisationId, orgId));
+    const holders = new Map(orgs.map((o) => { let h: string | null = null; try { h = o.bankDetailsEnc ? (JSON.parse(decrypt(o.bankDetailsEnc)) as { accountHolder?: string }).accountHolder ?? null : null; } catch { /* unreadable */ } return [o.id, h]; }));
+    for (const t of open) {
+      if (DEAD.includes(String(t.status))) continue;
+      const num = t.wiseId.replace(/^TRANSFER-/, "");
+      const day = t.occurredAt.toISOString().slice(0, 10);
+      const near = (d: string) => Math.abs(Date.parse(`${d}T12:00:00Z`) - Date.parse(`${day}T12:00:00Z`)) <= 3 * 86_400_000;
+      let match = pays.find((x) => !taken.has(x.id) && x.bankReference && new RegExp(`(^|\\D)${num}(\\D|$)`).test(x.bankReference));
+      if (!match) {
+        const c = pays.filter((x) => !taken.has(x.id) && x.method === "BANK_TRANSFER" && x.currency === t.currency && x.amount === t.amount && near(x.paymentDate));
+        if (c.length === 1) match = c[0];
+      }
+      let suggested: string | null = match?.organiserId ?? null;
+      if (!suggested && t.counterparty) {
+        const best = orgs.map((o) => ({ id: o.id, s: Math.max(nameScore(t.counterparty!, o.name), o.companyName ? nameScore(t.counterparty!, o.companyName) : 0, holders.get(o.id) ? nameScore(t.counterparty!, holders.get(o.id)!) : 0) })).sort((a, b) => b.s - a.s)[0];
+        if (best && best.s >= 0.5) suggested = best.id;
+      }
+      if (match) taken.add(match.id);
+      if (match || suggested !== t.suggestedOrganiserId) await db.update(w).set({ organiserPaymentId: match?.id ?? null, suggestedOrganiserId: suggested, updatedAt: new Date() }).where(eq(w.id, t.id));
+    }
+  }
+  // Incoming money ↔ Stripe payouts (same amount and currency, arriving 0–5 days after the payout was created).
+  const ins = await db.select().from(w).where(and(eq(w.organisationId, orgId), eq(w.direction, "IN"), isNull(w.stripePayoutId)));
+  if (ins.length) {
+    const used = new Set((await db.select({ id: w.stripePayoutId }).from(w).where(and(eq(w.organisationId, orgId), sql`${w.stripePayoutId} is not null`))).map((r) => r.id));
+    const pos = await db.select().from(schema.stripePayouts).where(and(eq(schema.stripePayouts.organisationId, orgId), eq(schema.stripePayouts.livemode, true), eq(schema.stripePayouts.status, "paid")));
+    for (const t of ins) {
+      const c = pos.filter((x) => !used.has(x.payoutId) && x.currency === t.currency && x.amount === t.amount && t.occurredAt.getTime() - x.stripeCreatedAt.getTime() >= -86_400_000 && t.occurredAt.getTime() - x.stripeCreatedAt.getTime() <= 5 * 86_400_000)
+        .sort((a, b) => Math.abs(t.occurredAt.getTime() - a.stripeCreatedAt.getTime()) - Math.abs(t.occurredAt.getTime() - b.stripeCreatedAt.getTime()));
+      if (c[0]) { used.add(c[0].payoutId); await db.update(w).set({ stripePayoutId: c[0].payoutId, updatedAt: new Date() }).where(eq(w.id, t.id)); }
+    }
+  }
+}
+
+// ---------- listing / actions ----------
+export const WiseFilter = z.object({ view: z.enum(["torecord", "out", "in", "all", "ignored"]).default("torecord"), q: z.string().trim().max(120).optional() });
+
+export async function listWise(orgId: string, f: z.infer<typeof WiseFilter>, page: { limit: number; offset: number }) {
+  await relinkWise(orgId);
+  const w = schema.acctWiseTransactions;
+  const where = and(eq(w.organisationId, orgId),
+    f.view === "torecord" ? sql`${w.direction} = 'OUT' and ${w.kind} = 'TRANSFER' and ${w.organiserPaymentId} is null and not ${w.ignored} and coalesce(${w.status}, '') not in ('cancelled', 'bounced_back', 'funds_refunded', 'charged_back')`
+      : f.view === "out" ? sql`${w.direction} = 'OUT' and not ${w.ignored}` : f.view === "in" ? sql`${w.direction} = 'IN' and not ${w.ignored}` : f.view === "ignored" ? sql`${w.ignored}` : undefined,
+    f.q ? sql`(${w.counterparty} ilike ${`%${f.q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`} or ${w.reference} ilike ${`%${f.q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`} or ${w.wiseId} ilike ${`%${f.q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`})` : undefined);
+  const sugg = schema.acctOrganisers;
+  const [items, [cnt]] = await Promise.all([
+    db.select({ t: w, paymentOrganiserId: schema.acctOrganiserPayments.organiserId, paymentDate: schema.acctOrganiserPayments.paymentDate, paymentStatus: schema.acctOrganiserPayments.status, suggestedName: sugg.name, paymentOrganiserName: sql<string | null>`(select name from acct_organisers o where o.id = ${schema.acctOrganiserPayments.organiserId})` })
+      .from(w).leftJoin(schema.acctOrganiserPayments, eq(schema.acctOrganiserPayments.id, w.organiserPaymentId)).leftJoin(sugg, eq(sugg.id, w.suggestedOrganiserId))
+      .where(where).orderBy(desc(w.occurredAt)).limit(page.limit).offset(page.offset),
+    db.select({ n: sql<number>`count(*)::int` }).from(w).where(where),
+  ]);
+  return { items: items.map((r) => { const { raw: _raw, ...t } = r.t; void _raw; return { ...t, paymentOrganiserId: r.paymentOrganiserId, paymentOrganiserName: r.paymentOrganiserName, paymentDate: r.paymentDate, paymentStatus: r.paymentStatus, suggestedName: r.suggestedName }; }), total: cnt?.n ?? 0 };
+}
+
+export async function setWiseIgnored(a: Actor, id: string, input: z.infer<typeof IgnoreInput>) {
+  const w = schema.acctWiseTransactions;
+  const [t] = await db.select().from(w).where(and(eq(w.id, id), eq(w.organisationId, a.orgId)));
+  if (!t) throw new AppError("not_found", "Wise transaction not found");
+  if (input.ignored && !input.reason) throw new AppError("validation_failed", "Say what this transfer was (e.g. supplier, own account, salary).", [{ path: "reason", message: "Give a reason" }]);
+  return db.transaction(async (tx) => {
+    const [row] = await tx.update(w).set({ ignored: input.ignored, ignoredReason: input.ignored ? input.reason ?? null : null, ignoredBy: input.ignored ? a.userId : null, updatedAt: new Date() }).where(eq(w.id, id)).returning();
+    await acctAudit(tx, { ...a, action: input.ignored ? "wise.tx_ignored" : "wise.tx_unignored", entity: "wise_transaction", entityId: id, new: { wiseId: t.wiseId, reason: input.reason ?? null } });
+    return row!;
+  });
+}

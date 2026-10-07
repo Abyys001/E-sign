@@ -99,6 +99,13 @@
       "when": 1790812434374,
       "tag": "0013_organiser_contracts",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790898834374,
+      "tag": "0014_wise",
+      "breakpoints": true
     }
   ]
 }
