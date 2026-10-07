@@ -254,9 +254,15 @@ describe("Wise bank feed", () => {
       transfers: async (_t, pid, p) => (pid === "2" && p.offset === 0 ? [
         { id: 111, status: "outgoing_payment_sent", created: "2026-10-07 09:00:00", sourceValue: 4010, sourceCurrency: "GBP", targetValue: 4000, targetCurrency: "GBP", reference: "Bilit", targetAccount: 9 },
         { id: 222, status: "outgoing_payment_sent", created: "2026-10-07 10:00:00", sourceValue: 2200, sourceCurrency: "GBP", targetValue: 2500, targetCurrency: "EUR", reference: null, targetAccount: 10 },
+        { id: 444, status: "outgoing_payment_sent", created: "2026-10-07 07:00:00", sourceValue: 1250.5, sourceCurrency: "GBP", targetValue: 1250.5, targetCurrency: "GBP", reference: "PAYOUT", targetAccount: 11 },
         { id: 333, status: "cancelled", created: "2026-10-07 11:00:00", sourceValue: 5, sourceCurrency: "GBP", targetValue: 5, targetCurrency: "GBP", targetAccount: 10 },
       ] : []),
-      recipientName: async (_t, id) => (id === 9 ? "CONCERTS LIMITED" : "Someone Else"),
+      recipientName: async (_t, id) => (id === 9 ? "CONCERTS LIMITED" : id === 11 ? "Bilit Events Ltd" : "Someone Else"),
+      activities: async () => ({ cursor: null, activities: [
+        { id: "a1", type: "TRANSFER", resource: { type: "TRANSFER", id: "444" }, title: "<strong>Stripe Payments UK Ltd</strong>", primaryAmount: "<positive>+ 1,250.50 GBP</positive>", status: "COMPLETED", createdOn: "2026-10-07T07:00:00Z" },
+        { id: "a2", type: "TRANSFER", resource: { type: "TRANSFER", id: "222" }, title: "<strong>Someone Else</strong>", primaryAmount: "2,500 EUR", secondaryAmount: "2,213.40 GBP", status: "COMPLETED", createdOn: "2026-10-07T10:00:00Z" },
+        { id: "a3", type: "CARD_PAYMENT", resource: { type: "CARD_TRANSACTION", id: "c1" }, title: "<strong>Hetzner</strong>", description: "Spent by Sina", primaryAmount: "52.33 EUR", secondaryAmount: "", status: "COMPLETED", createdOn: "2026-10-05T10:00:00Z" },
+      ] }),
       statement: async (_t, _p, _b, _r, key) => { signedWith = key; return [
         { type: "DEBIT", date: "2026-10-07T09:00:00Z", amount: { value: -4010, currency: "GBP" }, totalFees: { value: 10 }, referenceNumber: "TRANSFER-111", details: { type: "TRANSFER", description: "Sent money to Concerts" } },
         { type: "CREDIT", date: "2026-10-07T08:00:00Z", amount: { value: 4000, currency: "GBP" }, referenceNumber: "DEPOSIT-77", details: { type: "DEPOSIT", senderName: "Stripe Payments UK" } },
@@ -269,12 +275,16 @@ describe("Wise bank feed", () => {
     // An organiser payment already recorded with the Wise number is linked, not flagged.
     const pay = await recordOrganiserPayment(x.actor, { mode: "live", organiserId: org!.id, eventId: null, amount: 400000, currency: "gbp", paymentDate: "2026-10-07", bankReference: "Wise - 111", method: "BANK_TRANSFER", notes: null, status: "PAID" });
     const r = await w.syncWise(x.org.id);
-    expect(r).toMatchObject({ transfers: 3, statementLines: 2, statementsOk: true });
+    expect(r).toMatchObject({ transfers: 4, activities: 1, statementLines: 2, statementsOk: true });
     expect(signedWith).toContain("PRIVATE KEY");
     const all = (await w.listWise(x.org.id, { view: "all" }, { limit: 50, offset: 0 })).items;
     const t111 = all.find((t) => t.wiseId === "TRANSFER-111")!;
     expect(t111).toMatchObject({ organiserPaymentId: pay.id, amount: 400000, fee: 1000, sourceAmount: 401000, counterparty: "CONCERTS LIMITED" });
     expect(all.find((t) => t.wiseId.startsWith("DEPOSIT-77"))).toMatchObject({ direction: "IN", stripePayoutId: "po_wise1" });
+    // The activity feed shows the true direction: a "transfer to ourselves" is a Stripe payout coming in.
+    expect(all.find((t) => t.wiseId === "TRANSFER-444")).toMatchObject({ direction: "IN", kind: "DEPOSIT", counterparty: "Stripe Payments UK Ltd", amount: 125050 });
+    expect(all.find((t) => t.wiseId === "TRANSFER-222")).toMatchObject({ fee: 1340 }); // 2,213.40 debited − 2,200 converted
+    expect(all.find((t) => t.wiseId.startsWith("ACT-CARD"))).toMatchObject({ direction: "OUT", kind: "CARD", amount: 5233, counterparty: "Hetzner" });
     const todo = (await w.listWise(x.org.id, { view: "torecord" }, { limit: 50, offset: 0 })).items;
     expect(todo.map((t) => t.wiseId)).toEqual(["TRANSFER-222"]); // cancelled transfer and recorded one are not flagged
     await expectPg(w.setWiseIgnored(x.actor, todo[0]!.id, { ignored: true }), /Say what this transfer was/);

@@ -30,7 +30,10 @@ export interface WiseApi {
   transfers(token: string, profileId: string, p: { createdDateStart: string; offset: number; limit: number }): Promise<WiseTransfer[]>;
   recipientName(token: string, accountId: number): Promise<string | null>;
   statement(token: string, profileId: string, b: { id: string; currency: string }, p: { start: string; end: string }, privateKeyPem: string | null): Promise<WiseStatementLine[]>;
+  /** Activity feed (no SCA needed): every money movement with its direction, incl. incoming payouts and card spend. */
+  activities(token: string, profileId: string, p: { since: string; until: string; cursor?: string | null }): Promise<{ activities: WiseActivity[]; cursor: string | null }>;
 }
+export type WiseActivity = { id: string; type: string; resource?: { type?: string; id?: string } | null; title?: string | null; description?: string | null; primaryAmount?: string | null; secondaryAmount?: string | null; status?: string | null; createdOn: string };
 export class WiseScaError extends Error {}
 
 function wiseError(status: number, said: string): AppError {
@@ -54,6 +57,12 @@ async function json<T>(token: string, path: string): Promise<T> {
 }
 
 const realApi: WiseApi = {
+  async activities(token, profileId, p) {
+    const qs = new URLSearchParams({ since: p.since, until: p.until, size: "100" });
+    if (p.cursor) qs.set("nextCursor", p.cursor);
+    const b = await json<{ activities?: WiseActivity[]; cursor?: string | null }>(token, `/v1/profiles/${encodeURIComponent(profileId)}/activities?${qs}`);
+    return { activities: b.activities ?? [], cursor: b.cursor ?? null };
+  },
   async profiles(token) {
     const rows = await json<Array<{ id: number; type: string; businessName?: string; fullName?: string; details?: { name?: string; firstName?: string; lastName?: string } }>>(token, "/v2/profiles");
     return rows.map((p) => ({ id: String(p.id), type: String(p.type).toUpperCase(), name: p.businessName ?? p.details?.name ?? p.fullName ?? [p.details?.firstName, p.details?.lastName].filter(Boolean).join(" ") ?? String(p.id) }));
@@ -96,6 +105,16 @@ export const setWiseApi = (a: WiseApi | null) => { g.__wiseApi = a ?? undefined;
 const api = () => g.__wiseApi ?? realApi;
 
 const toMinor = (value: number, currency: string) => Math.abs(parseMajor(Math.abs(value).toFixed(currencyExponent(currency.toLowerCase())), currency.toLowerCase()));
+const strip = (h: string | null | undefined) => (h ?? "").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, " ").trim();
+/** "<positive>+ 4,000 GBP</positive>" → { incoming: true, amount: 400000, currency: "gbp" }; null when not a single amount. */
+export function parseActivityAmount(h: string | null | undefined) {
+  const incoming = /<positive>/i.test(h ?? "") || /^\s*\+/.test(strip(h));
+  const m = strip(h).replace(/^[+-]\s*/, "").match(/^([\d,]+(?:\.\d+)?)\s+([A-Z]{3})$/);
+  if (!m) return null;
+  const currency = m[2]!.toLowerCase();
+  return { incoming, currency, amount: toMinor(Number(m[1]!.replace(/,/g, "")), currency) };
+}
+const ACT_KIND: Record<string, string> = { TRANSFER: "TRANSFER", CARD_PAYMENT: "CARD", CARD_CHECK: "CARD", CONVERSION: "CONVERSION", BALANCE_DEPOSIT: "DEPOSIT", DEPOSIT: "DEPOSIT", DIRECT_DEBIT_TRANSACTION: "OTHER", BALANCE_CASHBACK: "OTHER", BALANCE_INTEREST: "OTHER", FEE_REFUND: "FEE", ACCRUAL_CHARGE: "FEE" };
 const wiseDate = (s: string) => new Date(/Z|[+-]\d\d:?\d\d$/.test(s) ? s : `${s.replace(" ", "T")}Z`); // transfers API returns "2026-10-07 10:12:13" in UTC
 
 // ---------- connection ----------
@@ -179,7 +198,7 @@ export async function syncWise(orgId: string, opts: { userId?: string | null; ct
   const token = decrypt(c.tokenEnc), w = api(), pid = c.profileId;
   const now = new Date();
   const since = new Date((c.lastSyncAt ?? new Date(now.getTime() - 400 * 86_400_000)).getTime() - 14 * 86_400_000); // overlap catches late status changes
-  const stats = { transfers: 0, statementLines: 0, statementsOk: c.statementsOk, error: null as string | null };
+  const stats = { transfers: 0, activities: 0, statementLines: 0, statementsOk: c.statementsOk, error: null as string | null };
   try {
     const balances = await w.balances(token, pid);
     // Outgoing transfers.
@@ -196,12 +215,42 @@ export async function syncWise(orgId: string, opts: { userId?: string | null; ct
         };
         await db.insert(schema.acctWiseTransactions).values(row).onConflictDoUpdate({ target: [schema.acctWiseTransactions.organisationId, schema.acctWiseTransactions.wiseId], set: {
           source: "TRANSFER", status: row.status, occurredAt: row.occurredAt, amount: row.amount, currency: row.currency, sourceAmount: row.sourceAmount, sourceCurrency: row.sourceCurrency, reference: row.reference, raw: row.raw,
-          counterparty: sql`coalesce(${row.counterparty}, ${schema.acctWiseTransactions.counterparty})`, updatedAt: new Date() } });
+          counterparty: sql`case when ${schema.acctWiseTransactions.direction} = 'IN' then ${schema.acctWiseTransactions.counterparty} else coalesce(${row.counterparty}, ${schema.acctWiseTransactions.counterparty}) end`, updatedAt: new Date() } });
         stats.transfers++;
       }
       if (page.length < 100) break;
     }
-    // Balance statements (need strong customer authentication; transfers still work without them).
+    // Activity feed: true direction (incoming Stripe payouts are "transfers" to ourselves in the transfers API), total
+    // debited incl. Wise fee, card spend, conversions and deposits.
+    let cursor: string | null = null;
+    for (let i = 0; i < 200; i++) {
+      const page: { activities: WiseActivity[]; cursor: string | null } = await w.activities(token, pid, { since: since.toISOString(), until: now.toISOString(), cursor });
+      for (const act of page.activities) {
+        const prim = parseActivityAmount(act.primaryAmount), sec = parseActivityAmount(act.secondaryAmount);
+        const title = strip(act.title) || null, desc = strip(act.description) || null;
+        const status = (act.status ?? "").toLowerCase() || null;
+        const rid = act.resource?.id ?? null;
+        if (act.type === "TRANSFER" && rid) {
+          const [t] = await db.select().from(schema.acctWiseTransactions).where(and(eq(schema.acctWiseTransactions.organisationId, orgId), eq(schema.acctWiseTransactions.wiseId, `TRANSFER-${rid}`)));
+          if (prim?.incoming) {
+            await db.insert(schema.acctWiseTransactions).values({ organisationId: orgId, wiseId: `TRANSFER-${rid}`, source: "ACTIVITY", direction: "IN", kind: "DEPOSIT", status, occurredAt: new Date(act.createdOn), amount: prim.amount, currency: prim.currency, counterparty: title, description: desc, raw: { activity: act.id } })
+              .onConflictDoUpdate({ target: [schema.acctWiseTransactions.organisationId, schema.acctWiseTransactions.wiseId], set: { direction: "IN", kind: "DEPOSIT", counterparty: title, description: desc, fee: null, updatedAt: new Date() } });
+          } else if (t && sec && t.sourceCurrency === sec.currency && t.sourceAmount != null && sec.amount >= t.sourceAmount) {
+            await db.update(schema.acctWiseTransactions).set({ fee: sec.amount - t.sourceAmount || null, updatedAt: new Date() }).where(eq(schema.acctWiseTransactions.id, t.id));
+          }
+          continue;
+        }
+        if (!prim) continue;
+        const kind = ACT_KIND[act.type] ?? "OTHER";
+        await db.insert(schema.acctWiseTransactions).values({ organisationId: orgId, wiseId: `ACT-${act.resource?.type ?? act.type}-${rid ?? act.id}`, source: "ACTIVITY", direction: prim.incoming ? "IN" : "OUT", kind, status, occurredAt: new Date(act.createdOn),
+          amount: prim.amount, currency: prim.currency, sourceAmount: sec && sec.currency !== prim.currency ? sec.amount : null, sourceCurrency: sec && sec.currency !== prim.currency ? sec.currency : null, counterparty: title, description: desc, raw: { activity: act.id, type: act.type } })
+          .onConflictDoUpdate({ target: [schema.acctWiseTransactions.organisationId, schema.acctWiseTransactions.wiseId], set: { status, amount: prim.amount, currency: prim.currency, counterparty: title, description: desc, updatedAt: new Date() } });
+        stats.activities++;
+      }
+      cursor = page.cursor;
+      if (!cursor || !page.activities.length) break;
+    }
+    // Balance statements (optional, need strong customer authentication; the activity feed covers the essentials).
     const key = c.scaPrivateKeyEnc ? decrypt(c.scaPrivateKeyEnc) : null;
     try {
       for (const b of balances) {
