@@ -2071,6 +2071,14 @@
         "desc": "They stay imported but are no longer flagged as missing from the books.",
         "go": "Mark {n}"
       }
-    }
+    },
+    "jars": "{n} balances",
+    "showEmpty": "Show {n} empty balances",
+    "hideEmpty": "Hide empty balances",
+    "manage": "Connection settings",
+    "settingsTitle": "Wise bank feed",
+    "settingsNotConnected": "Not connected. Connect it on the Wise page.",
+    "profile": "Profile",
+    "lastStatementError": "Last statement attempt"
   }
 }

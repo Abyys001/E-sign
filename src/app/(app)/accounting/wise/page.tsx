@@ -2,12 +2,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { ArrowDownLeft, ArrowUpRight, Banknote, Bot, FileText, Receipt, Copy, Download, EyeOff, Landmark, RefreshCw, RotateCcw, Unplug } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Banknote, Bot, FileText, Receipt, EyeOff, Landmark, RefreshCw, RotateCcw, Settings } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { Money } from "@/components/accounting/kit";
 import { PaymentDialog, type PaymentPrefill } from "@/components/accounting/forms";
 import { PaymentAgentDialog } from "@/components/accounting/payment-agent";
+import { WiseBalances } from "@/components/accounting/wise-settings";
 import { BillDialog, useExpenseAccounts, type BillPrefill } from "@/components/accounting/books";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -35,7 +36,7 @@ export default function WisePage() {
   const [view, setView] = useState<(typeof VIEWS)[number]>("torecord"); const [page, setPage] = useState(1); const [q, setQ] = useState("");
   const list = useApi<{ items: Tx[]; total: number; page: number; pageSize: number }>(st.data?.connected ? `/api/accounting/wise/transactions?view=${view}&page=${page}&pageSize=50${q ? `&q=${encodeURIComponent(q)}` : ""}` : null);
   const [token, setToken] = useState(""); const [busy, setBusy] = useState(false); const [err, setErr] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false); const [disc, setDisc] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [rec, setRec] = useState<{ tx: Tx; prefill: PaymentPrefill } | null>(null);
   const [bill, setBill] = useState<{ kind: "BILL" | "EXPENSE"; prefill: BillPrefill } | null>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -88,7 +89,6 @@ export default function WisePage() {
       await reloadAll();
     } catch (e) { setBulkErr(errMsg(e)); } finally { setBulkBusy(false); }
   };
-  const copyKey = async (k: string) => { try { await navigator.clipboard.writeText(k); toast("ok", t("copied")); } catch { toast("error", t("copyFailed")); } };
 
   if (!st.data) return <Skeleton className="h-64" />;
   const s = st.data;
@@ -111,22 +111,11 @@ export default function WisePage() {
         </Card>
       ) : <>
         <Card><CardHeader title={s.profileName ?? t("title")} description={t("connInfo", { hint: s.tokenHint ?? "—", when: s.lastSyncAt ? fmtDate(s.lastSyncAt, locale, { dateStyle: "medium", timeStyle: "short" }) : t("never") })}
-          action={admin ? <Button size="sm" variant="ghost" onClick={async () => { if (await ensure()) setDisc(true); }}><Unplug className="size-4" aria-hidden />{t("disconnect")}</Button> : null} />
+          action={admin ? <Link href="/accounting/settings#wise" className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-sm text-muted hover:bg-surface-2 hover:text-fg"><Settings className="size-4" aria-hidden />{t("manage")}</Link> : null} />
           <div className="space-y-4 p-5">
-            {s.balances.length > 0 && <div className="flex flex-wrap gap-3">{s.balances.map((b) => <div key={b.id} className="rounded-xl border border-line px-4 py-2.5"><p className="text-xs uppercase text-muted">{b.currency}</p><Money v={b.amount} c={b.currency} strong className="text-lg" /></div>)}</div>}
+            <WiseBalances balances={s.balances} />
             {s.status === "ERROR" && s.lastError && <Callout tone="warn" title={t("syncError")}>{s.lastError}</Callout>}
             {s.toRecord > 0 && <Callout tone="warn" title={t("toRecordTitle", { n: s.toRecord })}>{t("toRecordDesc")}</Callout>}
-            {!s.statementsOk && s.publicKey && <div className="space-y-2 rounded-xl border border-line-strong bg-surface-2 p-4 text-sm">
-              <p className="font-medium">{t("scaTitle")}</p>
-              <p className="text-muted">{t("scaDesc")}</p>
-              {s.lastSyncAt && s.lastError && s.status !== "ERROR" && <p className="text-xs">{s.lastError}</p>}
-              <pre className="scroll-thin max-h-40 overflow-auto rounded-lg bg-surface p-3 font-mono text-[11px] leading-snug">{s.publicKey}</pre>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="primary" onClick={() => { const u = URL.createObjectURL(new Blob([s.publicKey!], { type: "application/x-pem-file" })); const a = document.createElement("a"); a.href = u; a.download = "bilit-wise-public-key.pem"; a.click(); setTimeout(() => URL.revokeObjectURL(u), 1000); }}><Download className="size-4" aria-hidden />{t("downloadKey")}</Button>
-                <Button size="sm" onClick={() => copyKey(s.publicKey!)}><Copy className="size-4" aria-hidden />{t("copyKey")}</Button>
-              </div>
-            </div>}
-            {s.statementsOk && <p className="text-sm text-muted">{t("scaOk")}</p>}
           </div>
         </Card>
 
@@ -193,9 +182,6 @@ export default function WisePage() {
       <ConfirmDialog open={!!ign} onClose={() => setIgn(null)} title={t("ignoreTitle")} description={t("ignoreDesc")} confirmLabel={t("ignore")}
         onConfirm={async () => { try { await api(`/api/accounting/wise/transactions/${ign!.id}/ignore`, { json: { ignored: true, reason } }); await reloadAll(); } catch (e) { toast("error", errMsg(e)); throw e; } }}>
         <Field label={t("ignoreReason")} required>{(p) => <Textarea {...p} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("ignorePlaceholder")} />}</Field>
-      </ConfirmDialog>
-      <ConfirmDialog open={disc} onClose={() => setDisc(false)} title={t("disconnectTitle")} description={t("disconnectDesc")} confirmLabel={t("disconnect")}
-        onConfirm={async () => { try { await api("/api/accounting/wise", { method: "DELETE" }); toast("ok", t("disconnected")); await st.reload(); } catch (e) { toast("error", errMsg(e)); throw e; } }}>
       </ConfirmDialog>
     </div>
   );
