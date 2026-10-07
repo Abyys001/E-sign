@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { ArrowDownLeft, ArrowUpRight, Banknote, Bot, Copy, EyeOff, Landmark, RefreshCw, RotateCcw, Unplug } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Banknote, Bot, Copy, Download, EyeOff, Landmark, RefreshCw, RotateCcw, Unplug } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { Money } from "@/components/accounting/kit";
@@ -95,7 +95,10 @@ export default function WisePage() {
               <p className="text-muted">{t("scaDesc")}</p>
               {s.lastSyncAt && s.lastError && s.status !== "ERROR" && <p className="text-xs">{s.lastError}</p>}
               <pre className="scroll-thin max-h-40 overflow-auto rounded-lg bg-surface p-3 font-mono text-[11px] leading-snug">{s.publicKey}</pre>
-              <Button size="sm" onClick={() => copyKey(s.publicKey!)}><Copy className="size-4" aria-hidden />{t("copyKey")}</Button>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="primary" onClick={() => { const u = URL.createObjectURL(new Blob([s.publicKey!], { type: "application/x-pem-file" })); const a = document.createElement("a"); a.href = u; a.download = "bilit-wise-public-key.pem"; a.click(); setTimeout(() => URL.revokeObjectURL(u), 1000); }}><Download className="size-4" aria-hidden />{t("downloadKey")}</Button>
+                <Button size="sm" onClick={() => copyKey(s.publicKey!)}><Copy className="size-4" aria-hidden />{t("copyKey")}</Button>
+              </div>
             </div>}
             {s.statementsOk && <p className="text-sm text-muted">{t("scaOk")}</p>}
           </div>

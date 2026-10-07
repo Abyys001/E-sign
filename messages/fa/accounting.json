@@ -1988,7 +1988,7 @@
     "toRecordTitle": "{n, plural, one {# Wise transfer is not in the books} other {# Wise transfers are not in the books}}",
     "toRecordDesc": "Record each one as an organiser payment, or mark it as something else (supplier, own account, salary…).",
     "scaTitle": "One more step: allow statements",
-    "scaDesc": "Wise requires strong customer authentication to read balance statements. Copy this public key and add it in Wise → Settings → Developer tools → API tokens → Manage public keys. Then press Sync now. (Transfers already work without it.)",
+    "scaDesc": "Wise requires strong customer authentication to read balance statements. Download the public key file (.pem) and upload it in Wise → Settings → Developer tools → API tokens → Manage public keys. Then press Sync now. (Transfers already work without it.)",
     "copyKey": "Copy public key",
     "copied": "Public key copied",
     "copyFailed": "Could not copy — select the key and copy it manually",
@@ -2027,6 +2027,7 @@
     "ignorePlaceholder": "e.g. own account transfer, supplier invoice, salary",
     "liveNote": "Payments recorded from Wise are posted to the LIVE books with the Wise transfer number as reference, so they are matched automatically.",
     "aiCheck": "AI check",
-    "aiIntro": "These are transfers Bilit sent from its Wise account that are not yet recorded in the books. For each one decide, as Bilit's accountant, whether it is a payment to an organiser (match the organiser by recipient name), and propose it with the given Wise bank reference. Transfers that are clearly not organiser payments (own accounts, suppliers, salaries, tax) must NOT be proposed — list them in warnings with what they probably are."
+    "aiIntro": "These are transfers Bilit sent from its Wise account that are not yet recorded in the books. For each one decide, as Bilit's accountant, whether it is a payment to an organiser (match the organiser by recipient name), and propose it with the given Wise bank reference. Transfers that are clearly not organiser payments (own accounts, suppliers, salaries, tax) must NOT be proposed — list them in warnings with what they probably are.",
+    "downloadKey": "Download public key (.pem)"
   }
 }

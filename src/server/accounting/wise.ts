@@ -255,11 +255,14 @@ export async function syncAllWise() {
 
 // ---------- matching ----------
 const norm = (s: string | null | undefined) => (s ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\b(ltd|limited|gmbh|ab|aps|as|llc|fz|fze|inc|bv|sarl|sas|srl|the|and|&)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+const GENERIC = new Set(["events", "event", "entertainment", "productions", "production", "promotions", "promotion", "music", "group", "media", "live", "company", "co", "international", "global", "services", "management", "agency", "tickets", "ticketing"]);
 function nameScore(a: string, b: string) {
   const x = norm(a), y = norm(b);
   if (!x || !y) return 0;
   if (x === y) return 1;
-  const ta = new Set(x.split(" ").filter((t) => t.length > 1)), tb = new Set(y.split(" ").filter((t) => t.length > 1));
+  const keep = (t: string) => t.length > 1 && !GENERIC.has(t);
+  const ta = new Set(x.split(" ").filter(keep)), tb = new Set(y.split(" ").filter(keep));
+  if (!ta.size || !tb.size) return 0;
   const common = [...ta].filter((t) => tb.has(t)).length;
   return common / Math.max(1, Math.min(ta.size, tb.size));
 }
@@ -273,29 +276,43 @@ export async function relinkWise(orgId: string) {
   const w = schema.acctWiseTransactions, p = schema.acctOrganiserPayments;
   // Payments that were voided lose their link.
   await db.execute(sql`update acct_wise_transactions t set organiser_payment_id = null, updated_at = now() from acct_organiser_payments p where p.id = t.organiser_payment_id and p.status = 'VOIDED' and t.organisation_id = ${orgId}`);
-  const open = await db.select().from(w).where(and(eq(w.organisationId, orgId), eq(w.direction, "OUT"), eq(w.kind, "TRANSFER"), isNull(w.organiserPaymentId)));
-  if (open.length) {
+  const outs = await db.select().from(w).where(and(eq(w.organisationId, orgId), eq(w.direction, "OUT"), eq(w.kind, "TRANSFER")));
+  if (outs.length) {
     const pays = await db.select().from(p).where(and(eq(p.organisationId, orgId), eq(p.livemode, true), sql`${p.status} <> 'VOIDED'`));
-    const taken = new Set((await db.select({ id: w.organiserPaymentId }).from(w).where(and(eq(w.organisationId, orgId), sql`${w.organiserPaymentId} is not null`))).map((r) => r.id));
+    const num = (t: { wiseId: string }) => t.wiseId.replace(/^TRANSFER-/, "");
+    // 1) A payment whose reference carries a Wise transfer number belongs to that transfer — this also corrects an
+    //    earlier amount-based guess that picked the wrong transfer.
+    const owner = new Map<string, string>(); // paymentId → tx id
+    for (const t of outs) for (const x of pays) if (x.bankReference && new RegExp(`(^|\\D)${num(t)}(\\D|$)`).test(x.bankReference) && !owner.has(x.id)) owner.set(x.id, t.id);
+    const linkOf = new Map(outs.map((t) => [t.id, t.organiserPaymentId] as const));
+    for (const t of outs) {
+      const mine = [...owner.entries()].find(([, txId]) => txId === t.id)?.[0] ?? null;
+      const cur = linkOf.get(t.id) ?? null;
+      if (mine && cur !== mine) linkOf.set(t.id, mine);
+      else if (!mine && cur && owner.has(cur)) linkOf.set(t.id, null); // its payment belongs to another transfer
+    }
+    const taken = new Set([...linkOf.values()].filter(Boolean) as string[]);
     const orgs = await db.select().from(schema.acctOrganisers).where(eq(schema.acctOrganisers.organisationId, orgId));
     const holders = new Map(orgs.map((o) => { let h: string | null = null; try { h = o.bankDetailsEnc ? (JSON.parse(decrypt(o.bankDetailsEnc)) as { accountHolder?: string }).accountHolder ?? null : null; } catch { /* unreadable */ } return [o.id, h]; }));
-    for (const t of open) {
-      if (DEAD.includes(String(t.status))) continue;
-      const num = t.wiseId.replace(/^TRANSFER-/, "");
+    const score = (name: string, orgId2: string) => { const o = orgs.find((x) => x.id === orgId2)!; return Math.max(nameScore(name, o.name), o.companyName ? nameScore(name, o.companyName) : 0, holders.get(o.id) ? nameScore(name, holders.get(o.id)!) : 0); };
+    for (const t of outs) {
+      if (DEAD.includes(String(t.status)) || linkOf.get(t.id) || t.ignored) continue;
+      // 2) Otherwise one unlinked bank-transfer payment with the same amount/currency within ±3 days — only when the
+      //    recipient's name matches that payment's organiser (never for transfers to Bilit's own accounts or third parties).
       const day = t.occurredAt.toISOString().slice(0, 10);
       const near = (d: string) => Math.abs(Date.parse(`${d}T12:00:00Z`) - Date.parse(`${day}T12:00:00Z`)) <= 3 * 86_400_000;
-      let match = pays.find((x) => !taken.has(x.id) && x.bankReference && new RegExp(`(^|\\D)${num}(\\D|$)`).test(x.bankReference));
-      if (!match) {
-        const c = pays.filter((x) => !taken.has(x.id) && x.method === "BANK_TRANSFER" && x.currency === t.currency && x.amount === t.amount && near(x.paymentDate));
-        if (c.length === 1) match = c[0];
-      }
-      let suggested: string | null = match?.organiserId ?? null;
+      const c = pays.filter((x) => !taken.has(x.id) && !owner.has(x.id) && x.method === "BANK_TRANSFER" && x.currency === t.currency && x.amount === t.amount && near(x.paymentDate) && t.counterparty && score(t.counterparty, x.organiserId) >= 0.5);
+      if (c.length === 1) { linkOf.set(t.id, c[0]!.id); taken.add(c[0]!.id); }
+    }
+    for (const t of outs) {
+      const link = linkOf.get(t.id) ?? null;
+      const pay = link ? pays.find((x) => x.id === link) : undefined;
+      let suggested: string | null = pay?.organiserId ?? null;
       if (!suggested && t.counterparty) {
-        const best = orgs.map((o) => ({ id: o.id, s: Math.max(nameScore(t.counterparty!, o.name), o.companyName ? nameScore(t.counterparty!, o.companyName) : 0, holders.get(o.id) ? nameScore(t.counterparty!, holders.get(o.id)!) : 0) })).sort((a, b) => b.s - a.s)[0];
+        const best = orgs.map((o) => ({ id: o.id, s: score(t.counterparty!, o.id) })).sort((a, b) => b.s - a.s)[0];
         if (best && best.s >= 0.5) suggested = best.id;
       }
-      if (match) taken.add(match.id);
-      if (match || suggested !== t.suggestedOrganiserId) await db.update(w).set({ organiserPaymentId: match?.id ?? null, suggestedOrganiserId: suggested, updatedAt: new Date() }).where(eq(w.id, t.id));
+      if (link !== t.organiserPaymentId || suggested !== t.suggestedOrganiserId) await db.update(w).set({ organiserPaymentId: link, suggestedOrganiserId: suggested, updatedAt: new Date() }).where(eq(w.id, t.id));
     }
   }
   // Incoming money ↔ Stripe payouts (same amount and currency, arriving 0–5 days after the payout was created).
