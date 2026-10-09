@@ -30,6 +30,7 @@ export const organisations = pgTable("organisations", {
 export const users = pgTable("users", {
   id: id(),
   email: text("email").notNull(),
+  username: text("username"),
   name: text("name").notNull(),
   passwordHash: text("password_hash").notNull(),
   isSuperAdmin: boolean("is_super_admin").notNull().default(false),
@@ -38,7 +39,7 @@ export const users = pgTable("users", {
   failedLogins: integer("failed_logins").notNull().default(0),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
   createdAt: createdAt(), updatedAt: updatedAt(), deletedAt: timestamp("deleted_at", { withTimezone: true }),
-}, (t) => [uniqueIndex("users_email_uq").on(sql`lower(${t.email})`)]);
+}, (t) => [uniqueIndex("users_email_uq").on(sql`lower(${t.email})`), uniqueIndex("users_username_uq").on(sql`lower(${t.username})`).where(sql`${t.username} is not null`)]);
 
 export const roles = pgTable("roles", {
   id: id(),

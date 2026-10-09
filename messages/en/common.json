@@ -166,6 +166,7 @@
     "template_published": "Template published",
     "template_version_created": "Template version created",
     "user_added": "Member added",
+    "user_credentials_set": "Member sign-in details changed",
     "user_invited": "Member invited",
     "user_removed": "Member removed",
     "user_role_changed": "Member role changed",

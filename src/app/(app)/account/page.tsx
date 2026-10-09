@@ -14,6 +14,7 @@ import { api, errMsg } from "@/lib/api";
 export default function AccountPage() {
   const t = useTranslations("app.account");
   const c = useTranslations("common");
+  const tm = useTranslations("app.members");
   const { me, reload } = useMe();
   const ensure = useElevation();
   const toast = useToast();
@@ -28,7 +29,7 @@ export default function AccountPage() {
     <div className="mx-auto max-w-2xl">
       <PageHeader title={t("title")} description={t("sub")} />
       <div className="space-y-6">
-        <Card><CardHeader title={t("profile")} /><dl className="grid gap-4 p-5 text-sm sm:grid-cols-2"><div><dt className="text-muted">{c("name")}</dt><dd className="font-medium">{me.user.name}</dd></div><div><dt className="text-muted">{c("email")}</dt><dd className="font-medium">{me.user.email}</dd></div></dl></Card>
+        <Card><CardHeader title={t("profile")} /><dl className="grid gap-4 p-5 text-sm sm:grid-cols-2"><div><dt className="text-muted">{c("name")}</dt><dd className="font-medium">{me.user.name}</dd></div><div><dt className="text-muted">{c("email")}</dt><dd className="font-medium">{me.user.email}</dd></div>{me.user.username && <div><dt className="text-muted">{tm("username")}</dt><dd dir="ltr" className="text-start font-medium">{me.user.username}</dd></div>}</dl></Card>
         <Card><CardHeader title={t("twofa")} description={me.user.hasTotp ? t("twofaOn") : t("twofaOff")} action={me.user.hasTotp ? <ShieldCheck className="size-5" aria-hidden /> : <ShieldOff className="size-5 text-muted" aria-hidden />} />
           <div className="space-y-4 p-5">
             {!me.user.hasTotp && !setup && <Button variant="primary" loading={busy} onClick={() => run(async () => setSetup(await api("/api/auth/totp")))}>{t("enable")}</Button>}

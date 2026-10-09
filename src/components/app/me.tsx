@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 import { api } from "@/lib/api";
 
 export type Me = {
-  user: { id: string; email: string; name: string; locale: string; isSuperAdmin: boolean; hasTotp: boolean };
+  user: { id: string; email: string; username: string | null; name: string; locale: string; isSuperAdmin: boolean; hasTotp: boolean };
   csrfToken: string;
   organisations: Array<{ id: string; name: string; roleKey?: string }>;
   activeOrganisationId: string;

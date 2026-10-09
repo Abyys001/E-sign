@@ -14,7 +14,7 @@ export const CSRF_COOKIE = "bes_csrf";
 export type AuthContext = {
   sessionId: string;
   csrfToken: string;
-  user: { id: string; email: string; name: string; locale: string; isSuperAdmin: boolean; hasTotp: boolean };
+  user: { id: string; email: string; username: string | null; name: string; locale: string; isSuperAdmin: boolean; hasTotp: boolean };
   organisationId: string;
   membership: Membership;
   elevated: boolean;
@@ -59,7 +59,7 @@ export async function currentAuth(): Promise<AuthContext | null> {
   if (!m && !row.u.isSuperAdmin) return null;
   return {
     sessionId: row.s.id, csrfToken: row.s.csrfToken,
-    user: { id: row.u.id, email: row.u.email, name: row.u.name, locale: row.u.locale, isSuperAdmin: row.u.isSuperAdmin, hasTotp: hasActiveTotp(row.u.totpSecretEnc) },
+    user: { id: row.u.id, email: row.u.email, username: row.u.username, name: row.u.name, locale: row.u.locale, isSuperAdmin: row.u.isSuperAdmin, hasTotp: hasActiveTotp(row.u.totpSecretEnc) },
     organisationId: orgId,
     membership: { roleKey: m?.roleKey ?? "SUPER_ADMIN", grants: m?.grants ?? [], denies: m?.denies ?? [], isSuperAdmin: row.u.isSuperAdmin },
     elevated: !!row.s.elevatedUntil && row.s.elevatedUntil > new Date(),

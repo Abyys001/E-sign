@@ -23,7 +23,7 @@ export default function ForgotPage() {
       <div><h1 className="text-3xl font-semibold tracking-tight">{t("forgotTitle")}</h1><p className="mt-1.5 text-muted">{t("forgotSub")}</p></div>
       {sent ? <Callout tone="ok" icon={<MailCheck className="size-5 shrink-0" aria-hidden />}>{t("sent")}</Callout> : (
         <form onSubmit={submit} className="space-y-5">
-          <Field label={t("email")} error={err} required>{(p) => <Input {...p} type="email" autoComplete="email" autoFocus required value={email} onChange={(e) => setEmail(e.target.value)} />}</Field>
+          <Field label={t("emailOrUsername")} error={err} required>{(p) => <Input {...p} type="text" autoComplete="username" autoCapitalize="none" spellCheck={false} dir="ltr" autoFocus required value={email} onChange={(e) => setEmail(e.target.value)} />}</Field>
           <Button type="submit" variant="primary" size="lg" className="w-full" loading={busy} disabled={!email}>{t("sendLink")}</Button>
         </form>
       )}

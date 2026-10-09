@@ -120,6 +120,13 @@
       "when": 1791071634374,
       "tag": "0016_profit_share",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791158034374,
+      "tag": "0017_usernames",
+      "breakpoints": true
     }
   ]
 }

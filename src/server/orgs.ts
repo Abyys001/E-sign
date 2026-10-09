@@ -84,8 +84,88 @@ export async function removeMember(tx: Tx, orgId: string, actorId: string, membe
 }
 
 export async function listMembers(orgId: string) {
-  return db.select({ userId: schema.users.id, name: schema.users.name, email: schema.users.email, roleKey: schema.memberships.roleKey, grants: schema.memberships.grants, denies: schema.memberships.denies, hasTotp: schema.users.totpSecretEnc })
+  return db.select({ userId: schema.users.id, name: schema.users.name, email: schema.users.email, username: schema.users.username, roleKey: schema.memberships.roleKey, grants: schema.memberships.grants, denies: schema.memberships.denies, hasTotp: schema.users.totpSecretEnc,
+    lockedUntil: schema.users.lockedUntil, isSuperAdmin: schema.users.isSuperAdmin,
+    otherOrgs: sql<number>`(select count(*)::int from memberships o where o.user_id = ${schema.users.id} and o.organisation_id <> ${orgId})` })
     .from(schema.memberships).innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId)).where(eq(schema.memberships.organisationId, orgId));
+}
+
+// ---------------------------------------------------------------- usernames / admin-set passwords
+
+const USERNAME = /^[a-z0-9](?:[a-z0-9._-]{1,30})[a-z0-9]$/;
+
+/** Usernames are stored lower-case and can never contain "@", so a sign-in identifier is unambiguously an email or a username. */
+export function usernameProblem(raw: string): string | null {
+  const u = raw.trim().toLowerCase();
+  if (u.length < 3 || u.length > 32) return "Username must be 3–32 characters.";
+  if (!USERNAME.test(u)) return "Username can use letters, numbers, dots, dashes and underscores, and must start and end with a letter or number.";
+  return null;
+}
+
+async function assertUsernameFree(tx: Tx, username: string, exceptUserId?: string) {
+  const [hit] = await tx.select({ id: schema.users.id }).from(schema.users).where(sql`lower(${schema.users.username}) = ${username}`);
+  if (hit && hit.id !== exceptUserId) throw new AppError("conflict", "That username is already taken.");
+}
+
+const cleanUsername = (raw: string) => {
+  const problem = usernameProblem(raw);
+  if (problem) throw new AppError("validation_failed", problem);
+  return raw.trim().toLowerCase();
+};
+
+/** Create a brand-new account whose username and password are chosen by the admin (no email round-trip). */
+export async function createMemberWithPassword(tx: Tx, orgId: string, actorId: string, input: { email: string; name: string; username: string; password: string; roleKey: string; locale?: "en" | "fa" }, ctx: RequestContext) {
+  if (!ASSIGNABLE_ROLES.includes(input.roleKey)) throw new AppError("validation_failed", "Unknown role.");
+  const username = cleanUsername(input.username);
+  const email = input.email.trim().toLowerCase();
+  // Never take over an existing account by setting its password: existing people are invited instead.
+  const [existing] = await tx.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, email));
+  if (existing) throw new AppError("conflict", "Someone with that email already has an account. Invite them by email instead.");
+  await assertUsernameFree(tx, username);
+  const u = await createUser(tx, { ...input, email });
+  await tx.update(schema.users).set({ username }).where(eq(schema.users.id, u.id));
+  await tx.insert(schema.memberships).values({ organisationId: orgId, userId: u.id, roleKey: input.roleKey });
+  await audit(tx, { organisationId: orgId, userId: actorId, eventType: "user.added", ctx, metadata: { memberId: u.id, roleKey: input.roleKey, username, method: "password" } });
+  return { ...u, username };
+}
+
+/**
+ * Change a member's username and/or set a new password for them. Guard rails:
+ * - only accounts that belong to this organisation alone (an admin of one org must not control a login used elsewhere);
+ * - never super admins, and only owners may change an owner's credentials;
+ * - a new password unlocks the account and signs the person out everywhere (except the actor's own current session).
+ */
+export async function setMemberCredentials(tx: Tx, orgId: string, actor: { id: string; roleKey: string; isSuperAdmin: boolean; sessionId: string }, memberUserId: string, patch: { username?: string | null; password?: string }, ctx: RequestContext) {
+  const [m] = await tx.select().from(schema.memberships).where(and(eq(schema.memberships.userId, memberUserId), eq(schema.memberships.organisationId, orgId)));
+  if (!m) throw new AppError("not_found", "Member not found");
+  const [u] = await tx.select().from(schema.users).where(eq(schema.users.id, memberUserId));
+  if (!u || u.deletedAt) throw new AppError("not_found", "Member not found");
+  const self = memberUserId === actor.id;
+  if (!self) {
+    if (u.isSuperAdmin) throw new AppError("forbidden", "Platform administrators manage their own sign-in details.");
+    if (m.roleKey === "ORG_OWNER" && actor.roleKey !== "ORG_OWNER" && !actor.isSuperAdmin) throw new AppError("forbidden", "Only an owner can change an owner's sign-in details.");
+    const [other] = await tx.select({ id: schema.memberships.id }).from(schema.memberships).where(and(eq(schema.memberships.userId, memberUserId), sql`${schema.memberships.organisationId} <> ${orgId}`)).limit(1);
+    if (other && !actor.isSuperAdmin) throw new AppError("forbidden", "This person also belongs to another organisation, so only they can change their sign-in details.");
+  }
+  const set: Partial<typeof schema.users.$inferInsert> = {};
+  if (patch.username !== undefined) {
+    if (patch.username === null || patch.username.trim() === "") set.username = null;
+    else { const username = cleanUsername(patch.username); await assertUsernameFree(tx, username, memberUserId); set.username = username; }
+  }
+  if (patch.password !== undefined) {
+    const problem = passwordProblem(patch.password);
+    if (problem) throw new AppError("validation_failed", problem);
+    Object.assign(set, { passwordHash: await hashPassword(patch.password), failedLogins: 0, lockedUntil: null });
+  }
+  if (!Object.keys(set).length) return { username: u.username };
+  await tx.update(schema.users).set({ ...set, updatedAt: new Date() }).where(eq(schema.users.id, memberUserId));
+  if (set.passwordHash) {
+    await tx.delete(schema.sessions).where(self ? and(eq(schema.sessions.userId, memberUserId), sql`${schema.sessions.id} <> ${actor.sessionId}`) : eq(schema.sessions.userId, memberUserId));
+    // Any outstanding invite / reset link would otherwise let someone overwrite the password just set.
+    await tx.update(schema.userTokens).set({ usedAt: new Date() }).where(and(eq(schema.userTokens.userId, memberUserId), sql`used_at is null`));
+  }
+  await audit(tx, { organisationId: orgId, userId: actor.id, eventType: "user.credentials_set", ctx, metadata: { memberId: memberUserId, usernameChanged: set.username !== undefined ? set.username !== u.username : false, username: set.username !== undefined ? set.username : undefined, passwordChanged: !!set.passwordHash } });
+  return { username: set.username !== undefined ? set.username : u.username };
 }
 export { inArray };
 

@@ -13,5 +13,5 @@ export async function apiKeyAuth(key: string, perm?: Permission | null): Promise
   const membership = { roleKey: "API_KEY", grants: row.k.permissions.filter((p): p is Permission => (PERMISSIONS as readonly string[]).includes(p)), denies: [] as string[] };
   if (perm && !can(membership, perm)) throw new AppError("forbidden", "This API key does not have that permission.");
   void db.update(schema.apiKeys).set({ lastUsedAt: new Date() }).where(eq(schema.apiKeys.id, row.k.id)).catch(() => undefined);
-  return { sessionId: `apikey:${row.k.id}`, csrfToken: "", user: { id: row.u.id, email: row.u.email, name: row.u.name, locale: row.u.locale, isSuperAdmin: false, hasTotp: false }, organisationId: row.k.organisationId, membership, elevated: false };
+  return { sessionId: `apikey:${row.k.id}`, csrfToken: "", user: { id: row.u.id, email: row.u.email, username: row.u.username, name: row.u.name, locale: row.u.locale, isSuperAdmin: false, hasTotp: false }, organisationId: row.k.organisationId, membership, elevated: false };
 }
