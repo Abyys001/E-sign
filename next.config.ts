@@ -12,6 +12,7 @@ const csp = [
   "font-src 'self' data:",
   "connect-src 'self'",
   "worker-src 'self' blob:",
+  "media-src 'self' blob:", // spoken answers of the AI Accountant are played from a blob: URL
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -36,6 +37,10 @@ const config: NextConfig = {
         { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
         ...(dev ? [] : [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }]),
       ],
+    }, {
+      // Finance pages: the AI Accountant may use the microphone (this site only; the browser still asks the user).
+      source: "/accounting/:path*",
+      headers: [{ key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), payment=()" }],
     }];
   },
 };
