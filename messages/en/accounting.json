@@ -26,12 +26,13 @@
     "reports": "Reports",
     "ledger": "Accounting ledger",
     "settings": "Finance settings",
-    "overview": "Overview",
+    "overview": "Sales overview",
     "books": "Bookkeeping",
     "refunds": "Refunds",
     "ai": "AI accountant",
     "wise": "Wise",
-    "profitShare": "Profit share"
+    "profitShare": "Profit share",
+    "position": "Financial Overview"
   },
   "range": {
     "label": "Period",
@@ -1263,7 +1264,7 @@
       "noPending": "No pending payments"
     },
     "overview": {
-      "title": "Financial overview",
+      "title": "Sales overview",
       "sub": "All events: ticket sales, booking fees, organiser payments, expenses and Bilit profit.",
       "empty": "No financial activity in this period",
       "emptyDesc": "Choose a longer period or import Stripe transactions.",
@@ -2165,5 +2166,201 @@
       "OTHER": "Other"
     },
     "paymentRecorded": "Payment recorded"
+  },
+  "position": {
+    "title": "Financial Overview",
+    "sub": "What Bilit holds, what it owes, what it is owed and what is left — from live Stripe and Wise balances and the ledger.",
+    "currency": "Currency",
+    "all": "All currencies",
+    "allIn": "All (≈ {c})",
+    "na": "N/A",
+    "indicative": "indicative",
+    "asOf": "Balances as of {at}",
+    "periodNote": "Cash, debts and settlements are current balances; revenue, profit and cash flow follow the selected period.",
+    "pickCurrency": "Pick a currency to see the summary cards (no exchange rates are available to combine currencies).",
+    "fxNote": "Combined figures are converted to {c} at {source} ({rates}) and are indicative only — each currency is paid separately.",
+    "showRecords": "Show the records behind this figure",
+    "status": {
+      "VERIFIED": "Verified",
+      "STALE": "Stale",
+      "REVIEW": "Needs review",
+      "UNVERIFIED": "Unverified"
+    },
+    "cards": {
+      "cash": "Total cash available",
+      "cashHint": "Available right now:",
+      "revenue": "Revenue (Bilit)",
+      "ticketSales": "Ticket money collected:",
+      "netProfit": "Net profit",
+      "netProfitHint": "After Stripe fees, refunds, running costs and profit share",
+      "liabilities": "Total outstanding liabilities",
+      "dueNow": "Due now:",
+      "organisers": "Organiser settlements due",
+      "remaining": "Cash remaining after settlements",
+      "remainingHint": "Cash − everything owed (receivables not counted)",
+      "inventory": "Inventory value",
+      "inventoryHint": "No stock is held — tickets are sold as agent",
+      "shortfall": "Cash shortfall",
+      "shortHint": "Extra money needed to pay everything owed in this currency",
+      "shortIn": "Short in: {list}",
+      "noShortfall": "No shortfall",
+      "noShortfallHint": "Every amount owed can be paid from cash held in its currency"
+    },
+    "alerts": {
+      "title": "Financial alerts",
+      "critical": "{n} critical issue(s) need attention",
+      "none": "No critical issues",
+      "open": "Open"
+    },
+    "summary": {
+      "title": "Financial summary",
+      "sub": "Current position per currency. Click an underlined amount to see its records.",
+      "cash": "Cash",
+      "availableNow": "Available now",
+      "organisers": "Owed to organisers",
+      "other": "Other debts",
+      "receivables": "Owed to us",
+      "remaining": "Left after paying all",
+      "netProfit": "Net profit (period)",
+      "status": "Status",
+      "formula": "Left after paying all = verified cash (Stripe available + pending, Wise) − amounts owed to organisers − other unpaid liabilities. Money owed to us, money in transit and the unreadable Stripe wallet are never counted as cash."
+    },
+    "cash": {
+      "title": "Cash and bank",
+      "sub": "Read live from Stripe and from the latest Wise sync.",
+      "account": "Account",
+      "allAccounts": "All accounts",
+      "amount": "Amount",
+      "notYet": "not yet available"
+    },
+    "liab": {
+      "title": "Debts and money owed to us",
+      "sub": "Each debt is counted once, from its own source.",
+      "what": "What",
+      "amount": "Amount",
+      "dueNow": "Due now",
+      "accounts": "Ledger account {codes}",
+      "receivable": "Owed to Bilit — not counted as cash",
+      "k": {
+        "organisers": "Organiser settlements",
+        "accounts_payable": "Unpaid supplier invoices",
+        "wages": "Wages and payroll taxes",
+        "employee_reimbursements": "Owed to employees",
+        "profit_share": "Partner profit share",
+        "unallocated": "Unallocated Stripe receipts"
+      },
+      "r": {
+        "organisers": "Organisers owe Bilit",
+        "vat_input": "VAT reclaimable"
+      }
+    },
+    "org": {
+      "title": "Organiser settlements",
+      "sub": "Per organiser and currency, all time. Click a row for payments and records.",
+      "organiser": "Organiser",
+      "allOrganisers": "All organisers",
+      "status": "Status",
+      "allStatuses": "All statuses",
+      "sales": "Net sales",
+      "share": "Organiser share",
+      "deductions": "Deductions",
+      "due": "Total due",
+      "paid": "Paid",
+      "outstanding": "Outstanding",
+      "dueNow": "Due now",
+      "later": "later",
+      "refunds": "Refunds",
+      "fees": "Booking fees",
+      "recharged": "Stripe fees recharged",
+      "events": "{n} event(s)",
+      "last": "last paid {d}",
+      "none": "No organisers match these filters.",
+      "owing": "Events where the organiser owes Bilit (already netted): {list}",
+      "note": "Total due = organiser share − Stripe fees recharged − deductions (fees, organiser expenses, adjustments), from each event's agreement. Payments made for the organiser as a whole are applied to the oldest events first to work out what is due now; events still to come are due later.",
+      "s": {
+        "NOT_SETTLED": "Not settled",
+        "PARTIALLY_PAID": "Partly paid",
+        "FULLY_PAID": "Fully paid",
+        "OVERPAID": "Overpaid",
+        "ORGANISER_OWES": "Organiser owes",
+        "NOTHING_DUE": "Nothing due"
+      }
+    },
+    "flow": {
+      "title": "Cash flow",
+      "sub": "Money in and out of each account in the period, from the books. Moves between Bilit's own accounts are not counted as income or spending.",
+      "account": "Account",
+      "opening": "Opening",
+      "in": "In",
+      "out": "Out",
+      "closing": "Closing (books)",
+      "real": "Real balance",
+      "a": {
+        "stripe": "Stripe balance",
+        "bank": "Bank (books)"
+      },
+      "t": {
+        "SALE": "ticket sales",
+        "SALE_UNALLOCATED": "unallocated sales",
+        "REFUND": "refunds",
+        "PAYOUT": "payouts",
+        "PAYOUT_PAID": "payouts received",
+        "ORGANISER_PAYMENT": "organiser payments",
+        "EXPENSE": "expenses",
+        "STRIPE_FEE": "Stripe fees",
+        "STRIPE_OTHER": "other Stripe activity",
+        "ADJUSTMENT": "adjustments",
+        "PROFIT_SHARE": "profit share",
+        "BILL": "supplier invoices",
+        "BILL_PAYMENT": "invoice payments",
+        "PAYSLIP": "payroll",
+        "PARTNER_PAYMENT": "partner payments"
+      },
+      "projection": "Projection",
+      "cashNow": "Cash now",
+      "upcoming": "Payments owed",
+      "expected": "Expected in",
+      "projected": "Projected position",
+      "note": "Stripe is reconciled to the Stripe API to the cent. The bank side is only as complete as the bookkeeping: Wise transfers that are not booked yet make it differ from the real Wise balance."
+    },
+    "profit": {
+      "title": "Profit",
+      "sub": "For the selected period, from the ledger.",
+      "revenue": "Revenue",
+      "direct": "Direct costs",
+      "gross": "Gross profit",
+      "opex": "Running costs",
+      "net": "Net profit",
+      "note": "Revenue = booking fees and other Bilit income (ticket money that belongs to organisers is excluded). Direct costs = Stripe fees, refunds and chargebacks borne by Bilit, event costs. Running costs include partner profit share."
+    },
+    "inv": {
+      "title": "Inventory and reconciliation"
+    },
+    "recon": {
+      "title": "Stripe: books vs Stripe API",
+      "stripeBooks": "Books",
+      "stripeReal": "Stripe API",
+      "diff": "Difference"
+    },
+    "drill": {
+      "sub": "The ledger lines behind this figure.",
+      "payments": "Payments",
+      "openOrganiser": "Open organiser",
+      "date": "Date",
+      "ref": "Method / reference",
+      "event": "Event",
+      "allEvents": "All events (total payable)",
+      "lines": "Ledger lines (accounts {codes})",
+      "type": "Transaction type",
+      "allTypes": "All types",
+      "entry": "Entry",
+      "description": "Description",
+      "debit": "Debit",
+      "credit": "Credit",
+      "reversed": "reversed",
+      "total": "Total of {n} line(s)",
+      "capped": "Showing the latest 1,000 lines only — narrow the period to see older ones.",
+      "note": "Reversed lines are corrections and cancel out with their reversal entry."
+    }
   }
 }

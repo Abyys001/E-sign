@@ -32,6 +32,8 @@ export interface WiseApi {
   statement(token: string, profileId: string, b: { id: string; currency: string }, p: { start: string; end: string }, privateKeyPem: string | null): Promise<WiseStatementLine[]>;
   /** Activity feed (no SCA needed): every money movement with its direction, incl. incoming payouts and card spend. */
   activities(token: string, profileId: string, p: { since: string; until: string; cursor?: string | null }): Promise<{ activities: WiseActivity[]; cursor: string | null }>;
+  /** Mid-market rate source → target (reporting conversions only). Optional so test doubles can leave it out. */
+  rate?(token: string, source: string, target: string): Promise<number>;
 }
 export type WiseActivity = { id: string; type: string; resource?: { type?: string; id?: string } | null; title?: string | null; description?: string | null; primaryAmount?: string | null; secondaryAmount?: string | null; status?: string | null; createdOn: string };
 export class WiseScaError extends Error {}
@@ -57,6 +59,12 @@ async function json<T>(token: string, path: string): Promise<T> {
 }
 
 const realApi: WiseApi = {
+  async rate(token, source, target) {
+    const rows = await json<Array<{ rate: number }>>(token, `/v1/rates?source=${encodeURIComponent(source.toUpperCase())}&target=${encodeURIComponent(target.toUpperCase())}`);
+    const r = Number(rows[0]?.rate);
+    if (!Number.isFinite(r) || r <= 0) throw new AppError("invalid_state", "Wise returned no rate.");
+    return r;
+  },
   async activities(token, profileId, p) {
     const qs = new URLSearchParams({ since: p.since, until: p.until, size: "100" });
     if (p.cursor) qs.set("nextCursor", p.cursor);
@@ -484,4 +492,16 @@ export async function bulkWise(a: Actor, input: z.infer<typeof BulkInput>) {
   }
   await relinkWise(a.orgId);
   return { done: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok), total: input.ids.length };
+}
+
+/** Live Wise mid-market rates into `target` for indicative reporting totals. Never throws: null when Wise is not connected or unreachable. */
+export async function wiseRates(orgId: string, target: string, sources: string[]): Promise<{ rates: Record<string, string>; at: string } | null> {
+  const c = await connection(orgId);
+  const w = api();
+  if (!c?.profileId || !w.rate) return null;
+  try {
+    const token = decrypt(c.tokenEnc), rates: Record<string, string> = {};
+    for (const s of [...new Set(sources)].filter((x) => x !== target)) rates[s] = String(await w.rate(token, s, target));
+    return { rates, at: new Date().toISOString() };
+  } catch (e) { log.warn("accounting.wise_rates_failed", { orgId, error: e instanceof Error ? e.message : String(e) }); return null; }
 }
