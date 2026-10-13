@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { currencyExponent } from "@/lib/money";
 import { getAcctSettings, isLive, type Mode } from "./core";
+import { expenseSpike, getMonitorSettings, monitorAlerts } from "./monitor";
 import { booksOverview } from "./books";
 import { eventFinancials, organiserBalances, settlementStatus, type Range, type SettlementStatus } from "./finance";
 import { gatewayFor, getStripeAccount, safeStripeError } from "./stripe-gateway";
@@ -58,16 +59,22 @@ const LIAB: Array<{ key: LiabilityKey; codes: string[]; dueNow: boolean; status:
  * organiser owes Bilit. The two parts always add up to the organiser's balance (or 0 when the organiser owes us).
  */
 export function splitDueNow(events: Array<{ startsOn: string | null; remaining: number }>, unallocatedPaid: number, today: string): { dueNow: number; later: number } {
-  let pool = unallocatedPaid + events.reduce((s, e) => s + Math.max(0, -e.remaining), 0);
   let dueNow = 0, later = 0;
+  for (const x of dueSchedule(events, unallocatedPaid)) if (!x.startsOn || x.startsOn <= today) dueNow += x.amount; else later += x.amount;
+  return { dueNow, later };
+}
+
+/** What is still owed per event date once organiser-level payments and credits are applied oldest event first (feeds the cash forecast). */
+export function dueSchedule(events: Array<{ startsOn: string | null; remaining: number }>, unallocatedPaid: number): Array<{ startsOn: string | null; amount: number }> {
+  let pool = unallocatedPaid + events.reduce((s, e) => s + Math.max(0, -e.remaining), 0);
+  const out: Array<{ startsOn: string | null; amount: number }> = [];
   const owed = events.filter((e) => e.remaining > 0).sort((a, b) => (a.startsOn ?? "").localeCompare(b.startsOn ?? ""));
   for (const e of owed) {
     const used = Math.min(pool, e.remaining);
     pool -= used;
-    const left = e.remaining - used;
-    if (!e.startsOn || e.startsOn <= today) dueNow += left; else later += left;
+    if (e.remaining - used > 0) out.push({ startsOn: e.startsOn, amount: e.remaining - used });
   }
-  return { dueNow, later };
+  return out;
 }
 
 /** Combine cash, liabilities and receivables of one currency. Receivables are shown but never counted as cash. */
@@ -234,13 +241,14 @@ export async function financialPosition(orgId: string, mode: Mode, r: Range, opt
   const settlements = orgBals.map((o) => {
     const evs = events.filter((e) => e.organiserId === o.organiserId && e.currency === o.currency);
     const unallocated = Math.max(0, o.organiserPaid - (eventPaid.get(`${o.organiserId}|${o.currency}`) ?? 0));
+    const schedule = o.remaining > 0 ? dueSchedule(evs.map((e) => ({ startsOn: e.startsOn, remaining: e.remaining })), unallocated) : [];
     const split = o.remaining > 0 ? splitDueNow(evs.map((e) => ({ startsOn: e.startsOn, remaining: e.remaining })), unallocated, today) : { dueNow: 0, later: 0 };
     const last = paymentRows.filter((p) => p.status === "PAID" && p.organiser_id === o.organiserId && p.currency === o.currency).map((p) => p.payment_date).sort().at(-1) ?? null;
     return {
       organiserId: o.organiserId, organiserName: names.get(o.organiserId) ?? "—", currency: o.currency, events: evs.filter((e) => e.grossSales || e.organiserDue).length,
       grossSales: o.grossSales, refunds: o.refunds + o.chargebacks, netSales: o.netSales, bookingFees: o.bookingFees, feesRecharged: o.feesRecharged,
       organiserShare: o.organiserShare, deductions: o.deductions, expensesOrganiser: o.expensesOrganiser,
-      due: o.organiserDue, paid: o.organiserPaid, pending: o.pendingPayments, remaining: o.remaining, dueNow: split.dueNow, dueLater: split.later,
+      due: o.organiserDue, paid: o.organiserPaid, pending: o.pendingPayments, remaining: o.remaining, dueNow: split.dueNow, dueLater: split.later, schedule,
       status: settlementStatus(o.organiserDue, o.organiserPaid) as SettlementStatus, lastPayment: last,
       eventsOwing: evs.filter((e) => e.remaining < 0).map((e) => ({ eventId: e.eventId, eventName: e.eventName, amount: -e.remaining })),
     };
@@ -293,14 +301,15 @@ export async function financialPosition(orgId: string, mode: Mode, r: Range, opt
   for (const w of wiseUnbooked.rows) alerts.push({ id: `wise-unbooked-${w.currency}`, severity: "info", title: "Wise transfers not in the books", detail: `${w.n} outgoing Wise transfer(s) are not linked to an organiser payment, bill or partner payment.`, currency: w.currency, amount: n(w.amount), href: "/accounting/wise" });
   for (const s of settlements) if (s.remaining < 0) alerts.push({ id: `owes-${s.organiserId}-${s.currency}`, severity: "info", title: `${s.organiserName} owes Bilit`, detail: "Booking fees refunded to customers that the organiser has to cover.", currency: s.currency, amount: -s.remaining, href: `/accounting/organisers/${s.organiserId}` });
   for (const b of books) if (b.overdueBills > 0) alerts.push({ id: `bills-${b.currency}`, severity: "critical", title: "Overdue supplier invoices", detail: `${b.overdueCount} invoice(s) are past their due date.`, currency: b.currency, amount: b.overdueBills, href: "/accounting/books/invoices" });
-  // Unusually high running costs: this month above 1.5× the average of the previous three.
+  // Unusually high running costs: this month above N× the average of the previous months that have data (up to 3).
   const thisMonth = today.slice(0, 7);
+  const monitor = await getMonitorSettings(orgId);
   for (const cur of new Set(monthlyExp.rows.map((x) => x.currency))) {
-    const rows = monthlyExp.rows.filter((x) => x.currency === cur), cm = n(rows.find((x) => x.month === thisMonth)?.amount), prev = rows.filter((x) => x.month !== thisMonth);
-    const avg = prev.length ? prev.reduce((s, x) => s + n(x.amount), 0) / 3 : 0;
-    if (avg > 0 && cm > avg * 1.5) alerts.push({ id: `exp-${cur}`, severity: "warning", title: `Running costs are high this month (${cur.toUpperCase()})`, detail: `This month ${cm / 100} vs a 3-month average of ${Math.round(avg) / 100}.`, currency: cur, amount: cm });
+    const spike = expenseSpike(monthlyExp.rows.filter((x) => x.currency === cur).map((x) => ({ month: x.month, amount: n(x.amount) })), thisMonth, monitor.expenseSpikeX);
+    if (spike) alerts.push({ id: `exp-${cur}`, severity: "warning", title: `Running costs are high this month (${cur.toUpperCase()})`, detail: `This month ${spike.current / 100} vs a recent monthly average of ${Math.round(spike.average) / 100} (alert above ${monitor.expenseSpikeX}×).`, currency: cur, amount: spike.current, href: "/accounting/books" });
   }
-  if (acc && !acc.lastWebhookAt) alerts.push({ id: "webhook", severity: "info", title: "Stripe webhooks are not arriving", detail: "Data relies on the 30-minute sync, so the newest payments can be up to 30 minutes late." });
+  // Coded checks: refund rate, Stripe fee %, margin, duplicate supplier invoices, webhook health (thresholds in Finance settings).
+  alerts.push(...await monitorAlerts(orgId, mode, events, monitor, acc ? { id: acc.id, lastWebhookAt: acc.lastWebhookAt } : null));
   const balanceTransfers = await db.execute<{ currency: string; amount: string }>(sql`
     select e.currency, sum(l.debit - l.credit)::text as amount from acct_journal_lines l join acct_journal_entries e on e.id = l.entry_id join acct_accounts a on a.id = l.account_id
     where e.organisation_id = ${orgId} and e.livemode = ${live} and e.entry_type = 'PAYOUT_PAID' and e.description ilike '%balance tra%' and a.code = '1010' and e.entry_date >= current_date - 60 group by 1`);

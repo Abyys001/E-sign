@@ -7,7 +7,7 @@ import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { AmountCard, Badge, Money, RangePicker, rangeFor, rangeQuery, useExport, useMode, type RangeKey } from "@/components/accounting/kit";
 import { AgreementFields, agreementFrom, agreementPayload, emptyAgreement, EventDialog, type AgreementValue } from "@/components/accounting/forms";
-import { AuditList, BookingFeeDialog, ExpenseDialog, moneyFlow, PayOrganiserDialog, PaymentEditDialog, PaymentViewDialog, pct, profitAndLoss, SettlementBadge, SettlementSummary, Statement, type AuditItem, type ExpenseRow, type Fig, type PaymentRow } from "@/components/accounting/finance";
+import { AuditList, BookingFeeDialog, ExpenseDialog, moneyFlow, PayOrganiserDialog, PaymentEditDialog, PaymentViewDialog, marginOf, pct, profitAndLoss, SettlementBadge, SettlementSummary, Statement, type AuditItem, type ExpenseRow, type Fig, type PaymentRow } from "@/components/accounting/finance";
 import { EventContractStatus } from "@/components/accounting/organiser-tabs";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardHeader, PageHeader } from "@/components/ui/card";
@@ -79,7 +79,7 @@ function EventFinance({ id }: { id: string }) {
         <AmountCard label={t("kpi.due")} v={f.organiserDue} c={f.currency} tone="info" icon={Scale} hint={t("kpi.dueHint")} />
         <AmountCard label={t("kpi.paid")} v={f.organiserPaid} c={f.currency} tone="bal" icon={Wallet} hint={f.pendingPayments ? <>{t("pendingNote")}: <Money v={f.pendingPayments} c={f.currency} /></> : undefined} />
         <AmountCard label={t("kpi.remaining")} v={f.remaining} c={f.currency} tone={f.remaining === 0 ? "pos" : "warn"} icon={HandCoins} hint={<SettlementBadge s={f.settlement} />} />
-        <AmountCard label={t("kpi.profit")} v={f.bilitProfit} c={f.currency} tone="pos" icon={PiggyBank} hint={t("kpi.profitHint")} />
+        <AmountCard label={t("kpi.profit")} v={f.bilitProfit} c={f.currency} tone="pos" icon={PiggyBank} hint={marginOf(f).ofFees !== null ? t("kpi.margin", { fees: marginOf(f).ofFees!, sales: marginOf(f).ofSales ?? 0 }) : t("kpi.profitHint")} />
       </div>
 
       <div>

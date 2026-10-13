@@ -17,11 +17,14 @@ const KEY = "bilit.finance.aichat";
 const load = (): Msg[] => { try { return JSON.parse(sessionStorage.getItem(KEY) ?? "[]") as Msg[]; } catch { return []; } };
 const save = (m: Msg[]) => { try { sessionStorage.setItem(KEY, JSON.stringify(m.slice(-40))); } catch { /* storage may be unavailable */ } };
 
-/** Minimal, safe rendering of the model's answer: paragraphs, lists, **bold**, headings, markdown tables, and evidence
- *  markers like [E2] (clickable when `onCite` is given). Never renders HTML from the model. */
+/** Minimal, safe rendering of the model's answer: paragraphs, lists, **bold**, headings, markdown tables, evidence
+ *  markers like [E2] (clickable when `onCite` is given) and [text](/accounting/…) links to finance pages. Never renders HTML from the model. */
 export function Answer({ text, onCite }: { text: string; onCite?: (id: string) => void }) {
-  const inline = (s: string) => s.split(/(\*\*[^*]+\*\*|\[E\d+\])/g).map((p, i) => {
+  const inline = (s: string) => s.split(/(\*\*[^*]+\*\*|\[E\d+\]|\[[^\]\n]{1,120}\]\(\/accounting\/[A-Za-z0-9/_?=&.-]{0,200}\))/g).map((p, i) => {
     if (p.startsWith("**") && p.endsWith("**")) return <strong key={i}>{p.slice(2, -2)}</strong>;
+    // Drill-down links: only relative links into the finance pages are rendered as links; anything else stays text.
+    const link = /^\[([^\]]+)\]\((\/accounting\/[A-Za-z0-9/_?=&.-]*)\)$/.exec(p);
+    if (link) return <Link key={i} href={link[2]!} className="font-medium text-accent underline underline-offset-2 hover:no-underline">{link[1]}</Link>;
     if (/^\[E\d+\]$/.test(p)) { const id = p.slice(1, -1); return onCite ? <button key={i} type="button" onClick={() => onCite(id)} className="mx-0.5 rounded bg-accent-soft px-1 align-super text-[10px] font-semibold text-accent hover:underline" title={id}>{id}</button> : <sup key={i} className="text-[10px] text-muted">{id}</sup>; }
     return <Fragment key={i}>{p.replace(/`([^`]+)`/g, "$1")}</Fragment>;
   });

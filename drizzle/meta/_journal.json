@@ -134,6 +134,13 @@
       "when": 1791244434374,
       "tag": "0018_xe_rates",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791330834374,
+      "tag": "0019_monitoring",
+      "breakpoints": true
     }
   ]
 }

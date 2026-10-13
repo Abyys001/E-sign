@@ -882,7 +882,12 @@
       "status": "Status",
       "closedBy": "Closed by",
       "notes": "Reason",
-      "reasonFirst": "Enter a reason above first"
+      "reasonFirst": "Enter a reason above first",
+      "checklist": "Month-end checklist for {period}",
+      "report": "Period-end report (PDF)",
+      "allClear": "Nothing open — this month is ready to close.",
+      "ack": "I have reviewed the open items and want to close the month anyway",
+      "open": "Open"
     },
     "balancedTotal": "Debits = credits"
   },
@@ -1006,7 +1011,8 @@
       "paid": "Paid to organiser",
       "remaining": "Remaining to pay",
       "profit": "Bilit profit",
-      "profitHint": "Booking fees − Bilit costs"
+      "profitHint": "Booking fees − Bilit costs",
+      "margin": "Margin {fees}% of Bilit's fees · {sales}% of sales"
     },
     "tabs": {
       "label": "Event finance sections",
@@ -1251,7 +1257,8 @@
       "expenses": "Expenses",
       "recharged": "charged to organiser",
       "profitShort": "Bilit profit",
-      "feeRecover": "fee to recover"
+      "feeRecover": "fee to recover",
+      "margin": "{v}% of sales"
     },
     "filters": {
       "allOrganisers": "All organisers",
@@ -1345,7 +1352,14 @@
       "nonRefundableHelp": "Refunds never reduce Bilit's booking fee. If a booking fee is refunded to a customer, the organiser is charged for it (shown as “booking fee to recover from organiser”).",
       "note": "Changing this re-calculates all existing refunds (old postings are reversed, never edited)."
     },
-    "receipt": "Receipt"
+    "receipt": "Receipt",
+    "impact": {
+      "title": "Effect on Bilit's cash (preview)",
+      "available": "Available now",
+      "own": "Bilit's own money after everything owed",
+      "notEnough": "Not enough {c} available right now — part of the balance is still pending in Stripe, or move money in from another currency.",
+      "note": "Nothing is paid or recorded until you press the button. Paying what is owed does not change Bilit's own money; only an overpayment does."
+    }
   },
   "books": {
     "nav": {
@@ -1460,7 +1474,9 @@
       "deleted": "Deleted",
       "deleteTitle": "Delete this document?",
       "deleteDesc": "The document is kept, marked as deleted, and its ledger entries are reversed.",
-      "deletedToast": "Document deleted"
+      "deletedToast": "Document deleted",
+      "dupTitle": "This looks like a document that is already in the books",
+      "dupConfirm": "This is a different document — save it anyway"
     },
     "emp": {
       "title": "Employees",
@@ -2506,5 +2522,67 @@
     "disconnect": "Disconnect XE",
     "save": "Save XE settings",
     "saved": "XE settings saved"
+  },
+  "forecast": {
+    "title": "Cash forecast",
+    "sub": "Estimated cash in the next days, from what is already in the books: Stripe money still pending (by release date), what organisers are owed (by event date), unpaid supplier invoices (by due date), wages and profit share owed, and optional running costs.",
+    "failed": "The forecast could not be loaded.",
+    "horizon": "Forecast horizon",
+    "days": "{n} days",
+    "totalIn": "Free cash in {days} days, all currencies in {c}",
+    "indicative": "indicative · {source}",
+    "currency": "Currency",
+    "start": "Available now",
+    "in": "Coming in",
+    "out": "Going out",
+    "estimated": "Running costs (est.)",
+    "end": "Free cash in {days} days",
+    "lowest": "Lowest point",
+    "held": "held back (no event):",
+    "none": "Nothing to forecast.",
+    "short": "{c} runs short on {date} unless money is moved in from another currency or payments are delayed.",
+    "assumptions": "Estimate, not a promise. Organisers are assumed paid {payDays} day(s) after their event.",
+    "runRateOn": "Running costs = average of the last 3 full months.",
+    "runRateOff": "Running costs are not included.",
+    "excluded": "Not included: future ticket sales, new refunds, currency conversions and invoices not yet entered.",
+    "change": "Change assumptions",
+    "k": {
+      "stripe_release": "Stripe releases",
+      "organisers": "Organisers",
+      "bills": "Invoices",
+      "wages": "Wages",
+      "reimbursements": "Reimbursements",
+      "profit_share": "Profit share",
+      "running_costs": "Running costs"
+    }
+  },
+  "monitor": {
+    "title": "Checks & forecast",
+    "desc": "Thresholds for the automatic checks on the Financial Overview (refund rate, Stripe fees, margins, duplicate invoices, webhooks) and assumptions for the cash forecast.",
+    "save": "Save checks",
+    "saved": "Check settings saved",
+    "invalid": "{field} must be a number",
+    "note": "Checks only raise alerts; they never change records. Events with fewer orders than the minimum are not checked.",
+    "f": {
+      "refundRatePct": "Refund rate alert (%)",
+      "minOrders": "Minimum orders per event",
+      "feePctOverMedian": "Stripe fee above typical (points)",
+      "marginDropPct": "Margin below typical (%)",
+      "expenseSpikeX": "Running-cost spike (×)",
+      "duplicateBillDays": "Duplicate invoice window (days)",
+      "webhookStaleHours": "Webhook silence (hours)",
+      "organiserPayDays": "Pay organisers N days after event",
+      "forecastRunRate": "Include estimated running costs in the forecast"
+    },
+    "h": {
+      "refundRatePct": "Default {d}",
+      "minOrders": "Default {d}",
+      "feePctOverMedian": "Percentage points above the median of same-currency events. Default {d}",
+      "marginDropPct": "Default {d}",
+      "expenseSpikeX": "This month vs recent average. Default {d}",
+      "duplicateBillDays": "Same supplier + amount within N days. Default {d}",
+      "webhookStaleHours": "Default {d}",
+      "organiserPayDays": "Negative = before the event. Default {d}"
+    }
   }
 }

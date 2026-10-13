@@ -67,6 +67,9 @@ export function BillDialog({ kind, mode, bill, prefill, onClose, onSaved }: { ki
   });
   const [file, setFile] = useState<File | null>(null);
   const [errs, setErrs] = useState<FieldErrors>({}); const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  // Possible duplicates reported by the server; saving again needs an explicit "this is a different document".
+  const [dups, setDups] = useState<Array<{ id: string; supplierName: string; invoiceNumber: string | null; invoiceDate: string; totalAmount: number; currency: string; status: string }> | null>(null);
+  const [notDup, setNotDup] = useState(false);
   const set = <K extends keyof typeof v>(k: K, x: (typeof v)[K]) => setV((o) => ({ ...o, [k]: x }));
   const net = tryMajor(v.net, v.currency), vat = tryMajor(v.vat, v.currency);
   const applyRate = (r: string) => {
@@ -86,15 +89,18 @@ export function BillDialog({ kind, mode, bill, prefill, onClose, onSaved }: { ki
       const base = { supplierName: v.supplierName, supplierVat: v.supplierVat || null, country: v.country || null, invoiceNumber: v.invoiceNumber || null, invoiceDate: v.invoiceDate, dueDate: kind === "BILL" ? v.dueDate || null : null,
         netAmount: net, vatAmount: vat, accountId: v.accountId, eventId: v.eventId || null, description: v.description || null, paidFrom: kind === "EXPENSE" ? v.paidFrom : undefined };
       const row = bill ? await api<{ id: string }>(`/api/accounting/bills/${bill.id}`, { method: "PATCH", json: { ...base, reason: v.reason } })
-        : await api<{ id: string }>("/api/accounting/bills", { json: { ...base, mode, kind, currency: v.currency, paidFrom: kind === "EXPENSE" ? v.paidFrom : v.alreadyPaid ? v.paidFrom : null, paidDate: kind === "BILL" && v.alreadyPaid ? v.paidDate : null, paymentReference: v.paymentReference || null } });
+        : await api<{ id: string }>("/api/accounting/bills", { json: { ...base, mode, kind, currency: v.currency, paidFrom: kind === "EXPENSE" ? v.paidFrom : v.alreadyPaid ? v.paidFrom : null, paidDate: kind === "BILL" && v.alreadyPaid ? v.paidDate : null, paymentReference: v.paymentReference || null, ...(dups && notDup ? { allowDuplicate: true } : {}) } });
       if (file) { const form = new FormData(); form.append("file", file); try { await api(`/api/accounting/bills/${row.id}/file`, { form }); } catch (e) { toast("error", `${t("fileFailed")}: ${errMsg(e)}`); } }
       toast("ok", bill ? t("updated") : kind === "BILL" ? t("billAdded") : t("expenseAdded")); onSaved(); onClose();
-    } catch (e) { setErrs(fieldErrors(e)); setErr(errMsg(e)); } finally { setBusy(false); }
+    } catch (e) {
+      const d = e instanceof ApiError && e.details && typeof e.details === "object" && "duplicates" in e.details ? (e.details as { duplicates: NonNullable<typeof dups> }).duplicates : null;
+      if (d) { setDups(d); setNotDup(false); setErr(null); } else { setErrs(fieldErrors(e)); setErr(errMsg(e)); }
+    } finally { setBusy(false); }
   };
   const evOptions = (evs?.items ?? []).filter((e) => e.currency === v.currency);
   return (
     <Modal open onClose={onClose} size="xl" title={bill ? t("edit") : kind === "BILL" ? t("newBill") : t("newExpense")} description={kind === "BILL" ? t("billDesc") : t("expenseDesc")}
-      footer={<><Button onClick={onClose}>{c("cancel")}</Button><Button variant="primary" loading={busy} disabled={!v.supplierName || !v.accountId || !v.net || (!!bill && v.reason.trim().length < 3)} onClick={submit}>{c("save")}</Button></>}>
+      footer={<><Button onClick={onClose}>{c("cancel")}</Button><Button variant="primary" loading={busy} disabled={!v.supplierName || !v.accountId || !v.net || (!!bill && v.reason.trim().length < 3) || (!!dups && !notDup)} onClick={submit}>{c("save")}</Button></>}>
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <div className="grid content-start gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2"><Field label={kind === "BILL" ? t("supplier") : t("payee")} required error={errs.supplierName}>{(p) => <><Input {...p} list="bk-suppliers" value={v.supplierName} onChange={(e) => pickSupplier(e.target.value)} autoComplete="off" /><datalist id="bk-suppliers">{sup?.items.map((s) => <option key={s.name} value={s.name} />)}</datalist></>}</Field></div>
@@ -129,6 +135,10 @@ export function BillDialog({ kind, mode, bill, prefill, onClose, onSaved }: { ki
             <div className="flex justify-between py-1"><dt className="text-muted">{t("vat")}</dt><dd className="tabular-nums">{vat === null ? "—" : formatMoney(vat, v.currency || "gbp")}</dd></div>
             <div className="mt-1 flex justify-between border-t border-line pt-2 text-base font-semibold"><dt>{t("total")}</dt><dd className="tabular-nums">{net === null || vat === null ? "—" : formatMoney(net + vat, v.currency || "gbp")}</dd></div>
           </dl>
+          {dups && <Callout tone="warn" title={t("dupTitle")}>
+            <ul className="mt-1 space-y-0.5 text-xs">{dups.map((d) => <li key={d.id}>{d.invoiceDate} · {d.supplierName}{d.invoiceNumber ? ` #${d.invoiceNumber}` : ""} · {formatMoney(d.totalAmount, d.currency)} · {d.status}</li>)}</ul>
+            <div className="mt-2"><Checkbox label={t("dupConfirm")} checked={notDup} onChange={(e) => setNotDup(e.target.checked)} /></div>
+          </Callout>}
           {err && <Callout tone="warn">{err}</Callout>}
         </div>
       </div>

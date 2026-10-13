@@ -9,6 +9,7 @@ import { storage } from "../storage";
 import { objectKey } from "../storage/keys";
 import { acctAudit, Currency, ensureLedgerSetup, getAcctSettings, IsoDate, isLive, ModeSchema, type Mode, type SystemAccount } from "./core";
 import { postEntry, reverseEntry } from "./ledger";
+import { findDuplicateBills, getMonitorSettings } from "./monitor";
 
 /**
  * Bookkeeping: supplier invoices (bills) and manual expenses. Every document is posted to the double-entry ledger:
@@ -31,6 +32,7 @@ export const BillInput = z.object({
   netAmount: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), vatAmount: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
   accountId: z.string().uuid(), eventId: z.string().uuid().optional().nullable(), description: opt(2000),
   paidFrom: z.enum(PAID_FROM).optional().nullable(), paidDate: IsoDate.optional().nullable(), paymentReference: opt(120),
+  allowDuplicate: z.boolean().optional(), // the user saw the duplicate warning and confirmed it is a different document
 }).refine((b) => b.netAmount + b.vatAmount > 0, { message: "The total must be more than zero", path: ["netAmount"] });
 export const BillEdit = z.object({
   supplierName: z.string().trim().min(1).max(200).optional(), supplierVat: opt(60).optional(), country: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).optional().nullable(),
@@ -80,14 +82,27 @@ async function postPayment(tx: Tx, a: Actor, b: Bill, timezone: string) {
   return entry;
 }
 
+/** Stop a probable double entry (same supplier invoice number, or same supplier + amount within N days) unless the user confirms. */
+async function rejectDuplicate(tx: Tx, orgId: string, livemode: boolean, doc: { supplierName: string; invoiceNumber: string | null; invoiceDate: string; currency: string; totalAmount: number }) {
+  const { duplicateBillDays } = await getMonitorSettings(orgId);
+  const b = schema.acctBills;
+  const existing = await tx.select({ id: b.id, supplierName: b.supplierName, invoiceNumber: b.invoiceNumber, invoiceDate: b.invoiceDate, currency: b.currency, totalAmount: b.totalAmount, status: b.status, kind: b.kind })
+    .from(b).where(and(eq(b.organisationId, orgId), eq(b.livemode, livemode), sql`${b.status} <> 'VOIDED'`, ilike(b.supplierName, `%${doc.supplierName.trim().slice(0, 4).replace(/[%_\\]/g, "")}%`))).limit(500);
+  const hits = findDuplicateBills([{ id: "new", ...doc }, ...existing], duplicateBillDays).filter((d) => d.ids.includes("new"));
+  if (!hits.length) return;
+  const others = existing.filter((x) => hits.some((h) => h.ids.includes(x.id)));
+  throw new AppError("conflict", `This looks like a duplicate: ${hits[0]!.detail.replace(/\(.*\)$/, "").trim()}. If it is a different document, confirm and save again.`, { duplicates: others.map((x) => ({ id: x.id, supplierName: x.supplierName, invoiceNumber: x.invoiceNumber, invoiceDate: x.invoiceDate, totalAmount: x.totalAmount, currency: x.currency, status: x.status, kind: x.kind })) });
+}
+
 export async function createBill(a: Actor, input: z.infer<typeof BillInput>) {
   return db.transaction(async (tx) => {
     const { timezone } = await getAcctSettings(a.orgId, tx);
     await ensureLedgerSetup(tx, a.orgId);
     await expenseAccount(tx, a.orgId, input.accountId);
     await checkEvent(tx, a.orgId, input.eventId, input.currency);
-    const { mode, paidDate, ...rest } = input;
+    const { mode, paidDate, allowDuplicate, ...rest } = input;
     const expense = input.kind === "EXPENSE";
+    if (!allowDuplicate) await rejectDuplicate(tx, a.orgId, isLive(mode), { supplierName: rest.supplierName, invoiceNumber: rest.invoiceNumber ?? null, invoiceDate: rest.invoiceDate, currency: rest.currency, totalAmount: rest.netAmount + rest.vatAmount });
     const [row] = await tx.insert(schema.acctBills).values({
       organisationId: a.orgId, livemode: isLive(mode), ...rest, eventId: rest.eventId ?? null, country: rest.country ?? null, dueDate: expense ? null : rest.dueDate ?? null,
       totalAmount: rest.netAmount + rest.vatAmount, paidFrom: expense ? rest.paidFrom ?? "BANK" : null, status: expense ? "PAID" : "UNPAID", paidDate: expense ? input.invoiceDate : null, createdBy: a.userId,

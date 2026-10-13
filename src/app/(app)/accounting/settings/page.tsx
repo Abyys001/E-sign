@@ -7,6 +7,7 @@ import { InvoiceSettingsCard } from "@/components/accounting/settings-extra";
 import { AiSettingsCard } from "@/components/accounting/accountant";
 import { WiseSettingsCard } from "@/components/accounting/wise-settings";
 import { XeSettingsCard } from "@/components/accounting/xe-settings";
+import { MonitorSettingsCard } from "@/components/accounting/monitor-settings";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardHeader, PageHeader } from "@/components/ui/card";
 import { Callout, Skeleton } from "@/components/ui/feedback";
@@ -59,6 +60,7 @@ export default function FinanceSettings() {
       <AiSettingsCard admin={admin} />
       <div id="wise" className="scroll-mt-24"><WiseSettingsCard admin={admin} /></div>
       <div id="xe" className="scroll-mt-24"><XeSettingsCard admin={admin} /></div>
+      <div id="monitor" className="scroll-mt-24"><MonitorSettingsCard admin={admin} /></div>
       <Card><CardHeader title={tf("fx.title")} description={tf("fx.desc")} /><div className="space-y-4 p-5">
         <Field label={tf("fx.currency")} hint={tf("fx.currencyHint")}>{(p) => <Input {...p} disabled={!admin} value={v.reportingCurrency ?? ""} maxLength={3} onChange={(e) => setV({ ...v, reportingCurrency: e.target.value.toLowerCase() || null })} className="w-28 uppercase" placeholder="gbp" />}</Field>
         {v.reportingCurrency && <ul className="space-y-2">{Object.entries(v.fxRates).map(([c, r], i) => <li key={i} className="flex flex-wrap items-center gap-2 text-sm">

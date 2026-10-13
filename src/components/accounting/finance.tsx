@@ -25,6 +25,11 @@ export const SETTLEMENTS: Settlement[] = ["NOT_SETTLED", "PARTIALLY_PAID", "FULL
 type FieldErrors = Record<string, string>;
 const fieldErrors = (e: unknown): FieldErrors => (e instanceof ApiError && Array.isArray(e.details) ? Object.fromEntries((e.details as Array<{ path: string; message: string }>).map((d) => [d.path, d.message])) : {});
 export const pct = (bps: number | null | undefined) => (bps == null ? "—" : `${bpsToPercent(bps)} %`);
+/** Bilit's margin on an event: profit (after partner shares) as % of the fees Bilit earned and as % of net ticket sales. */
+export const marginOf = (f: { netSales: number; bilitRevenue: number; bilitProfit: number }) => ({
+  ofFees: f.bilitRevenue > 0 ? Math.round((f.bilitProfit / f.bilitRevenue) * 1000) / 10 : null,
+  ofSales: f.netSales > 0 ? Math.round((f.bilitProfit / f.netSales) * 1000) / 10 : null,
+});
 export const BASES = ["ADDED", "GROSS", "NET"] as const;
 
 // ---------- settlement status ----------
@@ -265,6 +270,7 @@ export function PayOrganiserDialog({ event, f, bookingFeeBps, mode, onClose, onS
         <div className="grid content-start gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2"><Field label={`${tp("amount")} (${f.currency.toUpperCase()})`} required error={errs.amount}>{(p) => <Input {...p} inputMode="decimal" value={v.amount} onChange={(e) => set("amount", e.target.value)} className="text-lg font-semibold" />}</Field>
             {after !== null && <p className={cn("mt-1 text-xs", after < 0 ? "text-fin-neg" : "text-muted")}>{after < 0 ? t("pay.overpay", { v: formatMoney(-after, f.currency) }) : t("pay.after", { v: formatMoney(after, f.currency) })}</p>}</div>
+          <div className="sm:col-span-2"><CashImpact mode={mode} currency={f.currency} amount={amount} owed={f.remaining} /></div>
           <Field label={tp("date")} required error={errs.paymentDate}>{(p) => <Input {...p} type="date" value={v.paymentDate} onChange={(e) => set("paymentDate", e.target.value)} />}</Field>
           <Field label={tp("method")}>{(p) => <Select {...p} value={v.method} onChange={(e) => set("method", e.target.value)}>{METHODS.map((m) => <option key={m} value={m}>{tp(`m.${m}`)}</option>)}</Select>}</Field>
           <Field label={tp("reference")}>{(p) => <Input {...p} value={v.bankReference} onChange={(e) => set("bankReference", e.target.value)} placeholder="INV-1021" />}</Field>
@@ -275,6 +281,26 @@ export function PayOrganiserDialog({ event, f, bookingFeeBps, mode, onClose, onS
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Settlement simulation: what this payment does to Bilit's cash in that currency, before anything is recorded.
+ * Paying what is owed lowers cash and what is owed equally, so Bilit's own money is unchanged; only an overpayment reduces it.
+ */
+export function CashImpact({ mode, currency, amount, owed }: { mode: string; currency: string; amount: number | null; owed: number }) {
+  const t = useTranslations("accounting.fin.impact");
+  const { data } = useApi<{ cash: number; cashAvailableNow: number; remaining: number }>(`/api/accounting/position/cash?currency=${currency}&mode=${mode}`);
+  if (!data || amount === null || amount <= 0) return null;
+  const availAfter = data.cashAvailableNow - amount, over = Math.max(0, amount - Math.max(0, owed)), ownAfter = data.remaining - over;
+  const row = (label: string, before: number, after: number) => <div className="flex items-baseline justify-between gap-2"><dt className="text-muted">{label}</dt><dd className="tabular-nums"><Money v={before} c={currency} /> → <Money v={after} c={currency} className={cn("font-semibold", after < 0 && "text-fin-neg")} /></dd></div>;
+  return (
+    <section aria-label={t("title")} className="rounded-xl border border-line p-3 text-xs">
+      <p className="mb-1 font-semibold">{t("title")}</p>
+      <dl className="space-y-1">{row(t("available"), data.cashAvailableNow, availAfter)}{row(t("own"), data.remaining, ownAfter)}</dl>
+      {availAfter < 0 && <p className="mt-1 text-fin-neg">{t("notEnough", { c: currency.toUpperCase() })}</p>}
+      <p className="mt-1 text-muted">{t("note")}</p>
+    </section>
   );
 }
 

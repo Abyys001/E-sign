@@ -4,6 +4,7 @@ import { db, schema, type Tx } from "@/db";
 import { AppError } from "../errors";
 import type { RequestContext } from "../audit";
 import { acctAudit, Currency, ensureLedgerSetup, getAcctSettings, IsoDate, isLive, ModeSchema, type Mode } from "./core";
+import { periodChecklist } from "./period-close";
 import { postEntry, reverseEntry } from "./ledger";
 import { agreementOf, allocateDependent, allocateFromSource, eventProblem, loadEvents, repost, type ImportContext } from "./importer";
 import { ticketQuantity } from "./matcher";
@@ -238,8 +239,11 @@ export async function postEventFee(a: Actor, eventId: string, mode: Mode, date: 
 }
 
 // ---------- accounting periods ----------
-export const PeriodInput = z.object({ period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/), action: z.enum(["close", "reopen"]), reason: Reason });
+export const PeriodInput = z.object({ period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/), action: z.enum(["close", "reopen"]), reason: Reason, acknowledge: z.boolean().optional() });
 export async function setPeriodStatus(a: Actor, input: z.infer<typeof PeriodInput>) {
+  // Month-end checklist: open items do not block a close, but the admin must have seen them (they are kept in the audit trail).
+  const checklist = input.action === "close" ? await periodChecklist(a.orgId, input.period) : null;
+  if (checklist && !checklist.ready && !input.acknowledge) throw new AppError("precondition_failed", `${checklist.items.length} item(s) are still open for ${input.period}. Review them, then confirm to close anyway.`, { checklist });
   return db.transaction(async (tx) => {
     const [before] = await tx.select().from(schema.acctPeriods).where(and(eq(schema.acctPeriods.organisationId, a.orgId), eq(schema.acctPeriods.period, input.period))).for("update");
     const status = input.action === "close" ? "CLOSED" : "OPEN";
@@ -248,7 +252,7 @@ export async function setPeriodStatus(a: Actor, input: z.infer<typeof PeriodInpu
     const [row] = before
       ? await tx.update(schema.acctPeriods).set(values).where(eq(schema.acctPeriods.id, before.id)).returning()
       : await tx.insert(schema.acctPeriods).values({ organisationId: a.orgId, period: input.period, ...values }).returning();
-    await acctAudit(tx, { ...a, action: `period.${input.action === "close" ? "closed" : "reopened"}`, entity: "period", entityId: input.period, old: { status: before?.status ?? "OPEN" }, new: { status }, reason: input.reason });
+    await acctAudit(tx, { ...a, action: `period.${input.action === "close" ? "closed" : "reopened"}`, entity: "period", entityId: input.period, old: { status: before?.status ?? "OPEN" }, new: { status }, reason: input.reason, extra: checklist ? { openItems: checklist.items.map((x) => ({ code: x.code, count: x.count })) } : undefined });
     return row!;
   });
 }

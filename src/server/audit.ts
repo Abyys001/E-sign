@@ -45,7 +45,15 @@ export async function audit(tx: Tx, input: AuditInput) {
 
 /** Recompute the hash chain; returns the first broken seq or null if intact. */
 export async function verifyAuditChain(contractId: string): Promise<{ ok: boolean; brokenAtSeq?: number; count: number }> {
-  const rows = await db.select().from(schema.auditEvents).where(eq(schema.auditEvents.contractId, contractId)).orderBy(asc(schema.auditEvents.seq));
+  return verifyRows(await db.select().from(schema.auditEvents).where(eq(schema.auditEvents.contractId, contractId)).orderBy(asc(schema.auditEvents.seq)));
+}
+
+/** Same check for the organisation-level chain (events without a contract: accounting, settings, members…). */
+export async function verifyOrgAuditChain(organisationId: string): Promise<{ ok: boolean; brokenAtSeq?: number; count: number }> {
+  return verifyRows(await db.select().from(schema.auditEvents).where(and(eq(schema.auditEvents.organisationId, organisationId), sql`${schema.auditEvents.contractId} is null`)).orderBy(asc(schema.auditEvents.seq)));
+}
+
+function verifyRows(rows: Array<typeof schema.auditEvents.$inferSelect>): { ok: boolean; brokenAtSeq?: number; count: number } {
   let prev: string | null = null;
   for (const r of rows) {
     const expected = entryHash(prev, {

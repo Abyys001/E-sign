@@ -8,7 +8,7 @@ import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { Badge, Money, RangePicker, rangeFor, rangeQuery, useExport, useMode, useOptions, type RangeKey } from "@/components/accounting/kit";
 import { EventDialog, ImportEventsDialog } from "@/components/accounting/forms";
-import { pct, SettlementBadge, SETTLEMENTS, type Fig } from "@/components/accounting/finance";
+import { marginOf, pct, SettlementBadge, SETTLEMENTS, type Fig } from "@/components/accounting/finance";
 import { Button } from "@/components/ui/button";
 import { Card, PageHeader } from "@/components/ui/card";
 import { EmptyState, Skeleton } from "@/components/ui/feedback";
@@ -93,7 +93,7 @@ export default function EventsPage() {
               <Td className="text-end"><Money v={e.organiserDue} c={e.currency} /></Td>
               <Td className="text-end"><Money v={e.organiserPaid} c={e.currency} /></Td>
               <Td className="text-end"><Money v={e.remaining} c={e.currency} strong className={e.remaining > 0 ? "text-fin-warn" : e.remaining < 0 ? "text-fin-neg" : ""} /></Td>
-              <Td className="text-end"><Money v={e.bilitProfit} c={e.currency} strong className={e.bilitProfit < 0 ? "text-fin-neg" : "text-fin-pos"} /></Td>
+              <Td className="text-end"><Money v={e.bilitProfit} c={e.currency} strong className={e.bilitProfit < 0 ? "text-fin-neg" : "text-fin-pos"} />{marginOf(e).ofSales !== null && <span className="block text-xs text-muted">{tf("events.margin", { v: marginOf(e).ofSales! })}</span>}</Td>
               <Td><SettlementBadge s={e.settlement} /></Td></Tr>)}</tbody></Table></TableWrap>
           <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onPage={setPage} /></>}
       </Card>

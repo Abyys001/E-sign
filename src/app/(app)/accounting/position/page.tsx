@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { AlertOctagon, AlertTriangle, Banknote, Boxes, Coins, HandCoins, Info, Landmark, PiggyBank, Scale, ShieldCheck, TrendingUp, Wallet, type LucideIcon } from "lucide-react";
 import { AmountCard, Money, RangePicker, rangeFor, rangeQuery, useMode, useMoney, type RangeKey } from "@/components/accounting/kit";
 import { AccountantWidget, askAccountant } from "@/components/accounting/ai-accountant";
+import { ForecastCard } from "@/components/accounting/forecast";
 import { Card, CardHeader, PageHeader } from "@/components/ui/card";
 import { Callout, EmptyState, Skeleton } from "@/components/ui/feedback";
 import { Select } from "@/components/ui/form";
@@ -262,6 +263,9 @@ export default function FinancialPositionPage() {
             </div>
             <p className="px-5 pb-4 text-xs text-muted">{t("flow.note")}</p>
           </Card>
+
+          {/* ----- E. cash forecast (estimate) ----- */}
+          <ForecastCard currency={cur === ALL ? null : cur} />
 
           <div className="grid gap-6 xl:grid-cols-2">
             {/* profit */}

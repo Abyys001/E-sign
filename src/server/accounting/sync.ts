@@ -47,11 +47,12 @@ async function recordError(run: Pick<Run, "id" | "organisationId" | "stripeAccou
  * All payments in the range, including failed and pending ones (they have no balance transaction, so the import above
  * never sees them). Stored for the Payments view and the transaction detail: status, decline reason, risk, card.
  */
-async function syncCharges(ctx: ImportContext, run: Run) {
+async function syncCharges(ctx: ImportContext, run: Run, c: { errors: number }) {
   let cursor: string | undefined, n = 0, failed = 0;
   for (let i = 0; i < 1000; i++) {
     const page = await ctx.gw.listCharges({ createdGte: sec(run.rangeFrom), createdLte: sec(run.rangeTo), startingAfter: cursor });
-    for (const ch of page.data) { await upsertCharge(db, ctx.acc, ch); n++; if (ch.status === "failed") failed++; }
+    // One bad charge must not fail the run (and skip re-matching + reconciliation): log it and carry on.
+    for (const ch of page.data) { try { await upsertCharge(db, ctx.acc, ch); n++; if (ch.status === "failed") failed++; } catch (e) { c.errors++; await recordError(run, ctx.acc, ch.id, "charge", e); } }
     cursor = page.data.at(-1)?.id;
     if (!page.hasMore || !cursor) break;
   }
@@ -88,14 +89,15 @@ export async function executeRun(runId: string) {
         if (!page.hasMore || !page.data.length) break;
       }
       summary.payouts = await syncPayouts(ctx, run, c);
-      summary.charges = await syncCharges(ctx, run);
+      try { summary.charges = await syncCharges(ctx, run, c); } catch (e) { c.errors++; await recordError(run, acc!, null, "charges", e); }
       // Every sync ends by re-linking anything that can now be matched (sales to new events, refunds to their sale).
       summary.rematch = await rematchUnmatched(acc!.organisationId);
       summary.reconciliation = await reconcile(ctx);
     }
     const status = c.errors > 0 ? "PARTIAL" : "SUCCEEDED";
     await db.update(schema.acctSyncRuns).set({ ...c, status, summary, finishedAt: new Date() }).where(eq(schema.acctSyncRuns.id, run.id));
-    await db.update(schema.stripeAccounts).set({ lastSyncAt: new Date(), ...(run.kind !== "RECONCILE" ? { status: "CONNECTED", lastError: null } : {}) }).where(eq(schema.stripeAccounts.id, acc!.id));
+    // A run with item errors is still a working connection, but the account shows it until a clean run (or Retry) clears it.
+    await db.update(schema.stripeAccounts).set({ lastSyncAt: new Date(), ...(run.kind !== "RECONCILE" ? { status: "CONNECTED", lastError: status === "PARTIAL" ? `${c.errors} item(s) failed in the last sync — see Sync and use Retry.` : null } : {}) }).where(eq(schema.stripeAccounts.id, acc!.id));
   } catch (e) {
     const msg = safeStripeError(e);
     log.error("accounting.sync_failed", { runId, error: msg });
@@ -219,6 +221,16 @@ export async function reconcile(ctx: ImportContext) {
     group by bt.id, bt.net having coalesce(sum(l.debit - l.credit), 0) <> bt.net limit 500`);
   const bad = [...unposted.rows.map((r) => r.id), ...mismatched.rows.map((r) => r.id)];
   if (bad.length) await db.update(schema.stripeBalanceTransactions).set({ reconciliationStatus: "ERROR", reconciliationNote: "Ledger does not match the Stripe net amount" }).where(inArray(schema.stripeBalanceTransactions.id, bad));
+  // Transactions flagged ERROR earlier that now agree with the ledger get their normal status back (same rules as importer.reconStatus).
+  await db.execute(sql`
+    update stripe_balance_transactions set reconciliation_note = null, reconciliation_status = case
+        when kind = 'SALE' then case when match_status = 'MATCHED' then 'MATCHED' when match_reason = 'AMBIGUOUS' then 'DUPLICATE' else 'UNMATCHED' end
+        when kind = 'REFUND' then case when match_status = 'MATCHED' then 'REFUND' else 'PARTIAL' end
+        when kind in ('DISPUTE', 'DISPUTE_REVERSAL') then case when match_status = 'MATCHED' then 'DISPUTE' else 'PARTIAL' end
+        when kind = 'OTHER' then case when classification_account_id is not null then 'MATCHED' else 'MANUAL_REVIEW' end
+        else 'MATCHED' end
+    where stripe_account_ref = ${acc.id} and reconciliation_status = 'ERROR' and reconciliation_note = 'Ledger does not match the Stripe net amount'
+      ${bad.length ? sql`and id not in (${sql.join(bad.map((id) => sql`${id}::uuid`), sql`, `)})` : sql``}`);
   const ledger = await db.execute<{ currency: string; booked: string; stripe_net: string }>(sql`
     select x.currency, coalesce(l.booked, 0)::text as booked, x.net::text as stripe_net from
       (select currency, sum(net) as net from stripe_balance_transactions where stripe_account_ref = ${acc.id} group by currency) x

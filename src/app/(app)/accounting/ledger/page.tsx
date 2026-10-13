@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, PageHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm";
 import { Callout, EmptyState, Skeleton } from "@/components/ui/feedback";
-import { Field, Input, Select, Textarea } from "@/components/ui/form";
+import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
 import { Pagination } from "@/components/ui/pagination";
 import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
@@ -167,19 +167,30 @@ function Periods() {
   const { can } = useMe();
   const { data, reload } = useApi<{ items: Array<{ id: string; period: string; status: string; closedAt: string | null; closedByName: string | null; notes: string | null }> }>("/api/accounting/periods");
   const [period, setPeriod] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); });
-  const [reason, setReason] = useState(""); const [busy, setBusy] = useState(false);
+  const [reason, setReason] = useState(""); const [busy, setBusy] = useState(false); const [ack, setAck] = useState(false);
+  const check = useApi<{ items: Array<{ code: string; severity: string; title: string; detail: string; count: number; href?: string }>; ready: boolean; from: string; to: string }>(period ? `/api/accounting/periods/checklist?period=${period}` : null);
+  const open = check.data?.items ?? [];
   const act = async (p: string, action: "close" | "reopen") => {
     if (!(await ensure())) return;
     setBusy(true);
-    try { await api("/api/accounting/periods", { json: { period: p, action, reason } }); toast("ok", t(action === "close" ? "closed" : "reopened")); setReason(""); await reload(); } catch (e) { toast("error", errMsg(e)); } finally { setBusy(false); }
+    try { await api("/api/accounting/periods", { json: { period: p, action, reason, ...(action === "close" && p === period && ack ? { acknowledge: true } : {}) } }); toast("ok", t(action === "close" ? "closed" : "reopened")); setReason(""); setAck(false); await reload(); await check.reload(); } catch (e) { toast("error", errMsg(e)); } finally { setBusy(false); }
   };
   return (
     <div className="space-y-4">
       <Callout title={t("title")}>{t("desc")}</Callout>
       {can("accounting.admin") && <Card className="p-5"><div className="flex flex-wrap items-end gap-3">
-        <Field label={t("period")}>{(p) => <Input {...p} type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className="w-auto" />}</Field>
+        <Field label={t("period")}>{(p) => <Input {...p} type="month" value={period} onChange={(e) => { setPeriod(e.target.value); setAck(false); }} className="w-auto" />}</Field>
         <div className="min-w-64 flex-1"><Field label={t("reason")} required>{(p) => <Input {...p} value={reason} onChange={(e) => setReason(e.target.value)} />}</Field></div>
-        <Button variant="primary" loading={busy} disabled={reason.length < 3 || !period} onClick={() => act(period, "close")}><Lock className="size-4" aria-hidden />{t("close")}</Button></div></Card>}
+        <Button variant="primary" loading={busy} disabled={reason.length < 3 || !period || !check.data || (open.length > 0 && !ack)} onClick={() => act(period, "close")}><Lock className="size-4" aria-hidden />{t("close")}</Button></div>
+        <div className="mt-4 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold">{t("checklist", { period })}</h3>
+            {check.data && <Button size="sm" variant="ghost" onClick={async () => { if (await ensure()) window.location.href = `/api/accounting/reports/accountant?from=${check.data!.from}&to=${check.data!.to}&mode=live&format=pdf`; }}><Download className="size-3.5" aria-hidden />{t("report")}</Button>}</div>
+          {check.loading ? <Skeleton className="h-16" /> : check.error ? <Callout tone="warn">{check.error.message}</Callout> : !open.length ? <Callout tone="ok">{t("allClear")}</Callout>
+            : <><ul className="divide-y divide-line rounded-xl border border-line">{open.map((i) => <li key={i.code} className="flex gap-3 px-4 py-2 text-sm">
+                <Badge s={i.severity.toUpperCase()} /><div className="min-w-0 flex-1"><p className="font-medium">{i.title}{i.count > 1 ? ` (${i.count})` : ""}</p><p className="text-xs text-muted">{i.detail}</p></div>
+                {i.href && <a href={i.href} className="shrink-0 self-center text-xs font-medium text-accent hover:underline">{t("open")}</a>}</li>)}</ul>
+              <Checkbox label={t("ack")} checked={ack} onChange={(e) => setAck(e.target.checked)} /></>}
+        </div></Card>}
       <Card>{!data?.items.length ? <EmptyState title={t("none")} /> : <TableWrap><Table><thead><tr><Th>{t("period")}</Th><Th>{t("status")}</Th><Th>{t("closedBy")}</Th><Th>{t("notes")}</Th><Th /></tr></thead>
         <tbody>{data.items.map((p) => <Tr key={p.id}><Td className="num">{p.period}</Td><Td><Badge s={p.status} /></Td><Td>{p.closedByName ? `${p.closedByName} · ${fmtDate(p.closedAt, locale)}` : "—"}</Td><Td className="text-muted">{p.notes}</Td>
           <Td className="text-end">{can("accounting.admin") && <Button size="sm" disabled={reason.length < 3 || busy} title={reason.length < 3 ? t("reasonFirst") : undefined} onClick={() => act(p.period, p.status === "CLOSED" ? "reopen" : "close")}>{p.status === "CLOSED" ? <><LockOpen className="size-3.5" aria-hidden />{t("reopen")}</> : <><Lock className="size-3.5" aria-hidden />{t("close")}</>}</Button>}</Td></Tr>)}</tbody></Table></TableWrap>}</Card>
