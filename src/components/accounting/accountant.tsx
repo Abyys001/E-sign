@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { cn } from "@/components/ui/cn";
 import { Callout, Skeleton } from "@/components/ui/feedback";
-import { Field, Input, Textarea } from "@/components/ui/form";
+import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { api, ApiError, errMsg, fmtDate, useApi } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
@@ -79,22 +79,26 @@ export function AccountantPanel() {
 }
 
 /** Finance settings → AI accountant (OpenAI). */
+type Assistant = { defaultLanguage: "auto" | "en" | "fa"; maxTokens: number; timeoutSec: number; retries: number };
+type Voice = { enabled: boolean; sttModel: string; ttsModel: string; voiceEn: string; voiceFa: string; autoSpeak: boolean; maxSeconds: number };
+const VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"];
+
 export function AiSettingsCard({ admin }: { admin: boolean }) {
   const t = useTranslations("accounting.acc.ai");
   const toast = useToast();
   const ensure = useElevation();
-  const { data, reload } = useApi<{ enabled: boolean; model: string; hasKey: boolean; keyHint: string | null; instructions: string; systemPrompt: string }>("/api/accounting/settings/ai");
-  const [v, setV] = useState<{ enabled: boolean; model: string; instructions: string; apiKey: string } | null>(null);
+  const { data, reload } = useApi<{ enabled: boolean; model: string; hasKey: boolean; keyHint: string | null; instructions: string; systemPrompt: string; assistant: Assistant; voice: Voice }>("/api/accounting/settings/ai");
+  const [v, setV] = useState<{ enabled: boolean; model: string; instructions: string; apiKey: string; assistant: Assistant; voice: Voice } | null>(null);
   const [showPrompt, setShowPrompt] = useState(false); const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   const [errs, setErrs] = useState<Record<string, string>>({});
-  useEffect(() => { if (data && !v) setV({ enabled: data.enabled, model: data.model, instructions: data.instructions, apiKey: "" }); }, [data, v]);
+  useEffect(() => { if (data && !v) setV({ enabled: data.enabled, model: data.model, instructions: data.instructions, apiKey: "", assistant: data.assistant, voice: data.voice }); }, [data, v]);
   if (!v || !data) return <Skeleton className="h-40" />;
   const save = async (removeKey = false) => {
     setBusy(true); setErr(null); setErrs({});
     try {
       const sendKey = removeKey || !!v.apiKey;
       if (sendKey && !(await ensure())) return;
-      await api("/api/accounting/settings/ai", { method: "PATCH", json: { enabled: removeKey ? false : v.enabled, model: v.model, instructions: v.instructions || null, ...(removeKey ? { apiKey: null } : v.apiKey ? { apiKey: v.apiKey } : {}) } });
+      await api("/api/accounting/settings/ai", { method: "PATCH", json: { enabled: removeKey ? false : v.enabled, model: v.model, instructions: v.instructions || null, assistant: v.assistant, voice: v.voice, ...(removeKey ? { apiKey: null } : v.apiKey ? { apiKey: v.apiKey } : {}) } });
       setV({ ...v, apiKey: "", enabled: removeKey ? false : v.enabled }); toast("ok", t("saved")); await reload();
     } catch (e) {
       setErr(errMsg(e));
@@ -110,6 +114,27 @@ export function AiSettingsCard({ admin }: { admin: boolean }) {
           <Field label={t("model")} error={errs.model} hint={t("modelHint")}>{(p) => <Input {...p} disabled={!admin} value={v.model} onChange={(e) => setV({ ...v, model: e.target.value })} className="font-mono" />}</Field>
         </div>
         <Field label={t("instructions")} hint={t("instructionsHint")}>{(p) => <Textarea {...p} disabled={!admin} value={v.instructions} onChange={(e) => setV({ ...v, instructions: e.target.value })} className="min-h-24" placeholder={t("instructionsPh")} />}</Field>
+        <fieldset className="space-y-3 rounded-xl border border-line p-4" disabled={!admin}>
+          <legend className="px-1 text-sm font-semibold">{t("assistantTitle")}</legend>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Field label={t("defaultLanguage")}>{(p) => <Select {...p} value={v.assistant.defaultLanguage} onChange={(e) => setV({ ...v, assistant: { ...v.assistant, defaultLanguage: e.target.value as Assistant["defaultLanguage"] } })}><option value="auto">{t("langAuto")}</option><option value="en">English</option><option value="fa">فارسی</option></Select>}</Field>
+            <Field label={t("maxTokens")} error={errs["assistant.maxTokens"]}>{(p) => <Input {...p} type="number" min={200} max={8000} value={v.assistant.maxTokens} onChange={(e) => setV({ ...v, assistant: { ...v.assistant, maxTokens: Number(e.target.value) } })} />}</Field>
+            <Field label={t("timeout")} error={errs["assistant.timeoutSec"]}>{(p) => <Input {...p} type="number" min={10} max={300} value={v.assistant.timeoutSec} onChange={(e) => setV({ ...v, assistant: { ...v.assistant, timeoutSec: Number(e.target.value) } })} />}</Field>
+            <Field label={t("retries")} error={errs["assistant.retries"]}>{(p) => <Input {...p} type="number" min={0} max={3} value={v.assistant.retries} onChange={(e) => setV({ ...v, assistant: { ...v.assistant, retries: Number(e.target.value) } })} />}</Field>
+          </div>
+        </fieldset>
+        <fieldset className="space-y-3 rounded-xl border border-line p-4" disabled={!admin}>
+          <legend className="px-1 text-sm font-semibold">{t("voiceTitle")}</legend>
+          <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1" checked={v.voice.enabled} onChange={(e) => setV({ ...v, voice: { ...v.voice, enabled: e.target.checked } })} /><span><span className="font-medium">{t("voiceEnable")}</span><span className="block text-xs text-muted">{t("voiceEnableHelp")}</span></span></label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={t("sttModel")} hint={t("sttHint")} error={errs["voice.sttModel"]}>{(p) => <Input {...p} className="font-mono" value={v.voice.sttModel} onChange={(e) => setV({ ...v, voice: { ...v.voice, sttModel: e.target.value } })} />}</Field>
+            <Field label={t("ttsModel")} hint={t("ttsHint")} error={errs["voice.ttsModel"]}>{(p) => <Input {...p} className="font-mono" value={v.voice.ttsModel} onChange={(e) => setV({ ...v, voice: { ...v.voice, ttsModel: e.target.value } })} />}</Field>
+            <Field label={t("voiceEn")}>{(p) => <Select {...p} value={v.voice.voiceEn} onChange={(e) => setV({ ...v, voice: { ...v.voice, voiceEn: e.target.value } })}>{VOICES.map((x) => <option key={x} value={x}>{x}</option>)}</Select>}</Field>
+            <Field label={t("voiceFa")}>{(p) => <Select {...p} value={v.voice.voiceFa} onChange={(e) => setV({ ...v, voice: { ...v.voice, voiceFa: e.target.value } })}>{VOICES.map((x) => <option key={x} value={x}>{x}</option>)}</Select>}</Field>
+            <Field label={t("maxSeconds")} error={errs["voice.maxSeconds"]}>{(p) => <Input {...p} type="number" min={10} max={300} value={v.voice.maxSeconds} onChange={(e) => setV({ ...v, voice: { ...v.voice, maxSeconds: Number(e.target.value) } })} />}</Field>
+            <label className="flex items-center gap-3 self-end pb-2 text-sm"><input type="checkbox" checked={v.voice.autoSpeak} onChange={(e) => setV({ ...v, voice: { ...v.voice, autoSpeak: e.target.checked } })} />{t("autoSpeak")}</label>
+          </div>
+        </fieldset>
         <div><Button size="sm" variant="ghost" onClick={() => setShowPrompt(!showPrompt)}>{showPrompt ? t("hidePrompt") : t("showPrompt")}</Button>
           {showPrompt && <pre className="scroll-thin mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-2 p-3 text-xs">{data.systemPrompt}</pre>}</div>
         <p className="text-xs text-muted">{t("privacy")}</p>

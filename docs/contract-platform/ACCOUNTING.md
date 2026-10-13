@@ -51,3 +51,28 @@ Production never depends on the CLI.
 - Migrations: `npm run db:migrate` (adds `0009_accounting`).
 - Worker queues: `accounting.sync`, `accounting.stripe_event`, `accounting.scan` (every 30 min).
 - Tests use their own database: `DATABASE_URL=…/esign_test npx vitest run`.
+
+## Bilit AI Accountant (Financial Overview)
+
+Floating assistant on **Finance → Financial Overview** (`/accounting/position`). It is read-only: it answers questions in English or Persian, by text or voice, using only the figures that the finance services calculate. Other Finance pages keep the existing finance chat, which can propose changes.
+
+**How answers are produced.** The model gets read-only tools that call the existing services and nothing else: `financialPosition`, `financeOverview`, `eventFinancials`, `booksOverview`, `monthlySeries`, `bookkeepingChecks`, `listPayments`, `listTransactions` and `listBills`. It has no write tools and no SQL access. Every query is scoped on the server to the caller's organisation and test/live mode. Amounts are integer minor units, and the model receives them already formatted. Any extra sum goes through the `calculate` tool, which uses exact minor-unit arithmetic. Each tool call is returned as **evidence** next to the answer (period, formula, sources, number of records, limitations, calculation time) together with data freshness (last Stripe and Wise sync). Ticket buyers' names, e-mails and Stripe descriptions are never sent to the model. Code: `src/server/accounting/ai-accountant.ts`.
+
+**Voice.** Speech-to-text and text-to-speech use OpenAI through the same key (`src/server/accounting/ai-voice.ts`). Recordings go to OpenAI once and are never written to disk, storage or logs. Spoken text is cleaned up first: markdown removed, tables read row by row, negative amounts read as "minus" / «منفی».
+
+| Endpoint | Permission | Notes |
+|---|---|---|
+| `POST /api/accounting/ai/accountant?mode=` | accounting.view | `{ messages, language: auto\|en\|fa, context: { page, from, to, currency, focus } }` → `{ answer, language, dir, steps, evidence, freshness, model, asOf }`. Rate limit `aiChat` (40 / 10 min per user). |
+| `POST /api/accounting/ai/voice/transcribe` | accounting.view | multipart `audio` (≤ 10 MB, webm/ogg/mp4/mp3/wav), `language`. Rate limit `aiVoice` (60 / 10 min). |
+| `POST /api/accounting/ai/voice/speak` | accounting.view | `{ text, language }` → `audio/mpeg`. Rate limit `aiVoice`. |
+
+**Setup.** There are no new environment variables or migrations; this reuses `ACCOUNTING_ENABLED=true` and the encrypted settings. Go to *Finance settings → AI accountant*:
+1. Paste an OpenAI API key and enable the AI accountant. The key is stored encrypted and is write-only; changing it needs elevation. Choose the chat model (default `gpt-4.1`).
+2. *Bilit AI Accountant*: default answer language, maximum answer tokens (default 1800), OpenAI timeout (90 s) and retries on timeouts / 429 / 5xx (1).
+3. *Voice*: enable it, then choose the speech-to-text model (default `gpt-4o-transcribe`), the text-to-speech model (default `gpt-4o-mini-tts`), the English and Persian voices, automatic read-aloud, and the longest recording. The key needs access to the audio models.
+
+When no key is configured, the widget tells the user that an admin must set it up. When voice is off, the microphone is disabled and its tooltip explains why.
+
+**Audit.** These actions are written to the audit log: `accounting.ai_accountant.asked` (question shortened to 300 characters, language, mode, tools and periods used, model, tokens, duration; no figures), `accounting.ai_accountant.voice_in` and `accounting.ai_accountant.voice_out` (sizes, language, model; never the words or the audio).
+
+**Tests.** `tests/ai-accountant.test.ts` covers figures checked against Stripe fixtures, evidence, Persian and English, refunds, period and event filters, read-only behaviour and prompt injection, tenant isolation, retries, timeouts, missing credentials, the route's permissions and validation, voice in and out, and upload validation.

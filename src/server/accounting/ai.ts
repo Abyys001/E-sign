@@ -24,8 +24,33 @@ export const AiSettingsInput = z.object({
   apiKey: z.preprocess((v) => (typeof v === "string" ? v.replace(/[\s"'`\u200B-\u200D\uFEFF]/g, "") : v),
     z.string().min(20, "That does not look like a complete OpenAI API key").max(500).regex(/^[A-Za-z0-9_\-.:]+$/, "The API key contains characters an OpenAI key never has").optional().nullable()), // only sent when it changes; null removes it
   instructions: z.string().trim().max(4000).optional().nullable(),
+  assistant: z.lazy(() => AssistantSettings).optional(), // omitted = keep what is stored
+  voice: z.lazy(() => VoiceSettings).optional(),
 });
-type Stored = { enabled?: boolean; model?: string; apiKeyEnc?: string | null; keyHint?: string | null; instructions?: string | null };
+
+const ModelName = z.string().trim().min(2).max(80).regex(/^[A-Za-z0-9._:/-]+$/, "Model names contain only letters, digits and . _ : - /");
+/** OpenAI text-to-speech voices. */
+export const TTS_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"] as const;
+/** Bilit AI Accountant (Financial Overview): answer language, length and how long to wait for OpenAI. */
+export const AssistantSettings = z.object({
+  defaultLanguage: z.enum(["auto", "en", "fa"]).default("auto"),
+  maxTokens: z.coerce.number().int().min(200).max(8000).default(1800),
+  timeoutSec: z.coerce.number().int().min(10).max(300).default(90),
+  retries: z.coerce.number().int().min(0).max(3).default(1),
+});
+/** Voice for the AI Accountant: speech-to-text and text-to-speech through the same OpenAI key. Recordings are never stored. */
+export const VoiceSettings = z.object({
+  enabled: z.boolean().default(false),
+  sttModel: ModelName.default("gpt-4o-transcribe"),
+  ttsModel: ModelName.default("gpt-4o-mini-tts"),
+  voiceEn: z.enum(TTS_VOICES).default("sage"),
+  voiceFa: z.enum(TTS_VOICES).default("nova"),
+  autoSpeak: z.boolean().default(false),
+  maxSeconds: z.coerce.number().int().min(10).max(300).default(90),
+});
+export type AssistantSettingsT = z.infer<typeof AssistantSettings>;
+export type VoiceSettingsT = z.infer<typeof VoiceSettings>;
+type Stored = { enabled?: boolean; model?: string; apiKeyEnc?: string | null; keyHint?: string | null; instructions?: string | null; assistant?: Partial<AssistantSettingsT>; voice?: Partial<VoiceSettingsT> };
 
 async function stored(orgId: string): Promise<Stored> {
   await getAcctSettings(orgId);
@@ -35,12 +60,13 @@ async function stored(orgId: string): Promise<Stored> {
 
 export async function getAiSettings(orgId: string) {
   const s = await stored(orgId);
-  return { enabled: !!s.enabled, model: s.model ?? "gpt-4.1", hasKey: !!s.apiKeyEnc, keyHint: s.keyHint ?? null, instructions: s.instructions ?? "", systemPrompt: SYSTEM_PROMPT };
+  const assistant = AssistantSettings.parse(s.assistant ?? {}), voice = VoiceSettings.parse(s.voice ?? {});
+  return { enabled: !!s.enabled, model: s.model ?? "gpt-4.1", hasKey: !!s.apiKeyEnc, keyHint: s.keyHint ?? null, instructions: s.instructions ?? "", systemPrompt: SYSTEM_PROMPT, assistant, voice, voiceReady: !!s.enabled && !!s.apiKeyEnc && voice.enabled };
 }
 
 export async function updateAiSettings(a: Actor, input: z.infer<typeof AiSettingsInput>) {
   const s = await stored(a.orgId);
-  const next: Stored = { enabled: input.enabled, model: input.model, instructions: input.instructions ?? null, apiKeyEnc: s.apiKeyEnc ?? null, keyHint: s.keyHint ?? null };
+  const next: Stored = { enabled: input.enabled, model: input.model, instructions: input.instructions ?? null, apiKeyEnc: s.apiKeyEnc ?? null, keyHint: s.keyHint ?? null, assistant: input.assistant ?? s.assistant, voice: input.voice ?? s.voice };
   if (input.apiKey === null) { next.apiKeyEnc = null; next.keyHint = null; }
   else if (input.apiKey) { next.apiKeyEnc = encrypt(input.apiKey); next.keyHint = `${input.apiKey.slice(0, 7)}…${input.apiKey.slice(-4)}`; }
   if (next.enabled && !next.apiKeyEnc) throw new AppError("validation_failed", "Add an OpenAI API key to enable the AI review.", [{ path: "apiKey", message: "Paste your OpenAI API key to enable the review" }]);
@@ -48,7 +74,7 @@ export async function updateAiSettings(a: Actor, input: z.infer<typeof AiSetting
   if (next.enabled && next.apiKeyEnc && (input.apiKey || next.model !== s.model || !s.enabled)) await (g.__aiChecker ?? checkOpenAi)(decrypt(next.apiKeyEnc), next.model!);
   await db.transaction(async (tx) => {
     await tx.update(schema.acctSettings).set({ aiSettings: next, updatedBy: a.userId, updatedAt: new Date() }).where(eq(schema.acctSettings.organisationId, a.orgId));
-    await acctAudit(tx, { ...a, action: "ai_settings.updated", entity: "settings", entityId: "ai", old: { enabled: !!s.enabled, model: s.model, keyHint: s.keyHint }, new: { enabled: next.enabled, model: next.model, keyHint: next.keyHint, keyChanged: input.apiKey !== undefined } });
+    await acctAudit(tx, { ...a, action: "ai_settings.updated", entity: "settings", entityId: "ai", old: { enabled: !!s.enabled, model: s.model, keyHint: s.keyHint, assistant: s.assistant, voice: s.voice }, new: { enabled: next.enabled, model: next.model, keyHint: next.keyHint, keyChanged: input.apiKey !== undefined, assistant: next.assistant, voice: next.voice } });
   });
   return getAiSettings(a.orgId);
 }
@@ -165,7 +191,7 @@ const openAiCompleter: Completer = async ({ apiKey, model, system, user }) => {
 export async function aiConfig(orgId: string) {
   const s = await stored(orgId);
   if (!s.enabled || !s.apiKeyEnc) throw new AppError("invalid_state", "Set up the AI accountant (OpenAI key) under Finance settings → AI accountant first.");
-  return { apiKey: decrypt(s.apiKeyEnc), model: s.model ?? "gpt-4.1", instructions: s.instructions ?? null };
+  return { apiKey: decrypt(s.apiKeyEnc), model: s.model ?? "gpt-4.1", instructions: s.instructions ?? null, assistant: AssistantSettings.parse(s.assistant ?? {}), voice: VoiceSettings.parse(s.voice ?? {}) };
 }
 /** JSON-mode completion (same injectable completer as the review). */
 export const completeJson: Completer = (a) => (g.__aiCompleter ?? openAiCompleter)(a);

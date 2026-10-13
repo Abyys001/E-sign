@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { AlertTriangle, CheckCircle2, CircleDashed, CircleHelp, Copy, FlaskConical, Radio, RotateCcw, ShieldAlert, Undo2, type LucideIcon } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleDashed, CircleHelp, Copy, FlaskConical, Radio, RotateCcw, ShieldAlert, Sparkles, Undo2, type LucideIcon } from "lucide-react";
 import { useMe } from "@/components/app/me";
 import { cn } from "@/components/ui/cn";
 import { Input, Select } from "@/components/ui/form";
@@ -123,7 +123,7 @@ const TONES: Record<Tone, { card: string; text: string; chip: string; bar: strin
   bal: { card: "border-fin-bal/30 bg-fin-bal/10", text: "text-fin-bal", chip: "bg-fin-bal/20 text-fin-bal", bar: "bg-fin-bal" },
 };
 
-export function AmountCard({ label, v, c, tone, icon: Icon, hint }: { label: string; v: number; c: string; tone: Tone; icon: LucideIcon; hint?: React.ReactNode }) {
+export function AmountCard({ label, v, c, tone, icon: Icon, hint, onAsk, askLabel }: { label: string; v: number; c: string; tone: Tone; icon: LucideIcon; hint?: React.ReactNode; onAsk?: () => void; askLabel?: string }) {
   // A negative amount always reads as a loss, whatever the card's usual tone.
   const k = TONES[v < 0 ? "neg" : tone];
   return (
@@ -135,6 +135,7 @@ export function AmountCard({ label, v, c, tone, icon: Icon, hint }: { label: str
       </div>
       <div className={cn("num mt-2 text-3xl font-semibold tracking-tight", k.text)}><Money v={v} c={c} /></div>
       {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
+      {onAsk && <button type="button" onClick={onAsk} aria-label={askLabel} title={askLabel} className="absolute bottom-2 end-2 grid size-7 place-items-center rounded-lg text-muted opacity-70 hover:bg-accent-soft hover:text-accent hover:opacity-100 focus-visible:opacity-100"><Sparkles className="size-3.5" aria-hidden /></button>}
     </div>
   );
 }

@@ -31,6 +31,7 @@ export const LIMITS = {
   accountingExport: { limit: 30, windowSec: 600 },
   accountingSync: { limit: 20, windowSec: 600 },
   aiChat: { limit: 40, windowSec: 600 }, // questions to the AI finance assistant, per user
+  aiVoice: { limit: 60, windowSec: 600 }, // speech-to-text / text-to-speech for the AI Accountant, per user
 } as const;
 export type LimitName = keyof typeof LIMITS;
 

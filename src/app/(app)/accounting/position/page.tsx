@@ -3,7 +3,8 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { AlertOctagon, AlertTriangle, Banknote, Boxes, Coins, HandCoins, Info, Landmark, PiggyBank, Scale, ShieldCheck, TrendingUp, Wallet, type LucideIcon } from "lucide-react";
-import { AmountCard, Money, RangePicker, rangeFor, rangeQuery, useMode, type RangeKey } from "@/components/accounting/kit";
+import { AmountCard, Money, RangePicker, rangeFor, rangeQuery, useMode, useMoney, type RangeKey } from "@/components/accounting/kit";
+import { AccountantWidget, askAccountant } from "@/components/accounting/ai-accountant";
 import { Card, CardHeader, PageHeader } from "@/components/ui/card";
 import { Callout, EmptyState, Skeleton } from "@/components/ui/feedback";
 import { Select } from "@/components/ui/form";
@@ -63,6 +64,9 @@ export default function FinancialPositionPage() {
   const orgs = [...new Map((data?.settlements ?? []).map((s) => [s.organiserId, s.organiserName])).entries()];
   const inCur = <T extends { currency: string }>(xs: T[]) => xs.filter((x) => cur === ALL || x.currency === cur);
   const crit = data?.alerts.filter((a) => a.severity === "critical") ?? [];
+  const money = useMoney();
+  // "Ask the AI Accountant" about one figure: the widget gets the label, value, period and currency.
+  const ask = (label: string, v: number) => ({ onAsk: () => askAccountant({ label, value: money(v, cc) }), askLabel: t("askAi", { label }) });
 
   return (
     <div className="space-y-6">
@@ -81,12 +85,12 @@ export default function FinancialPositionPage() {
 
           {/* ----- summary cards ----- */}
           {showCards ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <AmountCard label={t("cards.cash")} v={card("cash")} c={cc} tone="info" icon={Landmark} hint={<>{t("cards.cashHint")} <Money v={card("cashAvailableNow")} c={cc} /></>} />
-            <AmountCard label={t("cards.revenue")} v={sel ? profitSel?.revenue ?? 0 : con?.totals.revenue ?? 0} c={cc} tone="pos" icon={TrendingUp} hint={<>{t("cards.ticketSales")} <Money v={sel ? profitSel?.ticketSales ?? 0 : con?.totals.ticketSales ?? 0} c={cc} /></>} />
-            <AmountCard label={t("cards.netProfit")} v={sel ? profitSel?.netProfit ?? 0 : con?.totals.netProfit ?? 0} c={cc} tone="pos" icon={PiggyBank} hint={t("cards.netProfitHint")} />
-            <AmountCard label={t("cards.liabilities")} v={card("liabilities")} c={cc} tone="warn" icon={Scale} hint={<>{t("cards.dueNow")} <Money v={card("liabilitiesDueNow")} c={cc} /></>} />
-            <AmountCard label={t("cards.organisers")} v={card("organisersOwed")} c={cc} tone="bal" icon={HandCoins} />
-            <AmountCard label={t("cards.remaining")} v={card("remaining")} c={cc} tone="pos" icon={Wallet} hint={t("cards.remainingHint")} />
+            <AmountCard {...ask(t("cards.cash"), card("cash"))} label={t("cards.cash")} v={card("cash")} c={cc} tone="info" icon={Landmark} hint={<>{t("cards.cashHint")} <Money v={card("cashAvailableNow")} c={cc} /></>} />
+            <AmountCard {...ask(t("cards.revenue"), sel ? profitSel?.revenue ?? 0 : con?.totals.revenue ?? 0)} label={t("cards.revenue")} v={sel ? profitSel?.revenue ?? 0 : con?.totals.revenue ?? 0} c={cc} tone="pos" icon={TrendingUp} hint={<>{t("cards.ticketSales")} <Money v={sel ? profitSel?.ticketSales ?? 0 : con?.totals.ticketSales ?? 0} c={cc} /></>} />
+            <AmountCard {...ask(t("cards.netProfit"), sel ? profitSel?.netProfit ?? 0 : con?.totals.netProfit ?? 0)} label={t("cards.netProfit")} v={sel ? profitSel?.netProfit ?? 0 : con?.totals.netProfit ?? 0} c={cc} tone="pos" icon={PiggyBank} hint={t("cards.netProfitHint")} />
+            <AmountCard {...ask(t("cards.liabilities"), card("liabilities"))} label={t("cards.liabilities")} v={card("liabilities")} c={cc} tone="warn" icon={Scale} hint={<>{t("cards.dueNow")} <Money v={card("liabilitiesDueNow")} c={cc} /></>} />
+            <AmountCard {...ask(t("cards.organisers"), card("organisersOwed"))} label={t("cards.organisers")} v={card("organisersOwed")} c={cc} tone="bal" icon={HandCoins} />
+            <AmountCard {...ask(t("cards.remaining"), card("remaining"))} label={t("cards.remaining")} v={card("remaining")} c={cc} tone="pos" icon={Wallet} hint={t("cards.remainingHint")} />
             <div className="rise relative overflow-hidden rounded-card border border-line bg-surface p-5 shadow-card">
               <div className="flex items-center justify-between gap-2 text-sm font-medium text-fg/80"><span>{t("cards.inventory")}</span><span className="grid size-8 place-items-center rounded-lg bg-surface-2"><Boxes className="size-4" aria-hidden /></span></div>
               <div className="num mt-2 text-3xl font-semibold tracking-tight text-muted">{t("na")}</div>
@@ -277,6 +281,7 @@ export default function FinancialPositionPage() {
         </>}
 
       <DrillModal drill={drill} range={r} onClose={() => setDrill(null)} />
+      <AccountantWidget context={{ from: r.from ?? null, to: r.to ?? null, currency: cur === ALL ? null : cur }} />
     </div>
   );
 }

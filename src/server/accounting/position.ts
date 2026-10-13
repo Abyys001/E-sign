@@ -147,6 +147,17 @@ export function convertMinor(minor: number, from: string, to: string, rates: Rec
   return Math.round(minor * r * 10 ** (currencyExponent(to) - currencyExponent(from)));
 }
 
+/**
+ * Profit and loss of one currency from the books: revenue = ticket sales − organiser share + Bilit's fees and other revenue;
+ * direct costs = Stripe fees (net of recharges), refunds, chargebacks, event costs and other event expenses; the rest of the
+ * expense accounts are operating expenses (incl. profit share).
+ */
+export function profitOf(b: { currency: string; revenue: number; expenses: number; netProfit: number; lines: Array<{ code: string; name: string; type: string; amount: number }> }) {
+  const direct = b.lines.filter((l) => l.type === "EXPENSE" && DIRECT_COST_CODES.has(l.code)).reduce((s, l) => s + l.amount, 0);
+  const ticketSales = b.lines.find((l) => l.code === "4000")?.amount ?? 0;
+  return { currency: b.currency, ticketSales, revenue: b.revenue, directCosts: direct, grossProfit: b.revenue - direct, operatingExpenses: b.expenses - direct, expenses: b.expenses, netProfit: b.netProfit, lines: b.lines };
+}
+
 // ---------- data gathering ----------
 
 export async function financialPosition(orgId: string, mode: Mode, r: Range, opts: { live?: boolean } = {}) {
@@ -295,11 +306,7 @@ export async function financialPosition(orgId: string, mode: Mode, r: Range, opt
   for (const b of balanceTransfers.rows) alerts.push({ id: `fa-${b.currency}`, severity: "warning", title: "Money moved to the Stripe financial account is not visible", detail: `${n(b.amount) / 100} ${b.currency.toUpperCase()} went from Stripe to the Stripe 'balance transfer' wallet in the last 60 days. The Stripe key cannot read that wallet, so whatever is still in it is NOT counted as cash. Check the wallet in the Stripe dashboard.`, currency: b.currency, amount: n(b.amount) });
 
   // ----- profit (period) -----
-  const profit = books.map((b) => {
-    const direct = b.lines.filter((l) => l.type === "EXPENSE" && DIRECT_COST_CODES.has(l.code)).reduce((s, l) => s + l.amount, 0);
-    const ticketSales = b.lines.find((l) => l.code === "4000")?.amount ?? 0;
-    return { currency: b.currency, ticketSales, revenue: b.revenue, directCosts: direct, grossProfit: b.revenue - direct, operatingExpenses: b.expenses - direct, expenses: b.expenses, netProfit: b.netProfit, lines: b.lines };
-  });
+  const profit = books.map(profitOf);
 
   // ----- cash flow (books) -----
   const flows = FLOW_GROUPS.flatMap((g) => [...new Set(cashEntries.rows.filter((x) => x.grp === g.key).map((x) => x.currency))].sort()

@@ -1,6 +1,7 @@
 "use client";
 import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Bot, Check, CheckCircle2, Loader2, MessageCircle, Search, Send, Trash2, X } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
@@ -16,14 +17,28 @@ const KEY = "bilit.finance.aichat";
 const load = (): Msg[] => { try { return JSON.parse(sessionStorage.getItem(KEY) ?? "[]") as Msg[]; } catch { return []; } };
 const save = (m: Msg[]) => { try { sessionStorage.setItem(KEY, JSON.stringify(m.slice(-40))); } catch { /* storage may be unavailable */ } };
 
-/** Minimal, safe rendering of the model's answer: paragraphs, bullet lists, **bold**, and markdown tables as monospace. */
-function Answer({ text }: { text: string }) {
-  const inline = (s: string) => s.split(/(\*\*[^*]+\*\*)/g).map((p, i) => (p.startsWith("**") && p.endsWith("**") ? <strong key={i}>{p.slice(2, -2)}</strong> : <Fragment key={i}>{p.replace(/`([^`]+)`/g, "$1")}</Fragment>));
+/** Minimal, safe rendering of the model's answer: paragraphs, lists, **bold**, headings, markdown tables, and evidence
+ *  markers like [E2] (clickable when `onCite` is given). Never renders HTML from the model. */
+export function Answer({ text, onCite }: { text: string; onCite?: (id: string) => void }) {
+  const inline = (s: string) => s.split(/(\*\*[^*]+\*\*|\[E\d+\])/g).map((p, i) => {
+    if (p.startsWith("**") && p.endsWith("**")) return <strong key={i}>{p.slice(2, -2)}</strong>;
+    if (/^\[E\d+\]$/.test(p)) { const id = p.slice(1, -1); return onCite ? <button key={i} type="button" onClick={() => onCite(id)} className="mx-0.5 rounded bg-accent-soft px-1 align-super text-[10px] font-semibold text-accent hover:underline" title={id}>{id}</button> : <sup key={i} className="text-[10px] text-muted">{id}</sup>; }
+    return <Fragment key={i}>{p.replace(/`([^`]+)`/g, "$1")}</Fragment>;
+  });
   const blocks: React.ReactNode[] = [];
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i]!;
-    if (/^\s*\|/.test(l)) { const t: string[] = []; while (i < lines.length && /^\s*\|/.test(lines[i]!)) { if (!/^\s*\|[\s:|-]+\|\s*$/.test(lines[i]!)) t.push(lines[i]!.trim()); i++; } i--; blocks.push(<pre key={i} className="scroll-thin overflow-x-auto rounded-lg bg-surface-2 p-2 text-[11px] leading-snug">{t.map((r) => r.replace(/^\||\|$/g, "").split("|").map((c) => c.trim()).join("  ·  ")).join("\n")}</pre>); continue; }
+    if (/^\s*\|/.test(l)) {
+      const rows: string[][] = []; let header = false;
+      while (i < lines.length && /^\s*\|/.test(lines[i]!)) { if (/^\s*\|[\s:|-]+\|\s*$/.test(lines[i]!)) header = rows.length === 1; else rows.push(lines[i]!.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim())); i++; }
+      i--;
+      const [head, ...body] = header ? rows : [null, ...rows];
+      blocks.push(<div key={i} className="scroll-thin overflow-x-auto rounded-lg border border-line"><table className="w-full border-collapse text-[12px]">
+        {head && <thead className="bg-surface-2"><tr>{head.map((c, k) => <th key={k} dir="auto" className="whitespace-nowrap px-2 py-1.5 text-start font-semibold">{inline(c)}</th>)}</tr></thead>}
+        <tbody>{body.map((r, k) => <tr key={k} className="border-t border-line">{r!.map((c, j) => <td key={j} dir="auto" className="num whitespace-nowrap px-2 py-1.5">{inline(c)}</td>)}</tr>)}</tbody></table></div>);
+      continue;
+    }
     if (/^\s*([-*•]|\d+\.)\s+/.test(l)) { const items: string[] = []; while (i < lines.length && /^\s*([-*•]|\d+\.)\s+/.test(lines[i]!)) { items.push(lines[i]!.replace(/^\s*([-*•]|\d+\.)\s+/, "")); i++; } i--; blocks.push(<ul key={i} className="list-disc space-y-0.5 ps-5">{items.map((it, k) => <li key={k}>{inline(it)}</li>)}</ul>); continue; }
     if (/^#{1,4}\s/.test(l)) { blocks.push(<p key={i} className="font-semibold">{inline(l.replace(/^#+\s/, ""))}</p>); continue; }
     if (l.trim()) blocks.push(<p key={i}>{inline(l)}</p>);
@@ -104,6 +119,9 @@ export function ChatPanel({ compact = false }: { compact?: boolean }) {
 export function FloatingChat() {
   const t = useTranslations("accounting.aichat");
   const [open, setOpen] = useState(false);
+  const path = usePathname();
+  // Financial Overview has its own assistant (Bilit AI Accountant).
+  if (path === "/accounting/position") return null;
   return (
     <>
       {open && <div role="dialog" aria-label={t("title")} className="fixed bottom-20 end-4 z-50 flex h-[min(620px,calc(100dvh-7rem))] w-[min(420px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
