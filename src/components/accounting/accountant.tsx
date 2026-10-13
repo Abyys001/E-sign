@@ -80,8 +80,8 @@ export function AccountantPanel() {
 
 /** Finance settings → AI accountant (OpenAI). */
 type Assistant = { defaultLanguage: "auto" | "en" | "fa"; maxTokens: number; timeoutSec: number; retries: number };
-type Voice = { enabled: boolean; sttModel: string; ttsModel: string; voiceEn: string; voiceFa: string; autoSpeak: boolean; maxSeconds: number };
-const VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"];
+type Voice = { enabled: boolean; sttModel: string; ttsModel: string; voiceEn: string; voiceFa: string; speed: number; autoSpeak: boolean; maxSeconds: number };
+const VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"];
 
 export function AiSettingsCard({ admin }: { admin: boolean }) {
   const t = useTranslations("accounting.acc.ai");
@@ -132,6 +132,7 @@ export function AiSettingsCard({ admin }: { admin: boolean }) {
             <Field label={t("voiceEn")}>{(p) => <Select {...p} value={v.voice.voiceEn} onChange={(e) => setV({ ...v, voice: { ...v.voice, voiceEn: e.target.value } })}>{VOICES.map((x) => <option key={x} value={x}>{x}</option>)}</Select>}</Field>
             <Field label={t("voiceFa")}>{(p) => <Select {...p} value={v.voice.voiceFa} onChange={(e) => setV({ ...v, voice: { ...v.voice, voiceFa: e.target.value } })}>{VOICES.map((x) => <option key={x} value={x}>{x}</option>)}</Select>}</Field>
             <Field label={t("maxSeconds")} error={errs["voice.maxSeconds"]}>{(p) => <Input {...p} type="number" min={10} max={300} value={v.voice.maxSeconds} onChange={(e) => setV({ ...v, voice: { ...v.voice, maxSeconds: Number(e.target.value) } })} />}</Field>
+            <Field label={t("speed")} hint={t("speedHint")} error={errs["voice.speed"]}>{(p) => <Input {...p} type="number" min={0.5} max={2} step={0.05} value={v.voice.speed} onChange={(e) => setV({ ...v, voice: { ...v.voice, speed: Number(e.target.value) } })} />}</Field>
             <label className="flex items-center gap-3 self-end pb-2 text-sm"><input type="checkbox" checked={v.voice.autoSpeak} onChange={(e) => setV({ ...v, voice: { ...v.voice, autoSpeak: e.target.checked } })} />{t("autoSpeak")}</label>
           </div>
         </fieldset>

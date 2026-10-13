@@ -60,12 +60,13 @@ describe("AI accountant — pure helpers", () => {
   it("turns answers into clear spoken text: no markdown, tables row by row, negatives read as minus", () => {
     const md = "**Net profit** is −£1,234.56 [E1].\n\n| Event | Profit |\n|---|---|\n| Gala | £-50.00 |\n\n- Refunds: -€3.00\n## Basis\nSee [page](/accounting/position)";
     const s = speechText(md, "en");
-    expect(s).toContain("Net profit is minus £1,234.56");
+    expect(s).toContain("Net profit is minus 1,234.56 pounds");
     expect(s).toContain("Event, Profit.");
-    expect(s).toContain("Gala, minus £50.00.");
-    expect(s).toContain("Refunds: minus €3.00");
+    expect(s).toContain("Gala, minus 50.00 pounds.");
+    expect(s).toContain("Refunds: minus 3.00 euros");
+    expect(speechText("Fees: DKK 5,405.17 and 5,770.85 SEK; code B41-0091", "en")).toBe("Fees: 5,405.17 Danish kroner and 5,770.85 Swedish kronor; code B41-0091");
     expect(s).not.toMatch(/[*#|]|\[E1\]|\/accounting/);
-    expect(speechText("سود خالص −£12.00 است", "fa")).toContain("منفی £12.00");
+    expect(speechText("سود خالص −£12.00 است", "fa")).toContain("منفی 12.00 پوند");
     const long = speechText("This is a sentence. ".repeat(400), "en", 500);
     expect(long.length).toBeLessThan(560);
     expect(long).toMatch(/rest of the answer is on screen/);
@@ -228,7 +229,7 @@ describe("Bilit AI Accountant — voice", () => {
   });
 
   it("transcribes Persian and English questions without storing them, and reads answers with the right voice", async () => {
-    await updateAiSettings(A.actor, { enabled: true, model: "gpt-4.1", instructions: null, voice: { enabled: true, sttModel: "gpt-4o-transcribe", ttsModel: "gpt-4o-mini-tts", voiceEn: "sage", voiceFa: "nova", autoSpeak: false, maxSeconds: 90 } });
+    await updateAiSettings(A.actor, { enabled: true, model: "gpt-4.1", instructions: null, voice: { enabled: true, sttModel: "gpt-4o-transcribe", ttsModel: "gpt-4o-mini-tts", voiceEn: "sage", voiceFa: "nova", speed: 1, autoSpeak: false, maxSeconds: 90 } });
     const calls: Array<Record<string, unknown>> = [];
     setVoiceApi({
       transcribe: async (a) => { calls.push({ kind: "stt", model: a.model, language: a.language, size: a.audio.size }); return { text: a.language === "en" ? "How much have we paid in Stripe fees?" : "فروش کل این ماه چقدر بوده؟" }; },
@@ -239,9 +240,9 @@ describe("Bilit AI Accountant — voice", () => {
     expect(calls[0]).toMatchObject({ kind: "stt", model: "gpt-4o-transcribe", language: undefined, size: 4000 });
     await speakAnswer(A.actor, { text: "**سود خالص** −£12.50 است [E1]", language: "auto" });
     await speakAnswer(A.actor, { text: "Net profit is -£12.50.", language: "en" });
-    expect(calls[2]).toMatchObject({ kind: "tts", voice: "nova", text: "سود خالص منفی £12.50 است" });
-    expect(calls[3]).toMatchObject({ kind: "tts", voice: "sage", text: "Net profit is minus £12.50." });
-    expect(String(calls[3]!.instructions)).toMatch(/Read amounts precisely/);
+    expect(calls[2]).toMatchObject({ kind: "tts", voice: "nova", text: "سود خالص منفی 12.50 پوند است" });
+    expect(calls[3]).toMatchObject({ kind: "tts", voice: "sage", text: "Net profit is minus 12.50 pounds." });
+    expect(String(calls[3]!.instructions)).toMatch(/real person/);
     // The audit trail records that voice was used, never the words.
     const rows = await db.select().from(schema.auditEvents).where(and(eq(schema.auditEvents.organisationId, A.org.id), like(schema.auditEvents.eventType, "accounting.ai_accountant.voice%")));
     expect(rows).toHaveLength(4);

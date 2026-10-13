@@ -24,6 +24,7 @@ export const acctSettings = pgTable("acct_settings", {
   fxRates: jsonb("fx_rates").notNull().default({}),
   invoiceSettings: jsonb("invoice_settings").notNull().default({}),
   bookingFeeRefundable: boolean("booking_fee_refundable").notNull().default(false),
+  xeSettings: jsonb("xe_settings").notNull().default({}), // { accountId, apiKeyEnc, keyHint, lastRates, lastAt, lastError } — XE Currency Data API
   aiSettings: jsonb("ai_settings").notNull().default({}), // { enabled, model, apiKeyEnc, keyHint, instructions } — the key is encrypted, never returned // platform policy: refunds never reduce Bilit's booking fee // seller details + VAT treatment for customer invoices // { eur: "0.85", usd: "0.74" } = 1 unit of key in the reporting currency; reporting only, never posted
   updatedBy: uuid("updated_by").references(() => users.id),
   updatedAt: updatedAt(),

@@ -1865,7 +1865,9 @@
       "voiceEn": "English voice",
       "voiceFa": "Persian voice",
       "autoSpeak": "Read answers aloud automatically by default",
-      "maxSeconds": "Longest recording (seconds)"
+      "maxSeconds": "Longest recording (seconds)",
+      "speed": "Default reading speed",
+      "speedHint": "1 = normal, 1.25 = a bit faster, 0.9 = slower. Each user can change it in the widget."
     }
   },
   "refunds": {
@@ -2379,7 +2381,19 @@
       "capped": "Showing the latest 1,000 lines only — narrow the period to see older ones.",
       "note": "Reversed lines are corrections and cancel out with their reversal entry."
     },
-    "askAi": "Ask the AI Accountant about “{label}”"
+    "askAi": "Ask the AI Accountant about “{label}”",
+    "fx": {
+      "title": "Exchange rates to {c}",
+      "sub": "Source: {source} · {at}. Indicative only — each currency is paid in its own currency.",
+      "manual": "rates typed in Finance settings",
+      "currency": "Currency",
+      "rate": "1 unit = … {c}",
+      "inverse": "1 {c} = …",
+      "cash": "Cash held",
+      "remaining": "Left after settlements",
+      "connectXe": "Using Wise / manual rates. Connect XE to use XE mid-market rates:",
+      "settings": "Finance settings → XE"
+    }
   },
   "aiacc": {
     "title": "Bilit AI Accountant",
@@ -2477,6 +2491,20 @@
     "placeholderFa": "درباره‌ی سود، کارمزد، تسویه یا نقدینگی بپرسید…",
     "send": "Send",
     "rateLimited": "Too many questions in a short time. Please wait a few minutes and try again.",
-    "disclaimer": "Read-only. Figures come from the finance system's own calculations; the question and data summaries go to OpenAI. Questions are logged in the audit trail; recordings are not stored."
+    "disclaimer": "Read-only. Figures come from the finance system's own calculations; the question and data summaries go to OpenAI. Questions are logged in the audit trail; recordings are not stored.",
+    "speed": "Reading speed"
+  },
+  "xe": {
+    "title": "XE exchange rates",
+    "desc": "Live XE mid-market rates for the converted £ totals on the Financial Overview and in the AI Accountant. Needs an XE Currency Data API account (xe.com/xecurrencydata).",
+    "accountId": "XE account ID",
+    "apiKey": "XE API key",
+    "keyHint": "From your XE Currency Data account. Stored encrypted, never shown again.",
+    "keySet": "Key saved ({hint}). Enter a new one to replace it.",
+    "connected": "Connected — last rates {at}",
+    "note": "Used only for converted (indicative) totals; nothing is posted at these rates. Rates are refreshed at most every 15 minutes. Without XE, Wise's live rate is used.",
+    "disconnect": "Disconnect XE",
+    "save": "Save XE settings",
+    "saved": "XE settings saved"
   }
 }

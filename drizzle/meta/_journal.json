@@ -127,6 +127,13 @@
       "when": 1791158034374,
       "tag": "0017_usernames",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791244434374,
+      "tag": "0018_xe_rates",
+      "breakpoints": true
     }
   ]
 }

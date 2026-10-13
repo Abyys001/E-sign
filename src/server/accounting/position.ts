@@ -6,6 +6,7 @@ import { booksOverview } from "./books";
 import { eventFinancials, organiserBalances, settlementStatus, type Range, type SettlementStatus } from "./finance";
 import { gatewayFor, getStripeAccount, safeStripeError } from "./stripe-gateway";
 import { wiseRates } from "./wise";
+import { xeRates } from "./xe";
 
 /**
  * Financial position: what Bilit holds, what it owes, what it is owed and what is left, per currency.
@@ -316,8 +317,13 @@ export async function financialPosition(orgId: string, mode: Mode, r: Range, opt
   const target = settings.reportingCurrency ?? "gbp";
   let fx: { currency: string; rates: Record<string, string>; source: string; at: string | null } | null = null;
   const needed = [...new Set(positions.map((p) => p.currency))];
-  if (settings.reportingCurrency && needed.every((c) => c === target || Number(settings.fxRates[c]) > 0)) fx = { currency: target, rates: settings.fxRates, source: "Finance settings", at: null };
+  // Rate source, best first: XE (when connected), rates typed in Finance settings, Wise's live rate.
+  const covers = (r: Record<string, string>) => needed.every((c) => c === target || Number(r[c]) > 0);
+  const xe = opts.live !== false ? await xeRates(orgId, target, needed) : null;
+  if (xe && covers(xe.rates)) fx = { currency: target, rates: xe.rates, source: xe.source, at: xe.at };
+  else if (settings.reportingCurrency && covers(settings.fxRates)) fx = { currency: target, rates: settings.fxRates, source: "Finance settings", at: null };
   else if (opts.live !== false) { const w = await wiseRates(orgId, target, needed); if (w) fx = { currency: target, rates: w.rates, source: "Wise live mid-market rate", at: w.at }; }
+  if (xe?.stale) alerts.push({ id: "xe-stale", severity: "info", title: "XE could not be reached", detail: `Using the last XE rates from ${xe.at.slice(0, 16).replace("T", " ")} UTC.`, href: "/accounting/settings#xe" });
   const consolidated = fx ? (() => {
     const k = ["cash", "cashAvailableNow", "liabilities", "liabilitiesDueNow", "organisersOwed", "receivables", "remaining"] as const;
     const out = Object.fromEntries(k.map((x) => [x, 0])) as Record<(typeof k)[number], number>;

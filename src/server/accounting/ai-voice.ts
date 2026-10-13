@@ -39,16 +39,25 @@ export function speechText(markdown: string, lang: Lang, max = 4000): string {
     .replace(/(^|[\s(:=،])[-−–]\s?(?=[£€$]|[A-Z]{3}\s?\d|\d)/g, `$1${minus}`)
     .replace(/([£€$])\s?[-−–](?=\d)/g, `${minus}$1`)
     .replace(/\s*→\s*/g, lang === "fa" ? " به " : " to ")
+    // Amounts as a person says them: "£1,234.56" → "1,234.56 pounds", "DKK 5,405.17" → "5,405.17 Danish kroner".
+    .replace(/([£€$])\s?(\d[\d,]*(?:\.\d+)?)/g, (_, sym: string, num: string) => `${num} ${CUR[lang][sym] ?? sym}`)
+    .replace(/\b([A-Z]{3})\s?(\d[\d,]*(?:\.\d+)?)/g, (m, code: string, num: string) => (CUR[lang][code] ? `${num} ${CUR[lang][code]}` : m))
+    .replace(/(\d[\d,]*(?:\.\d+)?)\s?([A-Z]{3})\b/g, (m, num: string, code: string) => (CUR[lang][code] ? `${num} ${CUR[lang][code]}` : m))
     .replace(/[ \t]+/g, " ").trim();
   if (s.length > max) { const cut = s.slice(0, max); const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("\n"), cut.lastIndexOf("؟"), cut.lastIndexOf("."));
     s = `${cut.slice(0, end > max * 0.6 ? end + 1 : max)} ${lang === "fa" ? "ادامه‌ی پاسخ را روی صفحه ببینید." : "The rest of the answer is on screen."}`; }
   return s;
 }
 
+const CUR: Record<Lang, Record<string, string>> = {
+  en: { "£": "pounds", "€": "euros", "$": "dollars", GBP: "pounds", EUR: "euros", USD: "US dollars", CAD: "Canadian dollars", DKK: "Danish kroner", SEK: "Swedish kronor", NOK: "Norwegian kroner", CHF: "Swiss francs", AED: "dirhams" },
+  fa: { "£": "پوند", "€": "یورو", "$": "دلار", GBP: "پوند", EUR: "یورو", USD: "دلار آمریکا", CAD: "دلار کانادا", DKK: "کرون دانمارک", SEK: "کرون سوئد", NOK: "کرون نروژ", CHF: "فرانک سوئیس", AED: "درهم" },
+};
+
 const STT_PROMPT = "Bilit Events finance questions in English or Persian (Farsi). Terms: Stripe, Wise, booking fee, organiser, settlement, payout, refund, net profit, liabilities, cash position, Pegasus, Epic Wave. فروش، سود، سود خالص، کارمزد، کارمزد استرایپ، برگزارکننده، تسویه، بدهی، پرداخت، استرداد، نقدینگی، هزینه‌ها، ایونت، بیلیت.";
 const TTS_STYLE: Record<Lang, string> = {
-  en: "Calm, clear, professional financial assistant. Read amounts precisely: say the currency, read decimals as pence/cents, read percentages clearly. Moderate pace.",
-  fa: "دستیار مالی آرام، شمرده و حرفه‌ای. مبالغ، درصدها و تاریخ‌ها را دقیق و واضح بخوان. Speak natural Persian (Farsi); read English brand names (Stripe, Wise, Bilit) in English.",
+  en: "Sound like a real person — a warm, confident finance colleague explaining the numbers across the desk. Natural conversational rhythm, gentle intonation, short pauses between points; never robotic or announcer-like. Read amounts and percentages clearly and precisely.",
+  fa: "مثل یک انسان واقعی صحبت کن — یک همکار مالی گرم و مطمئن که ارقام را برای همکارش توضیح می‌دهد. لحن طبیعی و محاوره‌ای فارسی، مکث‌های کوتاه بین نکته‌ها، بدون حالت رباتیک. مبالغ، درصدها و تاریخ‌ها را واضح و دقیق بخوان. Speak natural native Persian (Tehrani accent); say brand names (Stripe, Wise, Bilit) in English.",
 };
 
 // ---------- provider (injectable for tests) ----------

@@ -12,6 +12,7 @@ import { Modal } from "@/components/ui/modal";
 import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { cn } from "@/components/ui/cn";
 import { useApi } from "@/lib/api";
+import { currencyExponent as exp } from "@/lib/money";
 
 type Status = "VERIFIED" | "STALE" | "REVIEW" | "UNVERIFIED";
 type Pos = { currency: string; cash: number; cashAvailableNow: number; cashRestricted: number; liabilities: number; liabilitiesDueNow: number; organisersOwed: number; organisersDueNow: number; otherLiabilities: number; receivables: number; remaining: number; remainingNow: number; shortfall: number; shortfallNow: number; status: Status };
@@ -110,6 +111,23 @@ export default function FinancialPositionPage() {
                   </div>; })()}
           </div> : <Callout tone="info">{t("pickCurrency")}</Callout>}
           {!sel && con && <p className="text-xs text-muted">{t("fxNote", { c: con.currency.toUpperCase(), source: con.source, rates: Object.entries(con.rates).filter(([k]) => main.some((p) => p.currency === k)).map(([k, v]) => `1 ${k.toUpperCase()} = ${Number(v).toFixed(4)}`).join(" · ") })}</p>}
+
+          {/* ----- exchange rates to the reporting currency ----- */}
+          {con && main.some((p) => p.currency !== con.currency) && <Card>
+            <CardHeader title={t("fx.title", { c: con.currency.toUpperCase() })} description={t("fx.sub", { source: con.source, at: con.at ? new Date(con.at).toLocaleString() : t("fx.manual") })} />
+            <TableWrap><Table>
+              <thead><tr><Th>{t("fx.currency")}</Th><Th className="text-end">{t("fx.rate", { c: con.currency.toUpperCase() })}</Th><Th className="text-end">{t("fx.inverse", { c: con.currency.toUpperCase() })}</Th><Th className="text-end">{t("fx.cash")}</Th><Th className="text-end">{t("fx.remaining")}</Th></tr></thead>
+              <tbody>{main.filter((p) => p.currency !== con.currency).map((p) => { const r = Number(con.rates[p.currency]); const conv = (v: number) => (r > 0 ? Math.round(v * r * 10 ** (exp(con.currency) - exp(p.currency))) : null);
+                return <Tr key={p.currency}>
+                  <Td className="font-semibold">{p.currency.toUpperCase()}</Td>
+                  <Td className="num text-end">{r > 0 ? `${r.toFixed(4)} ${con.currency.toUpperCase()}` : "—"}</Td>
+                  <Td className="num text-end">{r > 0 ? `${(1 / r).toFixed(4)} ${p.currency.toUpperCase()}` : "—"}</Td>
+                  <Td className="num text-end"><Money v={p.cash} c={p.currency} />{conv(p.cash) != null && <span className="block text-xs text-muted">≈ <Money v={conv(p.cash)!} c={con.currency} /></span>}</Td>
+                  <Td className="num text-end"><Money v={p.remaining} c={p.currency} />{conv(p.remaining) != null && <span className="block text-xs text-muted">≈ <Money v={conv(p.remaining)!} c={con.currency} /></span>}</Td>
+                </Tr>; })}</tbody>
+            </Table></TableWrap>
+            {!/^XE/.test(con.source) && <p className="px-5 py-3 text-xs text-muted">{t("fx.connectXe")} <Link href="/accounting/settings#xe" className="font-medium text-accent hover:underline">{t("fx.settings")}</Link></p>}
+          </Card>}
 
           {/* ----- alerts ----- */}
           <Card>

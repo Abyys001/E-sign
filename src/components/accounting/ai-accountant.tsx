@@ -20,7 +20,7 @@ type Lang = "en" | "fa";
 type Evidence = { id: string; tool: string; title: string; period: { from: string | null; to: string | null } | null; calculatedAt: string; method: string; sources: string[]; records?: number; limitations?: string[] };
 type Freshness = { stripe: { connected: boolean; lastSyncAt: string | null; lastWebhookAt: string | null }; wise: { connected: boolean; lastSyncAt: string | null } };
 type Msg = { role: "user" | "assistant"; content: string; lang: Lang; error?: boolean; steps?: string[]; evidence?: Evidence[]; freshness?: Freshness; asOf?: string };
-type Settings = { enabled: boolean; hasKey: boolean; voiceReady: boolean; voice: { autoSpeak: boolean; maxSeconds: number }; assistant: { defaultLanguage: "auto" | Lang } };
+type Settings = { enabled: boolean; hasKey: boolean; voiceReady: boolean; voice: { autoSpeak: boolean; maxSeconds: number; speed: number }; assistant: { defaultLanguage: "auto" | Lang } };
 export type AccountantContext = { from?: string | null; to?: string | null; currency?: string | null };
 type Focus = { label: string; value?: string | null };
 
@@ -32,6 +32,7 @@ const write = (k: string, store: "session" | "local", v: unknown) => { try { (st
 /** Ask the accountant from anywhere on the page (e.g. a metric card). */
 export function askAccountant(focus: Focus) { window.dispatchEvent(new CustomEvent("bilit:ask-accountant", { detail: focus })); }
 
+const SPEEDS = [0.75, 0.9, 1, 1.15, 1.25, 1.5, 1.75, 2];
 const SUGGESTIONS = ["profit", "balance", "events", "fees", "settlements", "expenses", "recon", "compare"] as const;
 
 function pickMime() {
@@ -50,14 +51,14 @@ export function AccountantWidget({ context }: { context: AccountantContext }) {
   const [loaded, setLoaded] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [prefs, setPrefs] = useState<{ lang: "auto" | Lang; autoSpeak: boolean | null }>({ lang: "auto", autoSpeak: null });
+  const [prefs, setPrefs] = useState<{ lang: "auto" | Lang; autoSpeak: boolean | null; speed?: number | null }>({ lang: "auto", autoSpeak: null, speed: null });
   const [focus, setFocus] = useState<Focus | null>(null);
   const [cite, setCite] = useState<{ msg: number; id: string } | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
   const end = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { setMsgs(read<Msg[]>(KEY, "session", [])); setPrefs(read(PREF, "local", { lang: "auto" as const, autoSpeak: null })); setLoaded(true); }, []);
+  useEffect(() => { setMsgs(read<Msg[]>(KEY, "session", [])); setPrefs(read(PREF, "local", { lang: "auto" as const, autoSpeak: null, speed: null })); setLoaded(true); }, []);
   useEffect(() => { if (loaded) write(KEY, "session", msgs.slice(-40)); end.current?.scrollIntoView({ block: "end" }); }, [msgs, loaded]);
   useEffect(() => { if (loaded) write(PREF, "local", prefs); }, [prefs, loaded]);
   useEffect(() => { if (!open) return; const k = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [open]);
@@ -65,6 +66,7 @@ export function AccountantWidget({ context }: { context: AccountantContext }) {
   const s = settings.data;
   const ready = !!s?.enabled && !!s?.hasKey;
   const autoSpeak = prefs.autoSpeak ?? s?.voice.autoSpeak ?? false;
+  const speed = prefs.speed ?? s?.voice.speed ?? 1;
   const lang: "auto" | Lang = prefs.lang;
   const uiLang: Lang = lang === "auto" ? (s?.assistant.defaultLanguage === "fa" ? "fa" : "en") : lang;
 
@@ -90,10 +92,12 @@ export function AccountantWidget({ context }: { context: AccountantContext }) {
         url = URL.createObjectURL(await res.blob()); urls.current.set(i, url);
       }
       const a = audio.current ?? new Audio(); audio.current = a;
-      a.src = url; a.onended = () => setPlayer(null); a.onerror = () => { setPlayer(null); setVoiceErr(t("voiceFailed")); };
+      a.src = url; a.playbackRate = speed; a.preservesPitch = true; a.onended = () => setPlayer(null); a.onerror = () => { setPlayer(null); setVoiceErr(t("voiceFailed")); };
       await a.play(); setPlayer({ i, state: "playing" });
     } catch (e) { setPlayer(null); setVoiceErr(errMsg(e)); }
-  }, [player, stop, t]);
+  }, [player, stop, t, speed]);
+  // Changing the speed applies to an answer that is already playing.
+  useEffect(() => { if (audio.current) audio.current.playbackRate = speed; }, [speed]);
   useEffect(() => () => { audio.current?.pause(); for (const u of urls.current.values()) URL.revokeObjectURL(u); }, []);
 
   // ---------- ask ----------
@@ -178,6 +182,8 @@ export function AccountantWidget({ context }: { context: AccountantContext }) {
             <select aria-label={t("language")} value={lang} onChange={(e) => setPrefs({ ...prefs, lang: e.target.value as "auto" | Lang })} className="h-8 rounded-lg border border-white/20 bg-transparent px-1.5 text-xs text-[var(--color-1)] [&>option]:text-fg">
               <option value="auto">{t("langAuto")}</option><option value="en">English</option><option value="fa">فارسی</option>
             </select>
+            {s?.voiceReady && <select aria-label={t("speed")} title={t("speed")} value={String(speed)} onChange={(e) => setPrefs({ ...prefs, speed: Number(e.target.value) })} className="h-8 rounded-lg border border-white/20 bg-transparent px-1 text-xs text-[var(--color-1)] [&>option]:text-fg">
+              {SPEEDS.map((x) => <option key={x} value={String(x)}>{x}×</option>)}</select>}
             {s?.voiceReady && <button type="button" onClick={() => setPrefs({ ...prefs, autoSpeak: !autoSpeak })} aria-pressed={autoSpeak} aria-label={autoSpeak ? t("autoSpeakOff") : t("autoSpeakOn")} title={autoSpeak ? t("autoSpeakOff") : t("autoSpeakOn")} className="grid size-8 place-items-center rounded-lg hover:bg-white/10">{autoSpeak ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}</button>}
             {msgs.length > 0 && <button type="button" onClick={clear} aria-label={t("newChat")} title={t("newChat")} className="grid size-8 place-items-center rounded-lg hover:bg-white/10"><RotateCcw className="size-4" /></button>}
             <button type="button" onClick={() => setWide(!wide)} aria-label={wide ? t("shrink") : t("expand")} title={wide ? t("shrink") : t("expand")} className="hidden size-8 place-items-center rounded-lg hover:bg-white/10 sm:grid">{wide ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}</button>

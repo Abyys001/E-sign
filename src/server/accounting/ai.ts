@@ -30,7 +30,7 @@ export const AiSettingsInput = z.object({
 
 const ModelName = z.string().trim().min(2).max(80).regex(/^[A-Za-z0-9._:/-]+$/, "Model names contain only letters, digits and . _ : - /");
 /** OpenAI text-to-speech voices. */
-export const TTS_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"] as const;
+export const TTS_VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"] as const; // marin / cedar: OpenAI's most natural voices
 /** Bilit AI Accountant (Financial Overview): answer language, length and how long to wait for OpenAI. */
 export const AssistantSettings = z.object({
   defaultLanguage: z.enum(["auto", "en", "fa"]).default("auto"),
@@ -43,8 +43,9 @@ export const VoiceSettings = z.object({
   enabled: z.boolean().default(false),
   sttModel: ModelName.default("gpt-4o-transcribe"),
   ttsModel: ModelName.default("gpt-4o-mini-tts"),
-  voiceEn: z.enum(TTS_VOICES).default("sage"),
-  voiceFa: z.enum(TTS_VOICES).default("nova"),
+  voiceEn: z.enum(TTS_VOICES).default("marin"),
+  voiceFa: z.enum(TTS_VOICES).default("marin"),
+  speed: z.coerce.number().min(0.5).max(2).default(1), // default playback speed; each user can change it in the widget
   autoSpeak: z.boolean().default(false),
   maxSeconds: z.coerce.number().int().min(10).max(300).default(90),
 });
