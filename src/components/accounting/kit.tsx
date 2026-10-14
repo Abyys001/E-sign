@@ -3,8 +3,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { AlertTriangle, ArrowLeftRight, Banknote, Bell, Search, Wallet, BookOpen, Bot, CalendarDays, CheckCircle2, CircleDashed, CircleHelp, Copy, CreditCard, FileBarChart, FlaskConical, HandCoins, LayoutDashboard, Landmark, Library, Radio, RotateCcw, Scale, Send, Settings, ShieldAlert, Sparkles, TrendingUp, Undo2, Users, type LucideIcon } from "lucide-react";
+import { AlertTriangle, Bell, Search, CheckCircle2, CircleDashed, CircleHelp, Copy, FlaskConical, Radio, RotateCcw, ShieldAlert, Sparkles, Undo2, type LucideIcon } from "lucide-react";
 import { useMe } from "@/components/app/me";
+import { NAV } from "./nav";
 import { cn } from "@/components/ui/cn";
 import { Input, Select } from "@/components/ui/form";
 import { EmptyState } from "@/components/ui/feedback";
@@ -55,87 +56,14 @@ export function ModeBanner() {
 }
 
 // ---------- navigation ----------
-type NavItem = { href: string; key: string; icon: LucideIcon; exact?: true; perm?: "accounting.admin" | "accounting.manage" };
-/** Finance sections grouped the way accountants look for them. Routes are unchanged; only presentation is grouped. */
-const NAV_GROUPS: ReadonlyArray<{ key: string; items: ReadonlyArray<NavItem> }> = [
-  { key: "overview", items: [
-    { href: "/accounting", key: "dashboard", icon: LayoutDashboard, exact: true },
-    { href: "/accounting/position", key: "position", icon: Scale },
-    { href: "/accounting/overview", key: "overview", icon: TrendingUp },
-    { href: "/accounting/reports", key: "reports", icon: FileBarChart },
-    { href: "/accounting/ai", key: "ai", icon: Bot },
-  ] },
-  { key: "transactions", items: [
-    { href: "/accounting/transactions", key: "transactions", icon: ArrowLeftRight },
-    { href: "/accounting/refunds", key: "refunds", icon: Undo2 },
-    { href: "/accounting/reconciliation", key: "reconciliation", icon: CheckCircle2 },
-  ] },
-  { key: "events", items: [{ href: "/accounting/events", key: "events", icon: CalendarDays }] },
-  { key: "organisers", items: [
-    { href: "/accounting/organisers", key: "organisers", icon: Users },
-    { href: "/accounting/payments", key: "payments", icon: Banknote },
-    { href: "/accounting/payouts", key: "payouts", icon: Send },
-  ] },
-  { key: "accounting", items: [
-    { href: "/accounting/books", key: "books", icon: BookOpen },
-    { href: "/accounting/profit-share", key: "profitShare", icon: HandCoins },
-    { href: "/accounting/ledger", key: "ledger", icon: Library },
-  ] },
-  { key: "integrations", items: [
-    { href: "/accounting/stripe", key: "stripe", icon: CreditCard },
-    { href: "/accounting/wise", key: "wise", icon: Landmark },
-    { href: "/accounting/settings", key: "settings", icon: Settings, perm: "accounting.admin" },
-  ] },
-];
-const NAV: ReadonlyArray<NavItem> = NAV_GROUPS.flatMap((g) => g.items);
-const isActive = (x: NavItem, path: string) => (x.exact ? path === x.href : path === x.href || path.startsWith(`${x.href}/`));
+// Sections live in ./nav (shared with the app sidebar, where finance is its own department).
 
-/** Compact tab bar (below xl, where the finance sidebar is hidden): every section, with icons, scrolls horizontally. */
-export function FinanceNav() {
-  const t = useTranslations("accounting.nav");
-  const path = usePathname();
-  const { can } = useMe();
-  return (
-    <nav aria-label={t("label")} className="scroll-thin mb-5 flex gap-1 overflow-x-auto border-b border-line xl:hidden">
-      {NAV.filter((x) => !x.perm || can(x.perm)).map((x) => {
-        const active = isActive(x, path);
-        return <Link key={x.href} href={x.href} aria-current={active ? "page" : undefined} className={cn("-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm transition", active ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg")}><x.icon className="size-4 shrink-0" aria-hidden />{t(x.key as never)}</Link>;
-      })}
-    </nav>
-  );
-}
-
-/** Grouped finance sidebar (xl and up). Only sections the user may open are listed. */
-export function FinanceSidebar() {
-  const t = useTranslations("accounting.nav");
-  const path = usePathname();
-  const { can } = useMe();
-  return (
-    <nav aria-label={t("label")} className="sticky top-20 hidden max-h-[calc(100dvh-6rem)] w-52 shrink-0 overflow-y-auto pe-2 scroll-thin xl:block">
-      {NAV_GROUPS.map((g) => {
-        const items = g.items.filter((x) => !x.perm || can(x.perm));
-        if (!items.length) return null;
-        return (
-          <div key={g.key} className="mb-5">
-            <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">{t(`groups.${g.key}` as never)}</p>
-            <ul className="space-y-0.5">{items.map((x) => {
-              const active = isActive(x, path);
-              return <li key={x.href}><Link href={x.href} aria-current={active ? "page" : undefined} className={cn("flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition", active ? "bg-surface font-medium text-fg shadow-card ring-1 ring-line" : "text-muted hover:bg-surface hover:text-fg")}>
-                <x.icon className={cn("size-4 shrink-0", active && "text-accent")} aria-hidden />{t(x.key as never)}</Link></li>;
-            })}</ul>
-          </div>
-        );
-      })}
-    </nav>
-  );
-}
-
-/** Every finance section as an icon button — shown on the dashboard on smaller screens (the sidebar covers wide screens). */
+/** Every finance section as an icon button — shown on the dashboard on small screens (the app sidebar is a drawer there). */
 export function FinanceShortcuts() {
   const t = useTranslations("accounting.nav");
   const { can } = useMe();
   return (
-    <nav aria-label={t("label")} className="mb-6 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 xl:hidden">
+    <nav aria-label={t("label")} className="mb-6 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:hidden">
       {NAV.filter((x) => !x.exact && (!x.perm || can(x.perm))).map((x) => (
         <Link key={x.href} href={x.href} className="group flex flex-col items-center gap-1.5 rounded-xl border border-line bg-surface p-3 text-center text-xs font-medium transition hover:border-accent">
           <span className="grid size-9 place-items-center rounded-lg bg-accent-soft transition group-hover:scale-105"><x.icon className="size-[18px]" aria-hidden /></span>
@@ -153,7 +81,7 @@ export function useFinanceStatus() {
   return useApi<Status>(q("/api/accounting/dashboard/status"));
 }
 
-/** Finance header: brand, finance search (transactions), alerts and Stripe status, TEST/LIVE switch. */
+/** Finance toolbar: finance search (transactions), alerts and Stripe status, TEST/LIVE switch. Navigation lives in the app sidebar. */
 export function FinanceHeader() {
   const t = useTranslations("accounting.shell");
   const router = useRouter();
@@ -162,12 +90,8 @@ export function FinanceHeader() {
   const alerts = data ? data.review.unmatched + data.review.needsReview + data.review.unlinkedRefunds + data.review.payoutsFailed + data.review.payoutsUnconfirmed + (data.stripe.lastError || data.stripe.openSyncErrors || data.stripe.lastRun?.status === "FAILED" ? 1 : 0) : 0;
   const stripeOk = data?.stripe.connected && !data.stripe.lastError && data.stripe.lastRun?.status !== "FAILED";
   return (
-    <div className="mb-5 flex flex-wrap items-center gap-3">
-      <Link href="/accounting" className="flex items-center gap-2.5 me-auto">
-        <span className="grid size-9 place-items-center rounded-xl bg-fg text-bg"><Wallet className="size-[18px]" aria-hidden /></span>
-        <span className="leading-tight"><span className="block text-[15px] font-semibold tracking-tight">{t("brand")}</span><span className="block text-xs text-muted">{t("tagline")}</span></span>
-      </Link>
-      <form role="search" onSubmit={(e) => { e.preventDefault(); if (text.trim()) router.push(`/accounting/transactions?q=${encodeURIComponent(text.trim())}`); }} className="relative order-last w-full sm:order-none sm:w-64">
+    <div className="mb-5 flex flex-wrap items-center justify-end gap-3">
+      <form role="search" className="relative order-last w-full sm:order-none sm:me-auto sm:w-72" onSubmit={(e) => { e.preventDefault(); if (text.trim()) router.push(`/accounting/transactions?q=${encodeURIComponent(text.trim())}`); }}>
         <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
         <Input value={text} onChange={(e) => setText(e.target.value)} aria-label={t("search")} placeholder={t("search")} className="h-9 ps-9 text-sm" />
       </form>

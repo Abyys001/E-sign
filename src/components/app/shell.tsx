@@ -3,13 +3,14 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Bell, Building2, Landmark, Check, ChevronsUpDown, Code2, FileText, LayoutDashboard, LayoutTemplate, Languages, LogOut, Menu, Monitor, Moon, Plus, ScrollText, Search, Settings, ShieldCheck, Sun, Users, Wallet, X } from "lucide-react";
+import { Bell, Building2, Landmark, Check, ChevronDown, ChevronsUpDown, Code2, FileText, LayoutDashboard, LayoutTemplate, Languages, LogOut, Menu, Monitor, Moon, Plus, ScrollText, Search, Settings, ShieldCheck, Sun, Users, Wallet, X } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { Dropdown } from "@/components/ui/dropdown";
 import { LinkButton } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/feedback";
 import { cn } from "@/components/ui/cn";
 import { api } from "@/lib/api";
+import { NAV_GROUPS, isActive as financeActive } from "@/components/accounting/nav";
 import { ElevationProvider } from "./elevate";
 import { MeProvider, useMe } from "./me";
 
@@ -46,6 +47,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <div className="px-3"><LinkButton href="/contracts/new" variant="primary" className="w-full" onClick={onNavigate}><Plus className="size-4" aria-hidden />{t("newContract")}</LinkButton></div>
       <nav aria-label={t("menu")} className="mt-4 flex-1 space-y-0.5 overflow-y-auto px-3">
         {NAV.filter((n) => (!n.perm || can(n.perm)) && (!("feature" in n) || me.features?.[n.feature])).map((n) => {
+          if (n.key === "finance") return <FinanceDepartment key={n.href} onNavigate={onNavigate} />;
           const active = path === n.href || path.startsWith(`${n.href}/`);
           const Icon = n.icon;
           return (
@@ -60,6 +62,48 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </nav>
       <div className="border-t border-[var(--color-13)] p-3"><OrgSwitcher /></div>
       <span className="sr-only">{me.branding.orgName}</span>
+    </div>
+  );
+}
+
+/** Bilit Finance as its own department in the sidebar: a collapsible block with the finance sections, grouped. */
+function FinanceDepartment({ onNavigate }: { onNavigate?: () => void }) {
+  const t = useTranslations("accounting.nav");
+  const ts = useTranslations("accounting.shell");
+  const path = usePathname();
+  const { can } = useMe();
+  const inside = path === "/accounting" || path.startsWith("/accounting/");
+  const [open, setOpen] = useState(inside);
+  useEffect(() => { if (inside) setOpen(true); }, [inside]);
+  return (
+    <div className={cn("my-2 rounded-xl", inside && "bg-[var(--color-10)]")}>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls="finance-department"
+        className={cn("flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-start transition hover:bg-[var(--color-10)]", inside ? "text-[var(--color-6)]" : "text-[var(--color-2)] hover:text-[var(--color-1)]")}>
+        <span className={cn("grid size-7 shrink-0 place-items-center rounded-lg", inside ? "bg-[var(--color-5)] text-[var(--color-4)]" : "bg-[var(--color-13)]")}><Landmark className="size-4" aria-hidden /></span>
+        <span className="min-w-0 flex-1 leading-tight"><span className="block text-sm font-medium">{ts("brand")}</span><span className="block truncate text-[11px] text-[var(--color-2)]">{ts("tagline")}</span></span>
+        <ChevronDown className={cn("size-4 shrink-0 transition", open && "rotate-180")} aria-hidden />
+      </button>
+      {open && <div id="finance-department" className="pb-2">
+        {NAV_GROUPS.map((g) => {
+          const items = g.items.filter((x) => !x.perm || can(x.perm));
+          if (!items.length) return null;
+          return (
+            <div key={g.key} className="mt-2">
+              <p className="px-3 pb-1 ps-[3.25rem] text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--color-11)]">{t(`groups.${g.key}` as never)}</p>
+              {items.map((x) => {
+                const active = financeActive(x, path);
+                return (
+                  <Link key={x.href} href={x.href} onClick={onNavigate} aria-current={active ? "page" : undefined}
+                    className={cn("relative mx-1 flex items-center gap-2.5 rounded-lg py-1.5 pe-3 ps-[2.6rem] text-[13px] transition", active ? "bg-[var(--color-13)] font-medium text-[var(--color-6)]" : "text-[var(--color-2)] hover:bg-[var(--color-13)]/60 hover:text-[var(--color-1)]")}>
+                    {active && <span aria-hidden className="absolute inset-y-1.5 start-[1.85rem] w-[3px] rounded-full bg-[var(--color-5)]" />}
+                    <x.icon className={cn("size-4 shrink-0", active && "text-[var(--color-5)]")} aria-hidden />{t(x.key as never)}
+                  </Link>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>}
     </div>
   );
 }
