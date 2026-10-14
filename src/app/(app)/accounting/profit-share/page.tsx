@@ -2,11 +2,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Banknote, CircleDollarSign, FileDown, HandCoins, Pencil, Plus, Trash2, TrendingUp } from "lucide-react";
+import { Banknote, CircleDollarSign, FileDown, HandCoins, Pencil, Plus, Send, Trash2, TrendingUp } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { AmountCard, Badge, Money, useMode } from "@/components/accounting/kit";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, PageHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm";
 import { Callout, EmptyState, Skeleton } from "@/components/ui/feedback";
@@ -28,6 +28,7 @@ type Overview = {
 
 export default function ProfitSharePage() {
   const t = useTranslations("accounting.pshare");
+  const tp = useTranslations("accounting.payouts");
   const toast = useToast();
   const ensure = useElevation();
   const { can } = useMe();
@@ -59,6 +60,7 @@ export default function ProfitSharePage() {
         {admin && d && <Button onClick={() => setEdit(d.partner)}><Pencil className="size-4" aria-hidden />{t("settings")}</Button>}
         {admin && <Button variant="ghost" onClick={() => setEdit("new")}><Plus className="size-4" aria-hidden />{t("addPartner")}</Button>}
         {manage && d && <Button variant="primary" onClick={() => setPay(true)}><Banknote className="size-4" aria-hidden />{t("recordPayment")}</Button>}
+        {admin && d && <LinkButton href={`/accounting/payouts?type=PARTNER&id=${pid}`}><Send className="size-4" aria-hidden />{tp("payStripe")}</LinkButton>}
       </>} />
       {!d ? <Skeleton className="h-64" /> : <>
         {!d.partner.active && <Callout tone="warn">{t("inactive")}</Callout>}

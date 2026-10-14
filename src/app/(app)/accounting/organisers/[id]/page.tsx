@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense, use, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { ArrowLeft, Banknote, Bot, CalendarPlus, Download, Eye, Pencil } from "lucide-react";
+import { ArrowLeft, Banknote, Bot, CalendarPlus, Download, Eye, Pencil, Send } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { Badge, DL, Money, RangePicker, rangeFor, rangeQuery, useExport, useMode, type RangeKey } from "@/components/accounting/kit";
@@ -33,6 +33,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) { 
 
 function OrganiserDetail({ id }: { id: string }) {
   const t = useTranslations("accounting.organisers");
+  const tp = useTranslations("accounting.payouts");
   const ta = useTranslations("accounting.payagent");
   const locale = useLocale();
   const toast = useToast();
@@ -61,7 +62,8 @@ function OrganiserDetail({ id }: { id: string }) {
     <div className="space-y-6">
       <PageHeader title={<span className="flex items-center gap-3">{o.name} <Badge s={o.active ? "ACTIVE" : "INACTIVE"} /></span>} description={o.companyName ?? undefined}
         actions={<><LinkButton href="/accounting/organisers"><ArrowLeft className="size-4 rtl:rotate-180" aria-hidden />{t("back")}</LinkButton>
-          {can("accounting.manage") && <><Button onClick={() => setEdit(true)}><Pencil className="size-4" aria-hidden />{t("edit")}</Button><Button onClick={() => setAgent(true)}><Bot className="size-4" aria-hidden />{ta("open")}</Button><Button variant="primary" onClick={() => setPay(true)}><Banknote className="size-4" aria-hidden />{t("recordPayment")}</Button></>}</>} />
+          {can("accounting.manage") && <><Button onClick={() => setEdit(true)}><Pencil className="size-4" aria-hidden />{t("edit")}</Button><Button onClick={() => setAgent(true)}><Bot className="size-4" aria-hidden />{ta("open")}</Button><Button variant="primary" onClick={() => setPay(true)}><Banknote className="size-4" aria-hidden />{t("recordPayment")}</Button></>}
+          {can("accounting.admin") && <LinkButton href={`/accounting/payouts?type=ORGANISER&id=${id}`}><Send className="size-4" aria-hidden />{tp("payStripe")}</LinkButton>}</>} />
       <Tabs tabs={TABS.map((k) => ({ id: k, label: t(`tabs.${k}`) }))} value={tab} onChange={setTab} label={t("tabs.label")} />
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="space-y-6">
       {tab === "overview" && <OrganiserFinance id={id} refresh={refresh} />}

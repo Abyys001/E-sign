@@ -10,6 +10,7 @@ import { accountingEnabled } from "../accounting/core";
 import { executeRun, processStripeEvent, scanScheduledSyncs } from "../accounting/sync";
 import { syncAllWise } from "../accounting/wise";
 import { syncAllProfitShares } from "../accounting/profit-share";
+import { syncAllPayouts } from "../accounting/stripe-payouts";
 
 type J<T> = { id: string; data: T; retryCount?: number; retryLimit?: number };
 
@@ -35,7 +36,7 @@ async function main() {
   await boss.work(QUEUES.retentionScan, wrap("retention", async () => { await scanRetention(); await scanIntakeRetention(); }));
   await boss.work(QUEUES.acctSync, { localConcurrency: 1 }, wrap<{ runId: string }>("accounting-sync", (j) => executeRun(j.data.runId)));
   await boss.work(QUEUES.acctStripeEvent, { localConcurrency: 2 }, wrap<{ eventRowId: string }>("accounting-stripe-event", (j) => processStripeEvent(j.data.eventRowId)));
-  await boss.work(QUEUES.acctScan, wrap("accounting-scan", async () => { await scanScheduledSyncs(); await syncAllWise(); await syncAllProfitShares(); }));
+  await boss.work(QUEUES.acctScan, wrap("accounting-scan", async () => { await scanScheduledSyncs(); await syncAllWise(); await syncAllProfitShares(); await syncAllPayouts(); }));
   await boss.work(QUEUES.dead, wrap<Record<string, unknown>>("dead-letter", async (j) => { log.error("job.dead_letter", { jobId: j.id, data: j.data }); }));
   await boss.schedule(QUEUES.expireScan, "*/5 * * * *");
   await boss.schedule(QUEUES.remindersScan, "*/5 * * * *");

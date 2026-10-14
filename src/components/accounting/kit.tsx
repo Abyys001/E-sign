@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { AlertTriangle, CheckCircle2, CircleDashed, CircleHelp, Copy, FlaskConical, Radio, RotateCcw, ShieldAlert, Sparkles, Undo2, type LucideIcon } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Banknote, BookOpen, Bot, CalendarDays, CheckCircle2, CircleDashed, CircleHelp, Copy, CreditCard, FileBarChart, FlaskConical, HandCoins, LayoutDashboard, Landmark, Library, Radio, RotateCcw, Scale, Send, Settings, ShieldAlert, Sparkles, TrendingUp, Undo2, Users, type LucideIcon } from "lucide-react";
 import { useMe } from "@/components/app/me";
 import { cn } from "@/components/ui/cn";
 import { Input, Select } from "@/components/ui/form";
@@ -55,25 +55,26 @@ export function ModeBanner() {
 }
 
 // ---------- navigation ----------
-const NAV = [
-  { href: "/accounting", key: "dashboard", exact: true },
-  { href: "/accounting/position", key: "position" },
-  { href: "/accounting/overview", key: "overview" },
-  { href: "/accounting/events", key: "events" },
-  { href: "/accounting/transactions", key: "transactions" },
-  { href: "/accounting/organisers", key: "organisers" },
-  { href: "/accounting/payments", key: "payments" },
-  { href: "/accounting/refunds", key: "refunds" },
-  { href: "/accounting/books", key: "books" },
-  { href: "/accounting/profit-share", key: "profitShare" },
-  { href: "/accounting/stripe", key: "stripe" },
-  { href: "/accounting/wise", key: "wise" },
-  { href: "/accounting/reconciliation", key: "reconciliation" },
-  { href: "/accounting/reports", key: "reports" },
-  { href: "/accounting/ai", key: "ai" },
-  { href: "/accounting/ledger", key: "ledger" },
-  { href: "/accounting/settings", key: "settings", perm: "accounting.admin" },
-] as const;
+const NAV: ReadonlyArray<{ href: string; key: string; icon: LucideIcon; exact?: true; perm?: "accounting.admin" }> = [
+  { href: "/accounting", key: "dashboard", icon: LayoutDashboard, exact: true },
+  { href: "/accounting/position", key: "position", icon: Scale },
+  { href: "/accounting/overview", key: "overview", icon: TrendingUp },
+  { href: "/accounting/events", key: "events", icon: CalendarDays },
+  { href: "/accounting/transactions", key: "transactions", icon: ArrowLeftRight },
+  { href: "/accounting/organisers", key: "organisers", icon: Users },
+  { href: "/accounting/payments", key: "payments", icon: Banknote },
+  { href: "/accounting/payouts", key: "payouts", icon: Send },
+  { href: "/accounting/refunds", key: "refunds", icon: Undo2 },
+  { href: "/accounting/books", key: "books", icon: BookOpen },
+  { href: "/accounting/profit-share", key: "profitShare", icon: HandCoins },
+  { href: "/accounting/stripe", key: "stripe", icon: CreditCard },
+  { href: "/accounting/wise", key: "wise", icon: Landmark },
+  { href: "/accounting/reconciliation", key: "reconciliation", icon: CheckCircle2 },
+  { href: "/accounting/reports", key: "reports", icon: FileBarChart },
+  { href: "/accounting/ai", key: "ai", icon: Bot },
+  { href: "/accounting/ledger", key: "ledger", icon: Library },
+  { href: "/accounting/settings", key: "settings", icon: Settings, perm: "accounting.admin" },
+];
 
 export function FinanceNav() {
   const t = useTranslations("accounting.nav");
@@ -81,10 +82,26 @@ export function FinanceNav() {
   const { can } = useMe();
   return (
     <nav aria-label={t("label")} className="scroll-thin mb-5 flex gap-1 overflow-x-auto border-b border-line">
-      {NAV.filter((x) => !("perm" in x) || can(x.perm)).map((x) => {
-        const active = "exact" in x ? path === x.href : path === x.href || path.startsWith(`${x.href}/`);
-        return <Link key={x.href} href={x.href} aria-current={active ? "page" : undefined} className={cn("-mb-px whitespace-nowrap border-b-2 px-3.5 py-2.5 text-sm transition", active ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg")}>{t(x.key)}</Link>;
+      {NAV.filter((x) => !x.perm || can(x.perm)).map((x) => {
+        const active = x.exact ? path === x.href : path === x.href || path.startsWith(`${x.href}/`);
+        return <Link key={x.href} href={x.href} aria-current={active ? "page" : undefined} className={cn("-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3.5 py-2.5 text-sm transition", active ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg")}><x.icon className="size-4 shrink-0" aria-hidden />{t(x.key as never)}</Link>;
       })}
+    </nav>
+  );
+}
+
+/** Every finance section as an icon button — the shortcut grid on the finance dashboard. */
+export function FinanceShortcuts() {
+  const t = useTranslations("accounting.nav");
+  const { can } = useMe();
+  return (
+    <nav aria-label={t("label")} className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      {NAV.filter((x) => !x.exact && (!x.perm || can(x.perm))).map((x) => (
+        <Link key={x.href} href={x.href} className="group flex flex-col items-center gap-2 rounded-2xl border border-line bg-surface p-4 text-center text-sm font-medium transition hover:border-accent hover:bg-surface-2">
+          <span className="grid size-10 place-items-center rounded-xl bg-accent-soft text-fg transition group-hover:scale-105"><x.icon className="size-5" aria-hidden /></span>
+          {t(x.key as never)}
+        </Link>
+      ))}
     </nav>
   );
 }
@@ -182,6 +199,7 @@ const TONE: Record<string, "done" | "active" | "idle" | "stopped"> = {
   SUCCEEDED: "done", RUNNING: "active", QUEUED: "idle", FAILED: "stopped", PROCESSED: "done", RECEIVED: "idle", IGNORED: "idle",
   CONNECTED: "done", DISCONNECTED: "idle", ACTIVE: "done", INACTIVE: "idle", CANCELLED: "stopped", ARCHIVED: "idle", WON: "done", LOST: "stopped",
   paid: "done", pending: "active", in_transit: "active", canceled: "idle", failed: "stopped",
+  SENDING: "active", PROCESSING: "active", RETURNED: "stopped", CANCELED: "idle", REJECTED: "stopped",
 };
 const ICON = { done: CheckCircle2, active: CircleDashed, idle: CircleHelp, stopped: AlertTriangle };
 const toneCls = { done: "border-accent bg-accent-soft", active: "border-line-strong bg-surface-2", idle: "border-dashed border-line-strong text-muted", stopped: "border-2 border-fg bg-surface font-medium" };

@@ -6,7 +6,7 @@ import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { Money, RangePicker, rangeFor, rangeQuery, useExport, useMode, type RangeKey } from "@/components/accounting/kit";
 import { BillDialog, Fa, PayBillDialog, useExpenseAccounts, type BillRow } from "@/components/accounting/books";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { Card, PageHeader } from "@/components/ui/card";
 import { cn } from "@/components/ui/cn";
 import { ConfirmDialog } from "@/components/ui/confirm";
@@ -30,6 +30,7 @@ function StatusPill({ b }: { b: BillRow }) {
 
 export default function InvoicesPage() {
   const t = useTranslations("accounting.books.doc");
+  const tp = useTranslations("accounting.payouts");
   const toast = useToast();
   const ensure = useElevation();
   const doExport = useExport();
@@ -76,6 +77,7 @@ export default function InvoicesPage() {
               <Td>{b.hasFile ? <a href={`/api/accounting/bills/${b.id}/file`} className="inline-flex items-center gap-1.5 text-sm underline underline-offset-4" title={b.fileName ?? ""}><Fa icon={faDownload} className="text-xs" />{t("download")}</a> : <span className="inline-flex items-center gap-1 text-muted"><Fa icon={faPaperclip} className="text-xs" />—</span>}</Td>
               <Td className="text-end">{manage && b.status !== "VOIDED" && <div className="flex justify-end gap-1">
                 {b.status === "UNPAID" && <Button size="sm" onClick={() => setPaying(b)}><Fa icon={faCheck} className="text-xs" />{t("markPaid")}</Button>}
+                {b.status === "UNPAID" && b.kind === "BILL" && can("accounting.admin") && <LinkButton size="sm" href={`/accounting/payouts?type=BILL&id=${b.id}&currency=${b.currency}`}>{tp("payStripe")}</LinkButton>}
                 <Button size="sm" variant="ghost" aria-label={t("edit")} onClick={() => setDlg({ kind: b.kind, bill: b })}><Fa icon={faPen} className="text-xs" /></Button>
                 <Button size="sm" variant="ghost" aria-label={t("delete")} onClick={async () => { if (await ensure()) { setReason(""); setDel(b); } }}><Fa icon={faTrash} className="text-xs" /></Button></div>}</Td>
             </Tr>)}</tbody></Table></TableWrap>

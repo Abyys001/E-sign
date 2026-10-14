@@ -26,6 +26,7 @@ export const acctSettings = pgTable("acct_settings", {
   bookingFeeRefundable: boolean("booking_fee_refundable").notNull().default(false),
   xeSettings: jsonb("xe_settings").notNull().default({}), // { accountId, apiKeyEnc, keyHint, lastRates, lastAt, lastError } — XE Currency Data API
   monitorSettings: jsonb("monitor_settings").notNull().default({}), // thresholds for coded checks + forecast assumptions (server/accounting/monitor.ts); {} = defaults
+  payoutSettings: jsonb("payout_settings").notNull().default({}), // { live|test: { keyEnc, keyHint, financialAccountId, … } } — Stripe Global Payouts (server/accounting/stripe-payouts.ts)
   aiSettings: jsonb("ai_settings").notNull().default({}), // { enabled, model, apiKeyEnc, keyHint, instructions } — the key is encrypted, never returned // platform policy: refunds never reduce Bilit's booking fee // seller details + VAT treatment for customer invoices // { eur: "0.85", usd: "0.74" } = 1 unit of key in the reporting currency; reporting only, never posted
   updatedBy: uuid("updated_by").references(() => users.id),
   updatedAt: updatedAt(),
@@ -63,6 +64,7 @@ export const acctOrganisers = pgTable("acct_organisers", {
   internalRef: text("internal_ref"),
   bankDetailsEnc: text("bank_details_enc"), // encrypted JSON {accountHolder, iban, bic, bankName, notes}
   bankHint: text("bank_hint"), // masked, e.g. "DE89 …3000"
+  stripeRecipientId: text("stripe_recipient_id"), // Stripe Global Payouts recipient (acct_…) used by "Send money"
   notes: text("notes"),
   active: boolean("active").notNull().default(true),
   createdBy: uuid("created_by").references(() => users.id),
@@ -725,6 +727,7 @@ export const acctProfitPartners = pgTable("acct_profit_partners", {
   shareBps: integer("share_bps").notNull(), // 1000 = 10%
   appliesFrom: date("applies_from"), // events starting on/after this date; null = all events
   lossesCount: boolean("losses_count").notNull().default(false), // false: an event with a loss gives a 0 share
+  stripeRecipientId: text("stripe_recipient_id"), // Stripe Global Payouts recipient (acct_…) used by "Send money"
   active: boolean("active").notNull().default(true),
   notes: text("notes"),
   createdBy: uuid("created_by").references(() => users.id),
@@ -752,3 +755,49 @@ export const acctPartnerPayments = pgTable("acct_partner_payments", {
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: createdAt(),
 }, (t) => [index("acct_partner_payments_partner_idx").on(t.partnerId, t.paymentDate), check("acct_partner_payments_amount_ck", sql`${t.amount} > 0`)]);
+
+// ---------- Stripe Global Payouts ----------
+/**
+ * Money sent from Bilit's Stripe financial account with the OutboundPayments v2 API. The matching book entry (organiser
+ * payment / partner payment / bill paid) is created when Stripe accepts the payment and voided if Stripe reports it
+ * failed, returned or cancelled. status: SENDING (request in flight / outcome unknown) | PROCESSING | POSTED | FAILED |
+ * RETURNED | CANCELED | REJECTED (Stripe refused the request; nothing was sent).
+ */
+export const acctStripeOutbound = pgTable("acct_stripe_outbound", {
+  id: id(),
+  organisationId: org(),
+  livemode: boolean("livemode").notNull(),
+  payeeType: text("payee_type").notNull(), // ORGANISER | PARTNER | BILL
+  organiserId: uuid("organiser_id").references(() => acctOrganisers.id),
+  eventId: uuid("event_id").references(() => acctEvents.id),
+  partnerId: uuid("partner_id").references(() => acctProfitPartners.id),
+  billId: uuid("bill_id").references(() => acctBills.id),
+  payeeName: text("payee_name").notNull(),
+  recipientId: text("recipient_id").notNull(),
+  payoutMethodId: text("payout_method_id"),
+  payoutMethodLabel: text("payout_method_label"),
+  financialAccountId: text("financial_account_id").notNull(),
+  amount: money("amount").notNull(), // debited from the financial account, minor units of `currency`
+  currency: text("currency").notNull(),
+  toCurrency: text("to_currency"),
+  creditedAmount: money("credited_amount"),
+  feeAmount: money("fee_amount").notNull().default(0), // Stripe's estimated fees from the quote (shown before sending; not posted to the ledger)
+  description: text("description"),
+  statementDescriptor: text("statement_descriptor"),
+  quoteId: text("quote_id"),
+  verificationId: text("verification_id"),
+  verificationResult: text("verification_result"),
+  stripeId: text("stripe_id"),
+  status: text("status").notNull(),
+  stripeStatus: text("stripe_status"),
+  failure: text("failure"),
+  organiserPaymentId: uuid("organiser_payment_id").references(() => acctOrganiserPayments.id),
+  partnerPaymentId: uuid("partner_payment_id").references(() => acctPartnerPayments.id),
+  raw: jsonb("raw"),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+}, (t) => [
+  index("acct_stripe_outbound_org_idx").on(t.organisationId, t.livemode, t.createdAt.desc()),
+  uniqueIndex("acct_stripe_outbound_stripe_uq").on(t.stripeId).where(sql`${t.stripeId} is not null`),
+  check("acct_stripe_outbound_amount_ck", sql`${t.amount} > 0`),
+]);

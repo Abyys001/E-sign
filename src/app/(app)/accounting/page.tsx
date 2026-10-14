@@ -4,7 +4,7 @@ import { StripeBalance, StripePayouts } from "@/components/accounting/payments";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { AlertTriangle, ArrowRight, Banknote, Coins, HandCoins, Landmark, Percent, PiggyBank, Receipt, RefreshCw, Scale, ShieldAlert, TrendingUp, Undo2, Users, Wallet, type LucideIcon } from "lucide-react";
-import { AmountCard, Money, RangePicker, rangeFor, rangeQuery, useMode, type RangeKey, type Tone } from "@/components/accounting/kit";
+import { AmountCard, FinanceShortcuts, Money, RangePicker, rangeFor, rangeQuery, useMode, type RangeKey, type Tone } from "@/components/accounting/kit";
 import { Card, CardHeader, PageHeader, Stat } from "@/components/ui/card";
 import { Callout, EmptyState, Skeleton } from "@/components/ui/feedback";
 import { Select } from "@/components/ui/form";
@@ -40,6 +40,7 @@ export default function FinanceDashboard() {
   return (
     <div>
       <PageHeader title={t("title")} description={t("sub")} actions={<>{curPicker}<RangePicker value={range} onChange={setRange} /></>} />
+      <FinanceShortcuts />
       <StripeBalance />
       <StripePayouts />
       {loading && !data ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="h-28" />)}</div>

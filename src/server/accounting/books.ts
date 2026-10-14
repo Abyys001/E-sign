@@ -140,6 +140,20 @@ export async function payBill(a: Actor, id: string, input: z.infer<typeof BillPa
   });
 }
 
+/** Undo a bill payment that did not go through (e.g. a Stripe payout that failed or was returned): reverses the payment entry, back to UNPAID. */
+export async function unpayBill(a: Actor, id: string, reason: string) {
+  return db.transaction(async (tx) => {
+    const { timezone } = await getAcctSettings(a.orgId, tx);
+    const b = await lockBill(tx, a.orgId, id);
+    if (b.kind !== "BILL" || b.status !== "PAID") throw new AppError("invalid_state", "Only paid supplier invoices can be set back to unpaid.");
+    if (b.paymentEntryId) await reverseEntry(tx, { orgId: a.orgId, entryId: b.paymentEntryId, reason, userId: a.userId, timezone });
+    // the revision bump gives the next payment its own ledger idempotency key
+    const [row] = await tx.update(schema.acctBills).set({ status: "UNPAID", paidDate: null, paidFrom: null, paymentReference: null, paymentEntryId: null, revision: b.revision + 1, updatedBy: a.userId, updatedAt: new Date() }).where(eq(schema.acctBills.id, id)).returning();
+    await acctAudit(tx, { ...a, action: "bill.unpaid", entity: "bill", entityId: id, old: { status: "PAID", paymentReference: b.paymentReference }, new: { status: "UNPAID" }, reason });
+    return row!;
+  });
+}
+
 export async function editBill(a: Actor, id: string, input: z.infer<typeof BillEdit>) {
   return db.transaction(async (tx) => {
     const { timezone } = await getAcctSettings(a.orgId, tx);

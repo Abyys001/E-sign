@@ -8,6 +8,7 @@ import { AiSettingsCard } from "@/components/accounting/accountant";
 import { WiseSettingsCard } from "@/components/accounting/wise-settings";
 import { XeSettingsCard } from "@/components/accounting/xe-settings";
 import { MonitorSettingsCard } from "@/components/accounting/monitor-settings";
+import { PayoutSettingsCard } from "@/components/accounting/payout-settings";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardHeader, PageHeader } from "@/components/ui/card";
 import { Callout, Skeleton } from "@/components/ui/feedback";
@@ -58,6 +59,7 @@ export default function FinanceSettings() {
       </div></Card>
       <InvoiceSettingsCard admin={admin} />
       <AiSettingsCard admin={admin} />
+      <div id="payouts" className="scroll-mt-24"><PayoutSettingsCard admin={admin} /></div>
       <div id="wise" className="scroll-mt-24"><WiseSettingsCard admin={admin} /></div>
       <div id="xe" className="scroll-mt-24"><XeSettingsCard admin={admin} /></div>
       <div id="monitor" className="scroll-mt-24"><MonitorSettingsCard admin={admin} /></div>
