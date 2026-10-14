@@ -70,7 +70,7 @@ export const EventInput = z.object({
   name: z.string().trim().min(1).max(200),
   code: z.string().trim().regex(EVENT_CODE_RE, "2–64 characters: letters, digits, dot, dash or underscore").transform((c) => c.toUpperCase()),
   currency: Currency, organiserId: z.string().uuid().optional().nullable(), startsOn: IsoDate.optional().nullable(),
-  status: z.enum(["ACTIVE", "INACTIVE", "CANCELLED", "ARCHIVED"]).default("ACTIVE"), notes: opt(2000),
+  status: z.enum(["ACTIVE", "COMPLETED", "INACTIVE", "CANCELLED", "ARCHIVED"]).default("ACTIVE"), notes: opt(2000),
   agreement: AgreementInput,
 });
 

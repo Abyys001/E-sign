@@ -198,7 +198,7 @@ const TONE: Record<string, "done" | "active" | "idle" | "stopped"> = {
   MATCHED: "done", REFUND: "done", DISPUTE: "active", UNMATCHED: "stopped", PARTIAL: "active", DUPLICATE: "stopped", MANUAL_REVIEW: "stopped", ERROR: "stopped",
   NOT_APPLICABLE: "idle", POSTED: "done", REVERSED: "idle", PAID: "done", PENDING: "active", VOIDED: "idle", OPEN: "active", CLOSED: "done",
   SUCCEEDED: "done", RUNNING: "active", QUEUED: "idle", FAILED: "stopped", PROCESSED: "done", RECEIVED: "idle", IGNORED: "idle",
-  CONNECTED: "done", DISCONNECTED: "idle", ACTIVE: "done", INACTIVE: "idle", CANCELLED: "stopped", ARCHIVED: "idle", WON: "done", LOST: "stopped",
+  CONNECTED: "done", DISCONNECTED: "idle", ACTIVE: "done", COMPLETED: "done", INACTIVE: "idle", CANCELLED: "stopped", ARCHIVED: "idle", WON: "done", LOST: "stopped",
   paid: "done", pending: "active", in_transit: "active", canceled: "idle", failed: "stopped",
   SENDING: "active", PROCESSING: "active", RETURNED: "stopped", CANCELED: "idle", REJECTED: "stopped",
 };

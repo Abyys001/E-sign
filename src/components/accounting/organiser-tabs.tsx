@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { Banknote, CheckCircle2, Download, Eye, FileDown, FileSignature, Link2, Pencil, ShieldAlert, ShieldCheck, Trash2, Unlink } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm";
 import { Callout, EmptyState, Skeleton } from "@/components/ui/feedback";
-import { Field, Input, Select, Textarea } from "@/components/ui/form";
+import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
 import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
@@ -116,6 +116,7 @@ export function OrganiserReports({ id, currencies }: { id: string; currencies: s
   ];
   return (
     <div className="space-y-4">
+      <SettlementStatement id={id} />
       <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
         <div><h2 className="font-semibold">{t("title")}</h2><p className="text-sm text-muted">{t("desc")}</p></div>
         <div className="flex flex-wrap items-center gap-2"><RangePicker value={range} onChange={setRange} />
@@ -129,6 +130,71 @@ export function OrganiserReports({ id, currencies }: { id: string; currencies: s
         </Card>
       ))}</div>
     </div>
+  );
+}
+
+// ---------- settlement statement (finished events) ----------
+type FinRow = { eventId: string; eventName: string; eventCode: string; eventStatus: string; startsOn: string | null; currency: string; organiserDue: number; organiserPaid: number };
+type FinData = { totals: Array<{ currency: string; organiserPaid: number }>; events: FinRow[] };
+const isFinished = (e: FinRow, today: string) => e.eventStatus === "COMPLETED" || e.eventStatus === "CANCELLED" || (!!e.startsOn && e.startsOn < today);
+
+/** Pick events (finished ones pre-ticked) and download a settlement statement: each event, every payment, balance due. */
+export function SettlementStatement({ id }: { id: string }) {
+  const t = useTranslations("accounting.organisers.rep.st");
+  const { q } = useMode();
+  const { can } = useMe();
+  const toast = useToast();
+  const fin = useApi<FinData>(q(`/api/accounting/organisers/${id}/financials`));
+  const [picked, setPicked] = useState<Set<string> | null>(null);
+  const today = new Date().toISOString().slice(0, 10);
+  const events = useMemo(() => [...new Map((fin.data?.events ?? []).map((e) => [e.eventId, e])).values()], [fin.data]);
+  useEffect(() => { if (fin.data && picked === null) setPicked(new Set(events.filter((e) => isFinished(e, today)).map((e) => e.eventId))); }, [fin.data, events, picked, today]);
+  const sel = useMemo(() => picked ?? new Set<string>(), [picked]);
+  const toggle = (eid: string) => { const n = new Set(sel); if (n.has(eid)) n.delete(eid); else n.add(eid); setPicked(n); };
+  const markFinished = async (eid: string) => { try { await api(`/api/accounting/events/${eid}`, { method: "PATCH", json: { status: "COMPLETED", reason: "Event finished" } }); toast("ok", t("finished")); setPicked(new Set([...sel, eid])); await fin.reload(); } catch (e) { toast("error", errMsg(e)); } };
+  // preview per currency: due on picked events − paid on them − payments on account (not tied to an event)
+  const preview = useMemo(() => {
+    const rows = fin.data?.events ?? [];
+    const by = new Map<string, { due: number; paid: number; onAccount: number }>();
+    for (const r of rows) if (sel.has(r.eventId)) { const g = by.get(r.currency) ?? { due: 0, paid: 0, onAccount: 0 }; g.due += r.organiserDue; g.paid += r.organiserPaid; by.set(r.currency, g); }
+    for (const tot of fin.data?.totals ?? []) { const g = by.get(tot.currency); if (g) g.onAccount = tot.organiserPaid - rows.filter((r) => r.currency === tot.currency).reduce((a, r) => a + r.organiserPaid, 0); }
+    return [...by.entries()].map(([c, g]) => ({ c, ...g, balance: g.due - g.paid - g.onAccount }));
+  }, [fin.data, sel]);
+  const ids = [...sel].join(",");
+  const href = (internal: boolean) => q(`/api/accounting/organisers/${id}/report?format=pdf&events=${ids}${internal ? "&internal=1" : ""}`);
+  return (
+    <Card>
+      <CardHeader title={t("title")} description={t("desc")} />
+      {!fin.data ? <div className="p-4"><Skeleton className="h-32" /></div> : !events.length ? <p className="p-5 text-sm text-muted">{t("none")}</p> : <>
+        <TableWrap><Table>
+          <thead><tr><Th><span className="sr-only">{t("selected", { n: sel.size })}</span></Th><Th>{t("event")}</Th><Th>{t("date")}</Th><Th>{t("status")}</Th><Th className="text-end">{t("due")}</Th><Th className="text-end">{t("paid")}</Th><Th /></tr></thead>
+          <tbody>{(fin.data.events).map((e, i, all) => {
+            const first = all.findIndex((x) => x.eventId === e.eventId) === i;
+            return <Tr key={`${e.eventId}-${e.currency}`}>
+              <Td>{first && <Checkbox checked={sel.has(e.eventId)} onChange={() => toggle(e.eventId)} label="" aria-label={e.eventName} />}</Td>
+              <Td className="min-w-52"><Link href={`/accounting/events/${e.eventId}`} className="font-medium underline-offset-4 hover:underline">{e.eventName}</Link><code className="block text-xs text-muted">{e.eventCode}</code></Td>
+              <Td className="whitespace-nowrap text-sm text-muted">{e.startsOn ?? "—"}</Td>
+              <Td><Badge s={e.eventStatus} /></Td>
+              <Td className="text-end"><Money v={e.organiserDue} c={e.currency} /></Td>
+              <Td className="text-end"><Money v={e.organiserPaid} c={e.currency} /></Td>
+              <Td className="text-end">{first && can("accounting.manage") && e.eventStatus === "ACTIVE" && <Button size="sm" variant="ghost" onClick={() => markFinished(e.eventId)}><CheckCircle2 className="size-4" aria-hidden />{t("markFinished")}</Button>}</Td>
+            </Tr>;
+          })}</tbody>
+        </Table></TableWrap>
+        <div className="flex flex-wrap items-end justify-between gap-4 border-t border-line p-4">
+          <div className="space-y-1 text-sm">{preview.length ? preview.map((p) => <div key={p.c} className="flex flex-wrap gap-x-5 gap-y-1">
+            <span>{t("total")}: <Money v={p.due} c={p.c} strong /></span>
+            <span className="text-muted">− {t("paid")}: <Money v={p.paid} c={p.c} /></span>
+            <span className="text-muted">− {t("onAccount")}: <Money v={p.onAccount} c={p.c} /></span>
+            <span className="font-semibold">= {p.balance >= 0 ? t("balance") : t("overpaid")}: <Money v={Math.abs(p.balance)} c={p.c} strong className={p.balance > 0 ? "text-fin-warn" : ""} /></span>
+          </div>) : <span className="text-muted">{t("pickOne")}</span>}</div>
+          <div className="flex flex-wrap gap-2">{sel.size ? <>
+            <a href={href(false)} className={pdfLink}><FileDown className="size-4" aria-hidden />{t("pdf")}</a>
+            <a href={href(true)} className={pdfLink}><FileDown className="size-4" aria-hidden />{t("internal")}</a>
+          </> : null}</div>
+        </div>
+      </>}
+    </Card>
   );
 }
 

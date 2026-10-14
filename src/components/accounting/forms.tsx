@@ -80,7 +80,7 @@ export function EventDialog({ open, onClose, onSaved, initial, eventId }: { open
           <Field label={t("currency")} required error={errs.currency} hint={t("currencyHint")}>{(p) => <Input {...p} value={v.currency} maxLength={3} onChange={(e) => set("currency", e.target.value.toLowerCase())} className="uppercase" />}</Field>
           <Field label={t("organiser")} error={errs.organiserId} hint={t("organiserHint")}>{(p) => <Select {...p} value={v.organiserId} onChange={(e) => set("organiserId", e.target.value)}><option value="">{t("noOrganiser")}</option>{orgs?.items.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</Select>}</Field>
           <Field label={t("startsOn")}>{(p) => <Input {...p} type="date" value={v.startsOn} onChange={(e) => set("startsOn", e.target.value)} />}</Field>
-          <Field label={t("status")}>{(p) => <Select {...p} value={v.status} onChange={(e) => set("status", e.target.value)}>{["ACTIVE", "INACTIVE", "CANCELLED", "ARCHIVED"].map((s) => <option key={s} value={s}>{t(`st.${s}`)}</option>)}</Select>}</Field>
+          <Field label={t("status")}>{(p) => <Select {...p} value={v.status} onChange={(e) => set("status", e.target.value)}>{["ACTIVE", "COMPLETED", "INACTIVE", "CANCELLED", "ARCHIVED"].map((s) => <option key={s} value={s}>{t(`st.${s}`)}</option>)}</Select>}</Field>
         </div>
         <Field label={t("notes")}>{(p) => <Textarea {...p} value={v.notes} onChange={(e) => set("notes", e.target.value)} className="min-h-16" />}</Field>
         {!eventId && <AgreementFields v={ag} onChange={setAg} currency={v.currency || "eur"} />}

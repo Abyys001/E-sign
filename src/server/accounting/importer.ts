@@ -95,7 +95,7 @@ export type Allocation = { eventId: string | null; organiserId: string | null; a
 
 /** Validate that an event can receive money; returns the reason it cannot, or null. */
 export function eventProblem(e: EventInfo, currency: string): string | null {
-  if (e.status !== "ACTIVE") return "EVENT_INACTIVE";
+  if (e.status !== "ACTIVE" && e.status !== "COMPLETED") return "EVENT_INACTIVE"; // a finished event still receives late sales / refunds
   if (!e.organiserId) return "NO_ORGANISER";
   if (!e.agreement) return "NO_AGREEMENT";
   if (e.currency !== currency) return "CURRENCY_MISMATCH";

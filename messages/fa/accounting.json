@@ -98,7 +98,8 @@
     "PROCESSING": "Processing",
     "RETURNED": "Returned",
     "CANCELED": "Cancelled",
-    "REJECTED": "Rejected by Stripe"
+    "REJECTED": "Rejected by Stripe",
+    "COMPLETED": "Finished"
   },
   "kind": {
     "SALE": "Sale",
@@ -314,7 +315,8 @@
       "ACTIVE": "Active",
       "INACTIVE": "Inactive",
       "ARCHIVED": "Archived",
-      "CANCELLED": "Cancelled"
+      "CANCELLED": "Cancelled",
+      "COMPLETED": "Finished"
     },
     "notes": "Notes",
     "changeReason": "Reason for the change",
@@ -495,7 +497,27 @@
         "desc": "All payments made to this organiser."
       },
       "pdf": "Download PDF",
-      "csv": "Download CSV"
+      "csv": "Download CSV",
+      "st": {
+        "title": "Settlement statement",
+        "desc": "Choose the events to settle — finished and cancelled events are ticked for you. The PDF lists each event, every payment made and the balance still due. Payments not tied to an event are applied to this statement.",
+        "event": "Event",
+        "date": "Date",
+        "status": "Status",
+        "due": "Due",
+        "paid": "Paid on event",
+        "none": "This organiser has no events yet.",
+        "pdf": "Statement PDF",
+        "internal": "Internal copy",
+        "markFinished": "Mark finished",
+        "finished": "Marked as finished",
+        "selected": "{n} selected",
+        "total": "Due on selected events",
+        "onAccount": "Payments on account",
+        "balance": "Balance due",
+        "overpaid": "Overpaid",
+        "pickOne": "Tick at least one event."
+      }
     },
     "con": {
       "title": "Contracts",
