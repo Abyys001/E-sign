@@ -77,6 +77,7 @@ const loadStripe = () => (stripeJs ??= new Promise((resolve, reject) => {
 function EmbeddedCheckout({ clientSecret, publishableKey }: { clientSecret: string; publishableKey: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
   useEffect(() => {
     let ec: Embedded | null = null, gone = false;
     (async () => {
@@ -85,12 +86,19 @@ function EmbeddedCheckout({ clientSecret, publishableKey }: { clientSecret: stri
         const make = stripe.createEmbeddedCheckoutPage ?? stripe.initEmbeddedCheckout;
         if (!make) throw new Error("Stripe embedded checkout is unavailable.");
         ec = await make.call(stripe, { fetchClientSecret: async () => clientSecret });
-        if (gone) ec.destroy(); else if (ref.current) ec.mount(ref.current);
+        if (gone) ec.destroy(); else if (ref.current) { ec.mount(ref.current); setReady(true); }
       } catch (e) { if (!gone) setErr(errMsg(e)); }
     })();
     return () => { gone = true; ec?.destroy(); };
   }, [clientSecret, publishableKey]);
-  return err ? <p role="alert" className="rounded-xl bg-[#fde8e8] p-3 text-sm text-[#b42318]">{err}</p> : <div ref={ref} className="-mx-2 min-h-96 sm:-mx-4"><Loader2 className="mx-auto mt-16 size-6 animate-spin opacity-60" aria-hidden /></div>;
+  if (err) return <p role="alert" className="rounded-xl bg-[#fde8e8] p-3 text-sm text-[#b42318]">{err}</p>;
+  // Stripe mounts into an EMPTY element; the spinner is a sibling shown until Stripe's frame is in place
+  return (
+    <div className="relative -mx-2 min-h-96 sm:-mx-4">
+      {!ready && <Loader2 className="absolute inset-x-0 top-16 mx-auto size-6 animate-spin opacity-60" aria-hidden />}
+      <div ref={ref} />
+    </div>
+  );
 }
 
 export function PayPage({ link }: { link: PublicLink }) {
