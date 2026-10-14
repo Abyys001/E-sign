@@ -36,13 +36,13 @@ export type Figures = {
   processingFees: number; feesRecharged: number; bilitProcessingFees: number;
   organiserShare: number; deductions: number; expensesBilit: number; expensesOrganiser: number; otherCosts: number;
   organiserDue: number; organiserPaid: number; remaining: number; pendingPayments: number; bookingFeesRefunded: number;
-  bilitProfit: number; profitShare: number; settlement: SettlementStatus;
+  bilitProfit: number; profitShare: number; cashback: number; settlement: SettlementStatus;
 };
 
 const ZERO = (currency: string): Figures => ({
   currency, tickets: 0, orders: 0, grossSales: 0, refunds: 0, chargebacks: 0, netSales: 0, bookingFees: 0, eventFees: 0, otherRevenue: 0, bilitRevenue: 0,
   processingFees: 0, feesRecharged: 0, bilitProcessingFees: 0, organiserShare: 0, deductions: 0, expensesBilit: 0, expensesOrganiser: 0, otherCosts: 0,
-  organiserDue: 0, organiserPaid: 0, remaining: 0, pendingPayments: 0, bookingFeesRefunded: 0, bilitProfit: 0, profitShare: 0, settlement: "NOTHING_DUE",
+  organiserDue: 0, organiserPaid: 0, remaining: 0, pendingPayments: 0, bookingFeesRefunded: 0, bilitProfit: 0, profitShare: 0, cashback: 0, settlement: "NOTHING_DUE",
 });
 
 type LedgerRow = { dim: string; currency: string; key: string | null; type: string; src: string | null; inp: boolean; d: string; c: string };
@@ -58,7 +58,7 @@ function fold(ledger: LedgerRow[], bts: BtRow[], pending: Array<{ dim: string; c
     // Settlement is cumulative (everything up to the end of the range), the rest is period activity.
     if (r.key === "organiser_payable") {
       if (r.src === "organiser_payment") f.organiserPaid += dr; else f.organiserDue += cr;
-      if (r.src !== "organiser_payment" && r.src !== "stripe_balance_transaction" && r.inp) f.deductions += dr;
+      if (r.src !== "organiser_payment" && r.src !== "stripe_balance_transaction" && r.src !== "organiser_cashback" && r.inp) f.deductions += dr;
       if (r.src === "event_expense" && r.inp) f.expensesOrganiser += dr;
     }
     if (!r.inp) continue;
@@ -73,6 +73,7 @@ function fold(ledger: LedgerRow[], bts: BtRow[], pending: Array<{ dim: string; c
       case "organiser_share": f.organiserShare += dr; break;
       case "other_expenses": if (r.src === "event_expense") f.expensesBilit += dr; else f.otherCosts += dr; break;
       case "profit_share": f.profitShare += dr; break;
+      case "organiser_cashback": f.cashback += dr; break;
     }
     if (r.type === "REVENUE") f.bilitProfit += cr;
     if (r.type === "EXPENSE") f.bilitProfit -= dr;

@@ -162,6 +162,13 @@
       "when": 1791507234374,
       "tag": "0022_treasury_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791510834374,
+      "tag": "0023_organiser_cashback",
+      "breakpoints": true
     }
   ]
 }

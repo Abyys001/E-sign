@@ -22,7 +22,7 @@ import { useToast } from "@/components/ui/toast";
 import { api, errMsg, useApi } from "@/lib/api";
 
 type Bal = { currency: string; grossSales: number; refunds: number; chargebacks: number; stripeFeesRecharged: number; commission: number; organiserPayable: number; organiserPayments: number; organiserOutstanding: number };
-type D = { organiser: { id: string; name: string; email: string | null; companyName: string | null; vatNumber: string | null; address: string | null; internalRef: string | null; notes: string | null; active: boolean; hasBankDetails: boolean; bankHint: string | null };
+type D = { organiser: { id: string; name: string; email: string | null; companyName: string | null; vatNumber: string | null; address: string | null; internalRef: string | null; notes: string | null; active: boolean; hasBankDetails: boolean; bankHint: string | null; cashbackBps: number; cashbackFrom: string | null };
   events: Array<{ id: string; name: string; code: string; currency: string; status: string }>; balances: Bal[] };
 type Row = { entryId: string; date: string; entryType: string; description: string; order: string | null; customer: string | null; eventName: string | null; eventCode: string | null; sales: number; refunds: number; fees: number; commission: number; payments: number; change: number; balance: number };
 
@@ -60,7 +60,7 @@ function OrganiserDetail({ id }: { id: string }) {
   const reveal = async () => { if (!(await ensure())) return; try { setBank((await api<{ bankDetails: Record<string, string | null> }>(`/api/accounting/organisers/${id}/bank`)).bankDetails); } catch (e) { toast("error", errMsg(e)); } };
   return (
     <div className="space-y-6">
-      <PageHeader title={<span className="flex items-center gap-3">{o.name} <Badge s={o.active ? "ACTIVE" : "INACTIVE"} /></span>} description={o.companyName ?? undefined}
+      <PageHeader title={<span className="flex items-center gap-3">{o.name} <Badge s={o.active ? "ACTIVE" : "INACTIVE"} /></span>} description={[o.companyName, o.cashbackBps ? t("cashbackBadge", { pct: o.cashbackBps / 100 }) : null].filter(Boolean).join(" · ") || undefined}
         actions={<><LinkButton href="/accounting/organisers"><ArrowLeft className="size-4 rtl:rotate-180" aria-hidden />{t("back")}</LinkButton>
           {can("accounting.manage") && <><Button onClick={() => setEdit(true)}><Pencil className="size-4" aria-hidden />{t("edit")}</Button><Button onClick={() => setAgent(true)}><Bot className="size-4" aria-hidden />{ta("open")}</Button><Button variant="primary" onClick={() => setPay(true)}><Banknote className="size-4" aria-hidden />{t("recordPayment")}</Button></>}
           {can("accounting.admin") && <LinkButton href={`/accounting/payouts?type=ORGANISER&id=${id}`}><Send className="size-4" aria-hidden />{tp("payStripe")}</LinkButton>}</>} />
@@ -101,7 +101,7 @@ function OrganiserDetail({ id }: { id: string }) {
       </Card>
       </>}
       </div>
-      {edit && <OrganiserDialog open={edit} onClose={() => setEdit(false)} onSaved={() => void reload()} organiserId={id} hasBank={o.hasBankDetails} initial={{ name: o.name, email: o.email ?? "", companyName: o.companyName ?? "", vatNumber: o.vatNumber ?? "", address: o.address ?? "", internalRef: o.internalRef ?? "", notes: o.notes ?? "", active: o.active }} />}
+      {edit && <OrganiserDialog open={edit} onClose={() => setEdit(false)} onSaved={() => void reload()} organiserId={id} hasBank={o.hasBankDetails} initial={{ name: o.name, email: o.email ?? "", companyName: o.companyName ?? "", vatNumber: o.vatNumber ?? "", address: o.address ?? "", internalRef: o.internalRef ?? "", notes: o.notes ?? "", active: o.active, cashbackPercent: o.cashbackBps ? String(o.cashbackBps / 100) : "", cashbackFrom: o.cashbackFrom ?? "" }} />}
       {linkOpen && <LinkEventsDialog organiserId={id} onClose={() => setLinkOpen(false)} onSaved={() => { void reload(); void st.reload(); }} />}
       {agent && <PaymentAgentDialog open={agent} onClose={() => setAgent(false)} onSaved={() => { void reload(); void st.reload(); setRefresh((x) => x + 1); }} organiserId={id} />}
       {pay && <PaymentDialog open={pay} onClose={() => setPay(false)} onSaved={() => { void reload(); void st.reload(); setRefresh((x) => x + 1); }} mode={mode} organiserId={id} />}

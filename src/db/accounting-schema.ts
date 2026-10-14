@@ -66,6 +66,8 @@ export const acctOrganisers = pgTable("acct_organisers", {
   bankDetailsEnc: text("bank_details_enc"), // encrypted JSON {accountHolder, iban, bic, bankName, notes}
   bankHint: text("bank_hint"), // masked, e.g. "DE89 …3000"
   stripeRecipientId: text("stripe_recipient_id"), // Stripe Global Payouts recipient (acct_…) used by "Send money"
+  cashbackBps: integer("cashback_bps").notNull().default(0), // cashback on finished events, % × 100 of ticket sales after refunds excl. booking fees (server/accounting/cashback.ts)
+  cashbackFrom: date("cashback_from"), // only events on/after this date (null = all)
   notes: text("notes"),
   active: boolean("active").notNull().default(true),
   createdBy: uuid("created_by").references(() => users.id),

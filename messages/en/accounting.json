@@ -553,7 +553,14 @@
       "notLive": "No active contract — do not put this event live",
       "manage": "Manage contracts",
       "cancel": "Cancel"
-    }
+    },
+    "cashback": "Cashback",
+    "cashbackHelp": "A % of each finished event's ticket sales after refunds (excluding the booking fee) that Bilit gives back to this organiser. It is added to what they are owed and paid with the settlement. Applied when an event is marked Finished.",
+    "cashbackPercent": "Cashback %",
+    "cashbackFrom": "Applies to events from",
+    "cashbackFromHint": "Leave empty for all events.",
+    "cashbackInvalid": "Enter a percentage between 0 and 100.",
+    "cashbackBadge": "{pct}% cashback on finished events"
   },
   "payments": {
     "title": "Organiser payments",

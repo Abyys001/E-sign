@@ -6,6 +6,7 @@ import { body } from "@/server/http";
 import { uuid } from "@/server/api";
 import { AppError } from "@/server/errors";
 import { OrganiserInput, organiserView, updateOrganiser } from "@/server/accounting/entities";
+import { syncCashback } from "@/server/accounting/cashback";
 import { listEvents } from "@/server/accounting/queries";
 import { dimensionSummary } from "@/server/accounting/reports";
 
@@ -21,5 +22,7 @@ export const GET = acct<{ id: string }>("accounting.view", async ({ auth, params
 export const PATCH = acct<{ id: string }>("accounting.manage", async ({ req, auth, ctx, params }) => {
   const b = await body(req, OrganiserInput.partial().extend({ reason: z.string().trim().max(500).optional() }));
   const { reason, ...patch } = b;
-  return organiserView(await updateOrganiser({ orgId: auth.organisationId, userId: auth.user.id, ctx }, uuid(params.id, "Organiser"), patch, reason));
+  const o = await updateOrganiser({ orgId: auth.organisationId, userId: auth.user.id, ctx }, uuid(params.id, "Organiser"), patch, reason);
+  if (patch.cashbackPercent !== undefined || patch.cashbackFrom !== undefined) for (const m of ["live", "test"] as const) await syncCashback(auth.organisationId, m, { userId: auth.user.id, organiserId: o.id });
+  return organiserView(o);
 });

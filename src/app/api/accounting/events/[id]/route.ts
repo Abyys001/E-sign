@@ -1,4 +1,5 @@
 import { rematchUnmatched } from "@/server/accounting/manual";
+import { syncCashback } from "@/server/accounting/cashback";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { acct } from "@/server/accounting/http";
@@ -19,5 +20,8 @@ export const GET = acct<{ id: string }>("accounting.view", async ({ auth, params
 
 export const PATCH = acct<{ id: string }>("accounting.manage", async ({ req, auth, ctx, params }) => {
   const ev = await updateEvent({ orgId: auth.organisationId, userId: auth.user.id, ctx }, uuid(params.id, "Event"), await body(req, EventPatch));
-  return { ...ev, rematch: await rematchUnmatched(auth.organisationId, { userId: auth.user.id }) };
+  const rematch = await rematchUnmatched(auth.organisationId, { userId: auth.user.id });
+  // finishing / re-opening an event changes the organiser's cashback
+  if (ev.organiserId) for (const m of ["live", "test"] as const) await syncCashback(auth.organisationId, m, { userId: auth.user.id, organiserId: ev.organiserId });
+  return { ...ev, rematch };
 });

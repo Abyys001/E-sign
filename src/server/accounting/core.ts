@@ -59,6 +59,7 @@ export const SYSTEM_ACCOUNTS = {
   event_costs: { code: "6900", name: "Event Production Costs", type: "EXPENSE" },
   // profit share (e.g. web developer's % of each event's profit)
   profit_share: { code: "6950", name: "Profit Share (Partners)", type: "EXPENSE" },
+  organiser_cashback: { code: "6960", name: "Organiser Cashback", type: "EXPENSE" },
   profit_share_payable: { code: "2400", name: "Profit Share Payable", type: "LIABILITY" },
 } as const;
 export type SystemAccount = keyof typeof SYSTEM_ACCOUNTS;

@@ -6,6 +6,7 @@ import { AppError } from "../errors";
 import { C, hasRtl, load, rtl } from "../signing/certificate";
 import { isLive, type Mode } from "./core";
 import { organiserFinancials, totalsByCurrency } from "./finance";
+import { syncCashback } from "./cashback";
 import { getInvoiceSettings, registrationLines } from "./invoices";
 import { organiserContracts } from "./organiser-contracts";
 
@@ -29,6 +30,7 @@ export function statementLines(events: Array<{ currency: string; organiserDue: n
 /** Everything the organiser report shows, also used by the organiser page (payments + refunds lists). */
 export async function organiserReportData(orgId: string, mode: Mode, organiserId: string, r: Range) {
   const live = isLive(mode);
+  await syncCashback(orgId, mode, { organiserId }); // statements always show current cashback
   const [o] = await db.select().from(schema.acctOrganisers).where(and(eq(schema.acctOrganisers.id, organiserId), eq(schema.acctOrganisers.organisationId, orgId)));
   if (!o) throw new AppError("not_found", "Organiser not found");
   const p = schema.acctOrganiserPayments;
@@ -142,6 +144,7 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
       ["Refunds & chargebacks", -(f.refunds + f.chargebacks)],
       ...(f.feesRecharged ? [["Payment processing fees charged", -f.feesRecharged] as [string, number]] : []),
       ...(f.deductions ? [["Other deductions", -f.deductions] as [string, number]] : []),
+      ...(f.cashback ? [[`Cashback from ${seller.name}${o.cashbackBps ? ` (${o.cashbackBps / 100}% of ticket sales after refunds)` : ""}`, f.cashback] as [string, number]] : []),
       ...(() => {
         const l = st?.find((x) => x.currency === c);
         if (!l) return [["Amount due to organiser", f.organiserDue, true], ["Paid to organiser", -f.organiserPaid], ["Balance remaining", f.remaining, true]] as Array<[string, number, boolean?]>;

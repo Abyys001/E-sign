@@ -92,7 +92,7 @@ export function EventDialog({ open, onClose, onSaved, initial, eventId }: { open
 }
 
 // ---------- organiser ----------
-export type OrganiserValue = { name: string; email: string; companyName: string; vatNumber: string; address: string; internalRef: string; notes: string; active: boolean };
+export type OrganiserValue = { name: string; email: string; companyName: string; vatNumber: string; address: string; internalRef: string; notes: string; active: boolean; cashbackPercent?: string; cashbackFrom?: string };
 type Bank = { accountHolder: string; iban: string; bic: string; bankName: string; notes: string };
 const emptyBank = (): Bank => ({ accountHolder: "", iban: "", bic: "", bankName: "", notes: "" });
 
@@ -111,7 +111,10 @@ export function OrganiserDialog({ open, onClose, onSaved, initial, organiserId, 
     setBusy(true); setErr(null); setErrs({});
     try {
       const anyBank = Object.values(bank).some((x) => x.trim());
-      const payload = { ...v, email: v.email || null, ...(editBank ? { bankDetails: anyBank ? bank : null } : {}) };
+      const { cashbackPercent, cashbackFrom, ...rest } = v;
+      const cb = Number((cashbackPercent ?? "").replace(",", ".") || 0);
+      if (!Number.isFinite(cb) || cb < 0 || cb > 100) { setErrs({ cashbackPercent: t("cashbackInvalid") }); return; }
+      const payload = { ...rest, email: v.email || null, cashbackPercent: cb, cashbackFrom: cashbackFrom || null, ...(editBank ? { bankDetails: anyBank ? bank : null } : {}) };
       const r = organiserId ? await api<{ id: string }>(`/api/accounting/organisers/${organiserId}`, { method: "PATCH", json: payload }) : await api<{ id: string }>("/api/accounting/organisers", { json: payload });
       toast("ok", c("saved")); onSaved(r.id); onClose();
     } catch (e) { setErrs(fieldErrors(e)); setErr(errMsg(e)); } finally { setBusy(false); }
@@ -130,6 +133,14 @@ export function OrganiserDialog({ open, onClose, onSaved, initial, organiserId, 
           <div className="flex items-end pb-2"><Checkbox label={t("active")} checked={v.active} onChange={(e) => set("active", e.target.checked)} /></div>
         </div>
         <Field label={t("address")}>{(p) => <Textarea {...p} value={v.address} onChange={(e) => set("address", e.target.value)} className="min-h-16" />}</Field>
+        <fieldset className="space-y-3 rounded-xl border border-line p-4">
+          <legend className="px-1 text-sm font-semibold">{t("cashback")}</legend>
+          <p className="text-xs text-muted">{t("cashbackHelp")}</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t("cashbackPercent")} error={errs.cashbackPercent}>{(p) => <Input {...p} inputMode="decimal" placeholder="0" value={v.cashbackPercent ?? ""} onChange={(e) => set("cashbackPercent", e.target.value)} />}</Field>
+            <Field label={t("cashbackFrom")} hint={t("cashbackFromHint")}>{(p) => <Input {...p} type="date" value={v.cashbackFrom ?? ""} onChange={(e) => set("cashbackFrom", e.target.value)} />}</Field>
+          </div>
+        </fieldset>
         <fieldset className="space-y-3 rounded-xl border border-line p-4">
           <legend className="px-1 text-sm font-semibold">{t("bank")}</legend>
           <p className="text-xs text-muted">{t("bankHelp")}</p>

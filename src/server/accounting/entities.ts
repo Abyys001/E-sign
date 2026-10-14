@@ -16,6 +16,7 @@ export const OrganiserInput = z.object({
   name: z.string().trim().min(1).max(200), email: z.string().trim().email().max(200).optional().nullable().or(z.literal("").transform(() => null)),
   companyName: opt(200), vatNumber: opt(40), address: opt(1000), internalRef: opt(60), notes: opt(2000), active: z.boolean().default(true),
   bankDetails: BankDetails.optional().nullable(),
+  cashbackPercent: z.number().min(0).max(100).optional(), cashbackFrom: IsoDate.optional().nullable(),
 });
 const bankHint = (b: z.infer<typeof BankDetails>) => {
   const iban = b.iban?.replace(/\s/g, "");
@@ -26,7 +27,8 @@ export const organiserView = (o: OrganiserRow, withBank = false) => {
   const { bankDetailsEnc, ...rest } = o;
   return { ...rest, hasBankDetails: !!bankDetailsEnc, bankDetails: withBank && bankDetailsEnc ? BankDetails.parse(JSON.parse(decrypt(bankDetailsEnc))) : undefined };
 };
-const auditable = (o: OrganiserRow) => ({ name: o.name, email: o.email, companyName: o.companyName, vatNumber: o.vatNumber, internalRef: o.internalRef, active: o.active, bankHint: o.bankHint });
+const auditable = (o: OrganiserRow) => ({ name: o.name, email: o.email, companyName: o.companyName, vatNumber: o.vatNumber, internalRef: o.internalRef, active: o.active, bankHint: o.bankHint, cashbackBps: o.cashbackBps, cashbackFrom: o.cashbackFrom });
+const cashbackCols = (i: { cashbackPercent?: number; cashbackFrom?: string | null }) => ({ ...(i.cashbackPercent !== undefined ? { cashbackBps: Math.round(i.cashbackPercent * 100) } : {}), ...(i.cashbackFrom !== undefined ? { cashbackFrom: i.cashbackFrom } : {}) });
 
 function uniqueViolation(e: unknown, what: string): never {
   const code = (e as { cause?: { code?: string }; code?: string }).cause?.code ?? (e as { code?: string }).code;
@@ -37,7 +39,7 @@ function uniqueViolation(e: unknown, what: string): never {
 export async function createOrganiser(a: Actor, input: z.infer<typeof OrganiserInput>) {
   return db.transaction(async (tx) => {
     const bank = input.bankDetails ? { bankDetailsEnc: encrypt(JSON.stringify(input.bankDetails)), bankHint: bankHint(input.bankDetails) } : {};
-    const [o] = await tx.insert(schema.acctOrganisers).values({ organisationId: a.orgId, name: input.name, email: input.email ?? null, companyName: input.companyName, vatNumber: input.vatNumber, address: input.address, internalRef: input.internalRef, notes: input.notes, active: input.active, createdBy: a.userId, ...bank }).returning().catch((e) => uniqueViolation(e, "That internal organiser ID"));
+    const [o] = await tx.insert(schema.acctOrganisers).values({ organisationId: a.orgId, name: input.name, email: input.email ?? null, companyName: input.companyName, vatNumber: input.vatNumber, address: input.address, internalRef: input.internalRef, notes: input.notes, active: input.active, createdBy: a.userId, ...cashbackCols(input), ...bank }).returning().catch((e) => uniqueViolation(e, "That internal organiser ID"));
     await acctAudit(tx, { ...a, action: "organiser.created", entity: "organiser", entityId: o!.id, new: auditable(o!) });
     return o!;
   });
@@ -47,9 +49,9 @@ export async function updateOrganiser(a: Actor, id: string, input: Partial<z.inf
   return db.transaction(async (tx) => {
     const [before] = await tx.select().from(schema.acctOrganisers).where(and(eq(schema.acctOrganisers.id, id), eq(schema.acctOrganisers.organisationId, a.orgId))).for("update");
     if (!before) throw new AppError("not_found", "Organiser not found");
-    const { bankDetails, ...rest } = input;
+    const { bankDetails, cashbackPercent, cashbackFrom, ...rest } = input;
     const bank = bankDetails === undefined ? {} : bankDetails === null ? { bankDetailsEnc: null, bankHint: null } : { bankDetailsEnc: encrypt(JSON.stringify(bankDetails)), bankHint: bankHint(bankDetails) };
-    const [o] = await tx.update(schema.acctOrganisers).set({ ...rest, ...bank, updatedAt: new Date() }).where(eq(schema.acctOrganisers.id, id)).returning().catch((e) => uniqueViolation(e, "That internal organiser ID"));
+    const [o] = await tx.update(schema.acctOrganisers).set({ ...rest, ...cashbackCols({ cashbackPercent, cashbackFrom }), ...bank, updatedAt: new Date() }).where(eq(schema.acctOrganisers.id, id)).returning().catch((e) => uniqueViolation(e, "That internal organiser ID"));
     await acctAudit(tx, { ...a, action: "organiser.updated", entity: "organiser", entityId: id, old: auditable(before), new: auditable(o!), reason, extra: bankDetails !== undefined ? { bankDetailsChanged: true } : undefined });
     return o!;
   });
