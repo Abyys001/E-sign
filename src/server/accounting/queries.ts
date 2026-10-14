@@ -14,8 +14,16 @@ const count = async (table: PgTable, where: SQL | undefined) => (await db.select
 export const TxFilter = z.object({
   q: z.string().trim().max(120).optional(), kind: z.string().max(30).optional(), status: z.string().max(30).optional(), unreconciled: z.coerce.boolean().optional(),
   eventId: z.string().uuid().optional(), organiserId: z.string().uuid().optional(), payoutId: z.string().max(60).optional(), from: IsoDate.optional(), to: IsoDate.optional(),
+  sort: z.enum(["date_desc", "date_asc", "amount_desc", "amount_asc"]).optional(),
 });
 export type TxFilter = z.infer<typeof TxFilter>;
+
+function txOrder(sort: TxFilter["sort"]) {
+  if (sort === "date_asc") return [asc(bt.stripeCreatedAt)];
+  if (sort === "amount_desc") return [desc(bt.amount), desc(bt.stripeCreatedAt)];
+  if (sort === "amount_asc") return [asc(bt.amount), desc(bt.stripeCreatedAt)];
+  return [desc(bt.stripeCreatedAt)];
+}
 
 function txWhere(orgId: string, mode: Mode, f: TxFilter) {
   return and(
@@ -35,7 +43,7 @@ export async function listTransactions(orgId: string, mode: Mode, f: TxFilter, p
     db.select({ t: bt, eventName: schema.acctEvents.name, organiserName: schema.acctOrganisers.name, customerName: schema.stripeCharges.customerName })
       .from(bt).leftJoin(schema.acctEvents, eq(schema.acctEvents.id, bt.eventId)).leftJoin(schema.acctOrganisers, eq(schema.acctOrganisers.id, bt.organiserId))
       .leftJoin(schema.stripeCharges, and(eq(schema.stripeCharges.stripeAccountRef, bt.stripeAccountRef), eq(schema.stripeCharges.chargeId, bt.chargeId)))
-      .where(where).orderBy(desc(bt.stripeCreatedAt), desc(bt.id)).limit(page.limit).offset(page.offset),
+      .where(where).orderBy(...txOrder(f.sort), desc(bt.id)).limit(page.limit).offset(page.offset),
     withTotal ? count(bt, where) : Promise.resolve(0),
   ]);
   return { items: rows.map((r) => ({ ...r.t, eventName: r.eventName, organiserName: r.organiserName, customerName: r.customerName })), total };

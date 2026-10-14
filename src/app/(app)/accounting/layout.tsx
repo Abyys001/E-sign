@@ -1,19 +1,19 @@
 "use client";
-import { useTranslations } from "next-intl";
-import { FinanceGate, FinanceNav, ModeBanner, ModeSwitch } from "@/components/accounting/kit";
+import { FinanceGate, FinanceHeader, FinanceNav, FinanceSidebar, ModeBanner } from "@/components/accounting/kit";
 import { FloatingChat } from "@/components/accounting/ai-chat";
 
 export default function FinanceLayout({ children }: { children: React.ReactNode }) {
-  const t = useTranslations("accounting");
   return (
     <FinanceGate>
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted">{t("section")}</p>
-        <ModeSwitch />
-      </div>
+      <FinanceHeader />
       <FinanceNav />
-      <ModeBanner />
-      {children}
+      <div className="flex gap-6">
+        <FinanceSidebar />
+        <div className="min-w-0 flex-1">
+          <ModeBanner />
+          {children}
+        </div>
+      </div>
       <FloatingChat />
     </FinanceGate>
   );

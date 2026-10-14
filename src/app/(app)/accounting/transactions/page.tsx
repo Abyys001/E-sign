@@ -31,10 +31,10 @@ function TransactionsPage() {
   const exp = useExport();
   const sp = useSearchParams();
   const scope = `${sp.get("eventId") ? `&eventId=${sp.get("eventId")}` : ""}${sp.get("organiserId") ? `&organiserId=${sp.get("organiserId")}` : ""}${sp.get("payoutId") ? `&payoutId=${encodeURIComponent(sp.get("payoutId")!)}` : ""}`;
-  const [kind, setKind] = useState(sp.get("kind") ?? ""); const [status, setStatus] = useState(sp.get("status") ?? ""); const [text, setText] = useState(""); const [page, setPage] = useState(1);
+  const [kind, setKind] = useState(sp.get("kind") ?? ""); const [status, setStatus] = useState(sp.get("status") ?? ""); const [text, setText] = useState(sp.get("q") ?? ""); const [page, setPage] = useState(1); const [sort, setSort] = useState("date_desc");
   const [range, setRange] = useState<{ key: RangeKey; from?: string; to?: string }>({ key: "all" });
   const dq = useDebounced(text, 350);
-  const filters = `${scope}${kind ? `&kind=${kind}` : ""}${status ? `&status=${status}` : ""}${dq ? `&q=${encodeURIComponent(dq)}` : ""}${rangeQuery(rangeFor(range.key, range))}`;
+  const filters = `${scope}${kind ? `&kind=${kind}` : ""}${status ? `&status=${status}` : ""}${dq ? `&q=${encodeURIComponent(dq)}` : ""}${rangeQuery(rangeFor(range.key, range))}${sort !== "date_desc" ? `&sort=${sort}` : ""}`;
   const { data, loading } = useApi<{ items: TxRow[]; total: number; page: number; pageSize: number }>(q(`/api/accounting/transactions?page=${page}&pageSize=50${filters}`));
   return (
     <div>
@@ -44,19 +44,21 @@ function TransactionsPage() {
         <Select aria-label={t("kind")} value={kind} onChange={(e) => { setKind(e.target.value); setPage(1); }} className="w-auto"><option value="">{t("allKinds")}</option>{KINDS.map((k) => <option key={k} value={k}>{tk(k)}</option>)}</Select>
         <Select aria-label={t("status")} value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="w-auto"><option value="">{t("allStatuses")}</option>{STATUSES.map((s) => <option key={s} value={s}>{ts(s)}</option>)}</Select>
         <RangePicker value={range} onChange={(v) => { setRange(v); setPage(1); }} />
+        <Select aria-label={t("sort")} value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }} className="w-auto">{["date_desc", "date_asc", "amount_desc", "amount_asc"].map((k) => <option key={k} value={k}>{t(`sorts.${k}`)}</option>)}</Select>
       </div>
       <Card>
         {loading && !data ? <div className="space-y-3 p-4">{Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="h-10" />)}</div> : !data?.items.length ? <EmptyState title={t("empty")} description={t("emptyDesc")} /> : <>
           <TableWrap><Table>
-            <thead><tr><Th>{t("date")}</Th><Th>{t("kind")}</Th><Th>{t("description")}</Th><Th>{t("eventCode")}</Th><Th>{t("event")}</Th><Th className="text-end">{t("gross")}</Th><Th className="text-end">{t("fee")}</Th><Th className="text-end">{t("net")}</Th><Th>{t("status")}</Th></tr></thead>
+            <thead><tr><Th>{t("date")}</Th><Th>{t("kind")}</Th><Th>{t("description")}</Th><Th>{t("eventCode")}</Th><Th>{t("event")}</Th><Th>{t("organiser")}</Th><Th className="text-end">{t("gross")}</Th><Th className="text-end">{t("fee")}</Th><Th className="text-end">{t("net")}</Th><Th>{t("status")}</Th></tr></thead>
             <tbody>{data.items.map((r) => (
               <Tr key={r.id}>
                 <Td className="whitespace-nowrap text-muted">{fmtDate(r.stripeCreatedAt, locale)}</Td>
                 <Td>{tk(r.kind)}</Td>
                 <Td className="max-w-72"><Link href={`/accounting/transactions/${r.id}`} className="block truncate font-medium underline-offset-4 hover:underline">{r.description || r.balanceTransactionId}</Link>{r.customerName && <span className="block truncate text-xs text-muted">{r.customerName}</span>}</Td>
-                <Td>{r.eventCode ? <code className="whitespace-nowrap text-xs font-semibold">{r.eventCode}</code> : <span className="text-muted">—</span>}</Td>
-                <Td>{r.eventName ?? <span className="text-muted">{t("noEvent")}</span>}</Td>
-                <Td className="text-end"><Money v={r.amount} c={r.currency} /></Td>
+                <Td>{r.eventCode ? <code className="whitespace-nowrap text-xs font-semibold">{r.eventCode}</code> : r.kind === "SALE" || r.kind === "REFUND" ? <span className="whitespace-nowrap text-xs text-fin-warn">{t("noCode")}</span> : <span className="text-muted">—</span>}</Td>
+                <Td className="min-w-32">{r.eventName ?? <span className="whitespace-nowrap text-fin-warn">{t("noEvent")}</span>}</Td>
+                <Td className="whitespace-nowrap">{r.organiserName ?? <span className="text-muted">—</span>}</Td>
+                <Td className="text-end"><Money v={r.amount} c={r.currency} className={r.amount < 0 ? "text-fin-neg" : ""} /></Td>
                 <Td className="text-end text-muted"><Money v={r.fee} c={r.currency} /></Td>
                 <Td className="text-end"><Money v={r.net} c={r.currency} strong /></Td>
                 <Td><Badge s={r.reconciliationStatus} /><div><Reason r={r.matchReason} /></div></Td>

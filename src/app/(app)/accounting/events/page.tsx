@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { CalendarPlus, Download, Import, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, CalendarPlus, Download, Import, Search } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { Badge, Money, RangePicker, rangeFor, rangeQuery, useExport, useMode, useOptions, type RangeKey } from "@/components/accounting/kit";
@@ -34,9 +34,11 @@ export default function EventsPage() {
   const [range, setRange] = useState<{ key: RangeKey; from?: string; to?: string }>({ key: "all" });
   const [f, setF] = useState({ q: "", organiserId: "", currency: "", status: "", settlement: "", payments: "" });
   const [page, setPage] = useState(1); const [open, setOpen] = useState(false); const [imp, setImp] = useState(false);
+  const [sort, setSort] = useState<{ k: string; dir: "asc" | "desc" } | null>(null);
   const dq = useDebounced(f.q, 300);
   const r = rangeFor(range.key, range);
-  const qs = `${rangeQuery(r)}${dq ? `&q=${encodeURIComponent(dq)}` : ""}${(["organiserId", "currency", "status", "settlement", "payments"] as const).map((k) => (f[k] ? `&${k}=${f[k]}` : "")).join("")}`;
+  const qs = `${rangeQuery(r)}${dq ? `&q=${encodeURIComponent(dq)}` : ""}${(["organiserId", "currency", "status", "settlement", "payments"] as const).map((k) => (f[k] ? `&${k}=${f[k]}` : "")).join("")}${sort ? `&sort=${sort.k}&dir=${sort.dir}` : ""}`;
+  const onSort = (k: string) => { setSort((cur) => (cur?.k === k ? { k, dir: cur.dir === "desc" ? "asc" : "desc" } : { k, dir: k === "name" ? "asc" : "desc" })); setPage(1); };
   const { data, loading, reload } = useApi<Resp>(withMode(`/api/accounting/finance/events?page=${page}&pageSize=50${qs}`));
   const set = (k: keyof typeof f, v: string) => { setF((o) => ({ ...o, [k]: v })); setPage(1); };
   const currencies = [...new Set((data?.totals ?? []).map((x) => x.currency).concat(f.currency ? [f.currency] : []))].sort();
@@ -56,7 +58,7 @@ export default function EventsPage() {
         <Select aria-label={tf("filters.payments")} value={f.payments} onChange={(e) => set("payments", e.target.value)} className="w-auto"><option value="">{tf("filters.anyPayments")}</option><option value="PENDING">{tf("filters.pendingPayments")}</option><option value="NONE">{tf("filters.noPending")}</option></Select>
       </div>
 
-      {data && data.totals.length > 0 && <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">{data.totals.map((x) => (
+      {data && data.totals.length > 0 && <div className="mb-4 grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]">{data.totals.map((x) => (
         <Card key={x.currency} className="p-4 text-sm">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">{tf("events.totals", { c: x.currency.toUpperCase() })}</p>
           <dl className="grid grid-cols-2 gap-x-3 gap-y-1">
@@ -74,10 +76,10 @@ export default function EventsPage() {
       <Card>
         {loading && !data ? <div className="space-y-3 p-4">{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-10" />)}</div> : !data?.items.length ? <EmptyState title={t("empty")} description={t("emptyDesc")} action={can("accounting.manage") && <Button variant="primary" onClick={() => setImp(true)}><Import className="size-4" aria-hidden />{t("importTx")}</Button>} /> : <>
           <TableWrap><Table className="text-[13px] [&_td]:px-3 [&_th]:px-3"><thead><tr>
-            <Th className="sticky start-0 z-10">{tf("events.event")}</Th><Th>{tf("organiser")}</Th><Th className="text-end">{tf("events.tickets")}</Th><Th className="text-end">{tf("events.gross")}</Th>
-            <Th className="text-end">{tf("k.refunds")}</Th><Th className="text-end">{tf("k.netSales")}</Th><Th className="text-end">{tf("events.fee")}</Th><Th className="text-end">{tf("events.processing")}</Th>
-            <Th className="text-end">{tf("events.expenses")}</Th><Th className="text-end">{tf("events.due")}</Th><Th className="text-end">{tf("events.paid")}</Th><Th className="text-end">{tf("events.remaining")}</Th>
-            <Th className="text-end">{tf("events.profit")}</Th><Th>{tf("settlement.label")}</Th>
+            <SortTh sort={sort} onSort={onSort} k="name" end={false} className="sticky start-0 z-10">{tf("events.event")}</SortTh><Th>{tf("organiser")}</Th><SortTh sort={sort} onSort={onSort} k="tickets" className="text-end">{tf("events.tickets")}</SortTh><SortTh sort={sort} onSort={onSort} k="grossSales" className="text-end">{tf("events.gross")}</SortTh>
+            <SortTh sort={sort} onSort={onSort} k="refunds" className="text-end">{tf("k.refunds")}</SortTh><SortTh sort={sort} onSort={onSort} k="netSales" className="text-end">{tf("k.netSales")}</SortTh><Th className="text-end">{tf("events.fee")}</Th><SortTh sort={sort} onSort={onSort} k="processingFees" className="text-end">{tf("events.processing")}</SortTh>
+            <Th className="text-end">{tf("events.expenses")}</Th><SortTh sort={sort} onSort={onSort} k="organiserDue" className="text-end">{tf("events.due")}</SortTh><Th className="text-end">{tf("events.paid")}</Th><SortTh sort={sort} onSort={onSort} k="remaining" className="text-end">{tf("events.remaining")}</SortTh>
+            <SortTh sort={sort} onSort={onSort} k="bilitProfit" className="text-end">{tf("events.profit")}</SortTh><Th>{tf("settlement.label")}</Th>
           </tr></thead>
             <tbody>{data.items.map((e) => <Tr key={`${e.eventId}|${e.currency}`} className="group">
               <Td className="sticky start-0 z-10 min-w-56 bg-surface group-hover:bg-surface-2"><Link href={`/accounting/events/${e.eventId}`} className="font-medium underline-offset-4 hover:underline">{e.eventName}</Link>
@@ -101,4 +103,13 @@ export default function EventsPage() {
       {open && <EventDialog open={open} onClose={() => setOpen(false)} onSaved={(id) => router.push(`/accounting/events/${id}`)} />}
     </div>
   );
+}
+
+/** Column header that sorts the whole filtered event list (server side): first click largest first, second click reverses. */
+function SortTh({ k, sort, onSort, children, end = true, className }: { k: string; sort: { k: string; dir: "asc" | "desc" } | null; onSort: (k: string) => void; children: React.ReactNode; end?: boolean; className?: string }) {
+  const on = sort?.k === k;
+  return <Th className={className} aria-sort={on ? (sort!.dir === "asc" ? "ascending" : "descending") : undefined}>
+    <button type="button" onClick={() => onSort(k)} className={`inline-flex items-center gap-1 uppercase hover:text-fg ${end ? "flex-row-reverse" : ""}`}>
+      {children}{on ? (sort!.dir === "asc" ? <ArrowUp className="size-3" aria-hidden /> : <ArrowDown className="size-3" aria-hidden />) : <ArrowUpDown className="size-3 opacity-40" aria-hidden />}
+    </button></Th>;
 }

@@ -18,7 +18,9 @@ export function Field({ label, hint, error, required, children }: { label: strin
 }
 export function Input({ className, ...p }: React.InputHTMLAttributes<HTMLInputElement>) { return <input {...p} className={cn(control, "h-10", className)} />; }
 export function Textarea({ className, ...p }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) { return <textarea {...p} className={cn(control, "min-h-24 py-2.5", className)} />; }
-export function Select({ className, children, ...p }: React.SelectHTMLAttributes<HTMLSelectElement>) { return <select {...p} className={cn(control, "h-10 pe-8", className)}>{children}</select>; }
+/** `control` is full width; an explicit width class on the element wins (cn does not merge conflicting utilities). */
+const sized = (className?: string) => (className && /(^|\s)(w-|min-w-|max-w-)/.test(className) && !/(^|\s)w-full\b/.test(className) ? control.replace("w-full ", "") : control);
+export function Select({ className, children, ...p }: React.SelectHTMLAttributes<HTMLSelectElement>) { return <select {...p} className={cn(sized(className), "h-10 pe-8", className)}>{children}</select>; }
 
 export function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (

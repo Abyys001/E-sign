@@ -123,8 +123,8 @@ export function FloatingChat() {
   const t = useTranslations("accounting.aichat");
   const [open, setOpen] = useState(false);
   const path = usePathname();
-  // Financial Overview has its own assistant (Bilit AI Accountant).
-  if (path === "/accounting/position") return null;
+  // The dashboard and Financial Overview have their own assistant (Bilit AI Accountant).
+  if (path === "/accounting/position" || path === "/accounting") return null;
   return (
     <>
       {open && <div role="dialog" aria-label={t("title")} className="fixed bottom-20 end-4 z-50 flex h-[min(620px,calc(100dvh-7rem))] w-[min(420px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">

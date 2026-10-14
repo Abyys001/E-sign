@@ -11,6 +11,7 @@ const Q = Pagination.extend({
   from: IsoDate.optional(), to: IsoDate.optional(), q: z.string().trim().max(120).optional(), organiserId: z.string().uuid().optional(), currency: Currency.optional(),
   status: z.enum(["ACTIVE", "INACTIVE", "CANCELLED", "ARCHIVED"]).optional(), settlement: z.enum(SETTLEMENT_STATUSES as [SettlementStatus, ...SettlementStatus[]]).optional(),
   payments: z.enum(["PENDING", "NONE"]).optional(), eventId: z.string().uuid().optional(), format: z.enum(["csv"]).optional(),
+  sort: z.enum(["date", "name", "grossSales", "netSales", "refunds", "processingFees", "organiserDue", "remaining", "bilitProfit", "tickets"]).optional(), dir: z.enum(["asc", "desc"]).default("desc"),
 }).passthrough();
 
 const cur = (r: EventFinanceRow) => r.currency;
@@ -28,6 +29,10 @@ const COLS: CsvColumn<EventFinanceRow>[] = [
 export const GET = acct("accounting.view", async ({ req, auth, mode }) => {
   const q = query(req, Q);
   const rows = await eventFinancials(auth.organisationId, mode, { ...q, eventIds: q.eventId ? [q.eventId] : undefined });
+  if (q.sort) { // default order (newest event first) is kept unless a column is chosen; amounts compare within one currency only as numbers
+    const k = q.sort, m = q.dir === "asc" ? 1 : -1;
+    rows.sort((a, b) => m * (k === "date" ? (a.startsOn ?? "").localeCompare(b.startsOn ?? "") : k === "name" ? a.eventName.localeCompare(b.eventName) : (a[k] as number) - (b[k] as number)));
+  }
   if (q.format) {
     requireElevation(auth); await rateLimit("accountingExport", auth.user.id);
     return csvResponse(csvStream(COLS, async () => ({ rows, more: false })), `event-financials-${mode}-${q.from ?? "all"}-${q.to ?? "now"}`);

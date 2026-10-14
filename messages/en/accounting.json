@@ -33,7 +33,15 @@
     "wise": "Wise",
     "profitShare": "Profit share",
     "position": "Financial Overview",
-    "payouts": "Send money"
+    "payouts": "Send money",
+    "groups": {
+      "overview": "Overview",
+      "transactions": "Transactions",
+      "events": "Events",
+      "organisers": "Organisers",
+      "accounting": "Accounting",
+      "integrations": "Integrations"
+    }
   },
   "range": {
     "label": "Period",
@@ -190,7 +198,16 @@
     "fee": "Stripe fee",
     "net": "Net",
     "eventCode": "Event code",
-    "noEvent": "No event yet"
+    "noEvent": "No event yet",
+    "sort": "Sort",
+    "sorts": {
+      "date_desc": "Newest first",
+      "date_asc": "Oldest first",
+      "amount_desc": "Largest amount",
+      "amount_asc": "Smallest amount"
+    },
+    "organiser": "Organiser",
+    "noCode": "No event code"
   },
   "detail": {
     "title": "Stripe transaction",
@@ -2684,5 +2701,141 @@
       "removed": "Payouts key removed"
     },
     "payStripe": "Pay via Stripe"
+  },
+  "cc": {
+    "title": "Finance overview",
+    "sub": "Ticket revenue, fees, organiser settlements and Bilit's profit — straight from the ledger and imported Stripe data. Each currency is shown separately; nothing is converted.",
+    "kpis": "Key figures",
+    "comparing": "Percentages compare with the previous equivalent period ({from} – {to}).",
+    "noCompare": "Choose a bounded period (e.g. This month) to compare with the previous period.",
+    "vsPrev": "Previous period: {v}",
+    "newVsPrev": "New vs previous period",
+    "k": {
+      "gross": "Ticket sales (gross)",
+      "fees": "Stripe processing fees",
+      "refunds": "Refunds & chargebacks",
+      "net": "Net collected",
+      "liabilities": "Earned by organisers",
+      "paid": "Paid to organisers",
+      "outstanding": "Outstanding to organisers",
+      "profit": "Bilit profit"
+    },
+    "d": {
+      "gross": "Everything customers paid for tickets in the period, before refunds and fees.",
+      "fees": "All Stripe fees on these transactions, including the part recharged to organisers.",
+      "refunds": "Money returned to customers, plus lost disputes.",
+      "net": "Gross − refunds & chargebacks − Stripe fees: the money actually kept from sales. Not profit.",
+      "liabilities": "Organisers' share of the period's sales (after commission, refunds and the fees they bear).",
+      "paid": "Settlement payments made to organisers in the period.",
+      "outstanding": "Still owed to organisers at the end of the period, across all time (not limited to this period).",
+      "profit": "Bilit's revenue minus Bilit's own costs, from the ledger P&L. Organisers' money is never counted."
+    },
+    "askAi": "Ask the AI accountant about these figures",
+    "chart": "Revenue over time",
+    "chartDesc": "Gross sales, net collected, refunds and Stripe fees from the ledger. Hover for exact values; click a series to hide it.",
+    "grain": "Group by",
+    "g": {
+      "day": "Daily",
+      "week": "Weekly",
+      "month": "Monthly",
+      "year": "Yearly"
+    },
+    "noData": "No transactions in this period and currency.",
+    "series": "Series",
+    "period": "Period",
+    "weekOf": "week starting",
+    "chartTitle": "Revenue over time ({c})",
+    "s": {
+      "grossSales": "Gross sales",
+      "net": "Net collected",
+      "refunds": "Refunds & chargebacks",
+      "stripeFees": "Stripe fees"
+    },
+    "alerts": "Needs attention",
+    "alertsDesc": "Counted from imported data; each item opens the place to resolve it.",
+    "statusError": "Could not load status.",
+    "al": {
+      "notConnected": "Stripe is not connected in this mode",
+      "syncFailed": "The last Stripe sync failed",
+      "syncErrors": "{n} unresolved sync error(s)",
+      "unmatched": "{n} transaction(s) without a matching event code",
+      "review": "{n} transaction(s) waiting for manual review",
+      "refunds": "{n} refund(s) not linked to an event",
+      "payoutsFailed": "{n} Stripe payout(s) failed or returned (30 days)",
+      "payoutsUnconfirmed": "{n} Stripe payout(s) not yet confirmed",
+      "pending": "{n} organiser payment(s) marked pending",
+      "owed": "{n} organiser(s) with a balance awaiting settlement",
+      "none": "Nothing needs attention right now."
+    },
+    "stripe": "Stripe connection",
+    "st": {
+      "connected": "Connected",
+      "disconnected": "Not connected",
+      "problem": "Connected — needs attention",
+      "lastSync": "Last sync",
+      "lastRun": "Last sync run",
+      "imported": "Transactions imported",
+      "webhook": "Last webhook",
+      "noWebhook": "None received (30-min sync)",
+      "syncHistory": "Sync history",
+      "settings": "Stripe settings"
+    },
+    "breakdown": "Revenue breakdown",
+    "breakdownDesc": "Three separate statements for the selected period. They are not added to each other, so no fee or refund is counted twice.",
+    "bd": {
+      "barLabel": "Share of gross sales: net collected, refunds, Stripe fees",
+      "seg": {
+        "net": "Net collected",
+        "refunds": "Refunds & chargebacks",
+        "stripeFees": "Stripe fees"
+      },
+      "collected": "Money collected",
+      "gross": "Gross ticket sales",
+      "refundsCb": "Refunds & chargebacks",
+      "stripeFeesGross": "Stripe fees (all)",
+      "net": "Net collected",
+      "netHint": "Includes money that belongs to organisers.",
+      "bilitTitle": "Bilit's result",
+      "bilitRevenue": "Bilit revenue",
+      "bilitRevenueHint": "Commission + event fees + other revenue",
+      "feesBilit": "Stripe fees Bilit bears",
+      "feesBilitHint": "Fees recharged to organisers ({v}) are excluded.",
+      "otherCosts": "Other costs in the books",
+      "otherCostsHint": "Expenses, profit share, bank charges etc. posted in the period.",
+      "profit": "Bilit profit",
+      "profitHint": "Ledger P&L for the period.",
+      "orgTitle": "Organiser account",
+      "orgEarned": "Earned in period",
+      "orgEarnedHint": "Their share of the period's sales.",
+      "orgPaid": "Paid in period",
+      "orgOutstanding": "Outstanding (all time)",
+      "orgOutstandingHint": "Balance owed at the end of the period — includes earlier periods."
+    },
+    "recent": "Recent transactions",
+    "recentDesc": "Latest Stripe activity in this currency.",
+    "viewAll": "View all",
+    "noTx": "No transactions yet in this currency.",
+    "tx": {
+      "date": "Date",
+      "description": "Customer / description",
+      "event": "Event",
+      "gross": "Gross",
+      "fee": "Fee",
+      "net": "Net",
+      "status": "Status",
+      "noCode": "No event code"
+    },
+    "liabilities": "Owed to organisers",
+    "liabilitiesDesc": "Largest outstanding settlement balances (all time).",
+    "noLiabilities": "No outstanding organiser balances.",
+    "owesBilit": "Organiser owes Bilit"
+  },
+  "shell": {
+    "brand": "Bilit Finance",
+    "tagline": "Accounting & settlements",
+    "search": "Search transactions…",
+    "stripeOk": "Stripe connected and syncing",
+    "stripeIssue": "Stripe needs attention",
+    "alerts": "{n} item(s) need attention"
   }
 }
