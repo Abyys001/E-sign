@@ -52,7 +52,8 @@ export async function updateTreasurySettings(a: Actor, input: z.infer<typeof Tre
   // test the key and detect capabilities
   try {
     const caps = await (await treasuryGateway(a.orgId, input.mode)).capabilities();
-    next.capabilities = caps; next.lastError = caps.issuing ? null : "The key works, but Issuing is not enabled on this Stripe account.";
+    next.capabilities = caps;
+    next.lastError = caps.issuing ? null : `Stripe refused Issuing: ${caps.issuingError ?? "unknown reason"}${caps.treasury ? "" : ` — Treasury: ${caps.treasuryError ?? "unknown reason"}`}`;
     if (!next.financialAccountId && caps.financialAccounts[0]) next.financialAccountId = caps.financialAccounts[0].id;
   } catch (e) { next.capabilities = null; next.lastError = safeStripeError(e); }
   next.lastTestedAt = new Date().toISOString();

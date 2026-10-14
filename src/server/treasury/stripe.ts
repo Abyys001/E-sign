@@ -15,7 +15,7 @@ import { getAcctSettings, isLive, type Mode } from "../accounting/core";
 // API version: the SDK default (pinned by the installed stripe package).
 type Conn = { keyEnc?: string | null; keyHint?: string | null; financialAccountId?: string | null; capabilities?: Capabilities | null; lastTestedAt?: string | null; lastError?: string | null };
 type Stored = Partial<Record<Mode, Conn>>;
-export type Capabilities = { issuing: boolean; treasury: boolean; financialAccounts: Array<{ id: string; status: string; currency: string | null; balance: number | null }> };
+export type Capabilities = { issuing: boolean; treasury: boolean; issuingError?: string | null; treasuryError?: string | null; financialAccounts: Array<{ id: string; status: string; currency: string | null; balance: number | null }> };
 
 export interface TreasuryGateway {
   capabilities(): Promise<Capabilities>;
@@ -39,10 +39,11 @@ export interface TreasuryGateway {
 class SdkGateway implements TreasuryGateway {
   constructor(private s: Stripe, private financialAccountId: string | null) {}
   async capabilities(): Promise<Capabilities> {
-    let issuing = false, treasury = false;
+    let issuing = false, treasury = false, issuingError: string | null = null, treasuryError: string | null = null;
     const financialAccounts: Capabilities["financialAccounts"] = [];
+    // keep Stripe's own reason: "key lacks permission" and "product not enabled on the account" need different fixes
     try { await this.s.issuing.cardholders.list({ limit: 1 }); issuing = true; }
-    catch (e) { if (!(e instanceof Stripe.errors.StripePermissionError || e instanceof Stripe.errors.StripeInvalidRequestError)) throw e; }
+    catch (e) { if (!(e instanceof Stripe.errors.StripePermissionError || e instanceof Stripe.errors.StripeInvalidRequestError)) throw e; issuingError = safeStripeError(e); }
     try {
       const fas = await this.s.treasury.financialAccounts.list({ limit: 20 });
       treasury = true;
@@ -51,8 +52,8 @@ class SdkGateway implements TreasuryGateway {
         const cur = Object.keys(bal)[0] ?? null;
         financialAccounts.push({ id: f.id, status: f.status, currency: cur, balance: cur ? (bal[cur] ?? null) : null });
       }
-    } catch (e) { if (!(e instanceof Stripe.errors.StripePermissionError || e instanceof Stripe.errors.StripeInvalidRequestError)) throw e; }
-    return { issuing, treasury, financialAccounts };
+    } catch (e) { if (!(e instanceof Stripe.errors.StripePermissionError || e instanceof Stripe.errors.StripeInvalidRequestError)) throw e; treasuryError = safeStripeError(e); }
+    return { issuing, treasury, issuingError, treasuryError, financialAccounts };
   }
   createCardholder(i: Parameters<TreasuryGateway["createCardholder"]>[0]) {
     return this.s.issuing.cardholders.create({ name: i.name, email: i.email ?? undefined, phone_number: i.phoneNumber ?? undefined, type: i.type, billing: i.billing });
