@@ -2908,7 +2908,7 @@
     "disabled": "Link disabled",
     "enabled": "Link enabled",
     "howTitle": "How it works",
-    "how": "The link opens a page with your logo, colours, the event name and the price. Paying opens Stripe Checkout with the same branding. The sale carries the event code, so the Stripe import matches it to the event and books the booking fee automatically.",
+    "how": "The link opens a page with your logo, colours, the name and the price. With a publishable key, Stripe's card form (Apple Pay / Google Pay included) is embedded in that page; otherwise Stripe's checkout opens in the same branding. Event sales carry the event code, so the Stripe import matches them to the event. Custom payments have no event and appear as unmatched Stripe sales to allocate.",
     "newTitle": "New payment link",
     "editTitle": "Edit payment link",
     "dialogDesc": "{mode} mode. The link is copied to your clipboard when it is created.",
@@ -2991,12 +2991,44 @@
       "thanks": "Payment received — thank you!",
       "paidFor": "{qty} × {title} for {event} · {amount}",
       "receipt": "A receipt has been sent to {email}.",
-      "pending": "Your payment is still being confirmed. You can close this page; you'll get an email from Stripe."
+      "pending": "Your payment is still being confirmed. You can close this page; you'll get an email from Stripe.",
+      "yourAmount": "Amount to pay",
+      "range": "Between {min} and {max}",
+      "serviceFee": "Service fee",
+      "payPlain": "Pay",
+      "change": "Change"
     },
     "secondary": "Secondary colour",
     "card": "Card background",
     "text": "Text colour",
     "header": "Header background (behind the logo)",
-    "resetPalette": "Use Bilit colours"
+    "resetPalette": "Use Bilit colours",
+    "newCustom": "Custom link",
+    "newCustomTitle": "New custom payment link",
+    "customTag": "Custom",
+    "payerChooses": "Payer chooses",
+    "kind": "Link type",
+    "kinds": {
+      "EVENT": "Event ticket",
+      "CUSTOM": "Custom payment"
+    },
+    "kindsHint": {
+      "EVENT": "Sells tickets for an event",
+      "CUSTOM": "Any payment — deposit, invoice, service"
+    },
+    "secCustom": "Payment details",
+    "customName": "Payment for",
+    "customNameHint": "The heading the payer sees.",
+    "customNamePh": "e.g. Stage hire deposit",
+    "customTitle": "Line on the receipt",
+    "feeCustom": "Service fee % (added on top)",
+    "openAmount": "Let the payer enter the amount",
+    "minAmount": "Minimum",
+    "maxAmount": "Maximum",
+    "suggested": "Suggested amount",
+    "embedOffTitle": "Checkout opens on Stripe's page",
+    "embedOff": "Add your Stripe publishable key (Stripe key → Publishable key) to show the card form embedded inside your branded page instead.",
+    "pkLabel": "Publishable key (embedded checkout)",
+    "pkHint": "Stripe Dashboard → Developers → API keys → Publishable key (pk_live_…). Safe to share; leave empty to use Stripe's hosted page."
   }
 }

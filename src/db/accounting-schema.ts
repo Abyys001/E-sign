@@ -813,6 +813,7 @@ export const acctPaymentLinks = pgTable("acct_payment_links", {
   organisationId: org(),
   livemode: boolean("livemode").notNull(),
   slug: text("slug").notNull(),
+  kind: text("kind").notNull().default("EVENT"), // EVENT (ticket for an event) | CUSTOM (any payment, no event)
   eventId: uuid("event_id").references(() => acctEvents.id),
   eventName: text("event_name").notNull(),
   eventCode: text("event_code"), // put in the Stripe description + metadata so the importer matches the sale to the event
@@ -820,7 +821,10 @@ export const acctPaymentLinks = pgTable("acct_payment_links", {
   description: text("description"),
   venue: text("venue"),
   eventDate: date("event_date"),
-  amount: money("amount").notNull(), // price per item, minor units
+  amount: money("amount").notNull(), // price per item, minor units (with open_amount: the suggested amount)
+  openAmount: boolean("open_amount").notNull().default(false), // payer types the amount, between min and max
+  minAmount: money("min_amount"),
+  maxAmount: money("max_amount"),
   currency: text("currency").notNull(),
   feeBps: integer("fee_bps").notNull().default(0), // booking fee ADDED on top of the price, as its own checkout line
   adjustableQuantity: boolean("adjustable_quantity").notNull().default(true),

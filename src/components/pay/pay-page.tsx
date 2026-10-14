@@ -1,9 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { CalendarDays, CheckCircle2, Loader2, Lock, MapPin, Minus, Plus, Ticket, XCircle } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckCircle2, Loader2, Lock, MapPin, Minus, Plus, Ticket, XCircle } from "lucide-react";
 import { api, errMsg } from "@/lib/api";
-import { formatMoney } from "@/lib/money";
+import { applyBps, formatMoney, parseMajor, toDecimalString } from "@/lib/money";
 import type { publicLink } from "@/server/accounting/payment-links";
 
 export type PublicLink = NonNullable<Awaited<ReturnType<typeof publicLink>>>;
@@ -43,11 +43,12 @@ function Shell({ link, children }: { link: PublicLink; children: React.ReactNode
 
 function EventHead({ link }: { link: PublicLink }) {
   const locale = useLocale();
+  const custom = link.kind === "CUSTOM";
   return (
     <div className="space-y-2">
       <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{link.eventName}</h1>
-      <p className="flex items-center gap-2 text-sm font-medium"><Ticket className="size-4" style={{ color: link.brand.accent }} aria-hidden />{link.title}</p>
-      {(link.eventDate || link.venue) && <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-[var(--pl-muted)]">
+      <p className="flex items-center gap-2 text-sm font-medium">{!custom && <Ticket className="size-4" style={{ color: link.brand.accent }} aria-hidden />}{link.title}</p>
+      {!custom && (link.eventDate || link.venue) && <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-[var(--pl-muted)]">
         {link.eventDate && <span className="flex items-center gap-1.5"><CalendarDays className="size-4" aria-hidden />{new Date(`${link.eventDate}T12:00:00Z`).toLocaleDateString(locale === "fa" ? "fa-IR" : "en-GB", { weekday: "short", day: "numeric", month: "long", year: "numeric" })}</span>}
         {link.venue && <span className="flex items-center gap-1.5"><MapPin className="size-4" aria-hidden />{link.venue}</span>}
       </div>}
@@ -56,36 +57,98 @@ function EventHead({ link }: { link: PublicLink }) {
   );
 }
 
+type StripeJs = { createEmbeddedCheckoutPage?: (o: { fetchClientSecret: () => Promise<string> }) => Promise<Embedded>; initEmbeddedCheckout?: (o: { fetchClientSecret: () => Promise<string> }) => Promise<Embedded> };
+type Embedded = { mount: (el: HTMLElement) => void; destroy: () => void };
+type Start = { url: string } | { clientSecret: string; publishableKey: string };
+
+let stripeJs: Promise<(pk: string) => StripeJs> | null = null;
+/** Stripe.js must be loaded from js.stripe.com (PCI); loaded once, only when the buyer starts paying. */
+const loadStripe = () => (stripeJs ??= new Promise((resolve, reject) => {
+  const w = window as unknown as { Stripe?: (pk: string) => StripeJs };
+  if (w.Stripe) return resolve(w.Stripe);
+  const el = document.createElement("script");
+  el.src = "https://js.stripe.com/clover/stripe.js"; el.async = true;
+  el.onload = () => (w.Stripe ? resolve(w.Stripe) : reject(new Error("Stripe did not load")));
+  el.onerror = () => { stripeJs = null; reject(new Error("Couldn't load the secure payment form. Check your connection and try again.")); };
+  document.head.appendChild(el);
+}));
+
+/** Stripe's embedded checkout, mounted inside our branded card. */
+function EmbeddedCheckout({ clientSecret, publishableKey }: { clientSecret: string; publishableKey: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let ec: Embedded | null = null, gone = false;
+    (async () => {
+      try {
+        const stripe = (await loadStripe())(publishableKey);
+        const make = stripe.createEmbeddedCheckoutPage ?? stripe.initEmbeddedCheckout;
+        if (!make) throw new Error("Stripe embedded checkout is unavailable.");
+        ec = await make.call(stripe, { fetchClientSecret: async () => clientSecret });
+        if (gone) ec.destroy(); else if (ref.current) ec.mount(ref.current);
+      } catch (e) { if (!gone) setErr(errMsg(e)); }
+    })();
+    return () => { gone = true; ec?.destroy(); };
+  }, [clientSecret, publishableKey]);
+  return err ? <p role="alert" className="rounded-xl bg-[#fde8e8] p-3 text-sm text-[#b42318]">{err}</p> : <div ref={ref} className="-mx-2 min-h-96 sm:-mx-4"><Loader2 className="mx-auto mt-16 size-6 animate-spin opacity-60" aria-hidden /></div>;
+}
+
 export function PayPage({ link }: { link: PublicLink }) {
   const t = useTranslations("accounting.plinks.pub");
   const locale = useLocale();
   const [qty, setQty] = useState(1);
+  const [amountText, setAmountText] = useState(link.openAmount ? toDecimalString(link.unit, link.currency) : "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [embedded, setEmbedded] = useState<{ clientSecret: string; publishableKey: string } | null>(null);
   const m = (v: number) => formatMoney(v, link.currency, locale);
-  const max = link.adjustableQuantity ? link.maxQuantity : 1;
+  const max = link.adjustableQuantity && !link.openAmount ? link.maxQuantity : 1;
+  const chosen = useMemo(() => { if (!link.openAmount) return link.unit; try { return parseMajor(amountText, link.currency); } catch { return 0; } }, [amountText, link]);
+  const inRange = !link.openAmount || (chosen >= (link.minAmount ?? 1) && chosen <= (link.maxAmount ?? 0));
+  const fee = link.openAmount ? (link.feeBps ? applyBps(chosen, link.feeBps) : 0) : link.fee;
+  const total = (chosen + fee) * qty;
   const pay = async () => {
     setBusy(true); setErr(null);
-    try { const r = await api<{ url: string }>(`/api/pay/${link.slug}/checkout`, { json: { quantity: qty } }); window.location.assign(r.url); }
-    catch (e) { setErr(errMsg(e)); setBusy(false); }
+    try {
+      const r = await api<Start>(`/api/pay/${link.slug}/checkout`, { json: { quantity: qty, ...(link.openAmount ? { amount: chosen } : {}) } });
+      if ("clientSecret" in r) { setEmbedded(r); setBusy(false); } else window.location.assign(r.url);
+    } catch (e) { setErr(errMsg(e)); setBusy(false); }
   };
   if (!link.available) return <Shell link={link}><EventHead link={link} /><p className="flex items-center gap-2 rounded-2xl bg-[var(--pl-soft)] p-4 text-sm"><XCircle className="size-4 shrink-0 text-[var(--pl-muted)]" aria-hidden />{t("unavailable")}</p></Shell>;
+  if (embedded) return (
+    <Shell link={link}>
+      <div className="flex items-start justify-between gap-3">
+        <div><p className="text-lg font-semibold leading-tight">{link.eventName}</p><p className="text-sm text-[var(--pl-muted)]">{qty > 1 ? `${qty} × ` : ""}{link.title} · {m(total)}</p></div>
+        <button type="button" onClick={() => setEmbedded(null)} className="flex shrink-0 items-center gap-1 rounded-full border border-[var(--pl-line)] px-3 py-1.5 text-xs font-medium"><ArrowLeft className="size-3.5" aria-hidden />{t("change")}</button>
+      </div>
+      <EmbeddedCheckout clientSecret={embedded.clientSecret} publishableKey={embedded.publishableKey} />
+    </Shell>
+  );
   return (
     <Shell link={link}>
       <EventHead link={link} />
       <dl className="space-y-2 rounded-2xl bg-[var(--pl-soft)] p-4 text-sm">
-        <div className="flex justify-between"><dt className="text-[var(--pl-muted)]">{t("price")}</dt><dd className="tabular-nums">{m(link.unit)}</dd></div>
-        {link.fee > 0 && <div className="flex justify-between"><dt className="text-[var(--pl-muted)]">{t("fee")}</dt><dd className="tabular-nums">{m(link.fee)}</dd></div>}
+        {link.openAmount ? <div className="space-y-1.5">
+          <dt><label htmlFor="pl-amount" className="font-medium">{t("yourAmount")}</label></dt>
+          <dd>
+            <div className="flex items-center rounded-xl border border-[var(--pl-line)] bg-white/70 px-3 focus-within:outline-2 focus-within:outline-offset-1" style={{ outlineColor: link.brand.accent }}>
+              <span className="text-[var(--pl-muted)]">{link.currency.toUpperCase()}</span>
+              <input id="pl-amount" inputMode="decimal" autoComplete="off" value={amountText} onChange={(e) => setAmountText(e.target.value)} aria-invalid={!inRange} aria-describedby="pl-amount-hint" className="h-12 w-full bg-transparent px-2 text-xl font-semibold tabular-nums outline-none" />
+            </div>
+            <p id="pl-amount-hint" className={`mt-1 text-xs ${inRange ? "text-[var(--pl-muted)]" : "text-[#b42318]"}`}>{t("range", { min: m(link.minAmount ?? 0), max: m(link.maxAmount ?? 0) })}</p>
+          </dd>
+        </div> : <div className="flex justify-between"><dt className="text-[var(--pl-muted)]">{t("price")}</dt><dd className="tabular-nums">{m(link.unit)}</dd></div>}
+        {fee > 0 && <div className="flex justify-between"><dt className="text-[var(--pl-muted)]">{link.kind === "CUSTOM" ? t("serviceFee") : t("fee")}</dt><dd className="tabular-nums">{m(fee)}</dd></div>}
         {max > 1 && <div className="flex items-center justify-between pt-1"><dt className="text-[var(--pl-muted)]">{t("quantity")}</dt><dd className="flex items-center gap-1">
           <button type="button" aria-label={t("less")} disabled={qty <= 1} onClick={() => setQty((q) => Math.max(1, q - 1))} className="grid size-9 place-items-center rounded-full border border-[var(--pl-line)] disabled:opacity-40"><Minus className="size-4" aria-hidden /></button>
           <span className="w-8 text-center text-base font-semibold tabular-nums" aria-live="polite">{qty}</span>
           <button type="button" aria-label={t("more")} disabled={qty >= max} onClick={() => setQty((q) => Math.min(max, q + 1))} className="grid size-9 place-items-center rounded-full border border-[var(--pl-line)] disabled:opacity-40"><Plus className="size-4" aria-hidden /></button>
         </dd></div>}
-        <div className="flex items-baseline justify-between border-t border-[var(--pl-line)] pt-3"><dt className="font-medium">{t("total")}</dt><dd className="text-xl font-semibold tabular-nums">{m((link.unit + link.fee) * qty)}</dd></div>
+        <div className="flex items-baseline justify-between border-t border-[var(--pl-line)] pt-3"><dt className="font-medium">{t("total")}</dt><dd className="text-xl font-semibold tabular-nums">{inRange ? m(total) : "—"}</dd></div>
       </dl>
       {err && <p role="alert" className="rounded-xl bg-[#fde8e8] p-3 text-sm text-[#b42318]">{err}</p>}
-      <button type="button" onClick={pay} disabled={busy} className="flex h-12 w-full items-center justify-center gap-2 rounded-full text-base font-semibold transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60" style={{ backgroundColor: link.brand.accent, color: onAccent(link.brand.accent), outlineColor: link.brand.accent }}>
-        {busy ? <Loader2 className="size-5 animate-spin" aria-hidden /> : <Lock className="size-4" aria-hidden />}{t("pay", { amount: m((link.unit + link.fee) * qty) })}
+      <button type="button" onClick={pay} disabled={busy || !inRange || chosen <= 0} className="flex h-12 w-full items-center justify-center gap-2 rounded-full text-base font-semibold transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60" style={{ backgroundColor: link.brand.accent, color: onAccent(link.brand.accent), outlineColor: link.brand.accent }}>
+        {busy ? <Loader2 className="size-5 animate-spin" aria-hidden /> : <Lock className="size-4" aria-hidden />}{inRange ? t("pay", { amount: m(total) }) : t("payPlain")}
       </button>
     </Shell>
   );

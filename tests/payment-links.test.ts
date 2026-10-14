@@ -13,7 +13,7 @@ import { ctxFor, makeOrg } from "./helpers";
 process.env.ACCOUNTING_ENABLED = "true";
 
 const row = (over: Partial<LinkRow> = {}): LinkRow => ({
-  id: "00000000-0000-0000-0000-000000000001", organisationId: "o", livemode: false, slug: "abcDEF123_-x", eventId: null, eventName: "Epic Wave Berlin", eventCode: "B41-0091",
+  id: "00000000-0000-0000-0000-000000000001", organisationId: "o", livemode: false, slug: "abcDEF123_-x", kind: "EVENT", openAmount: false, minAmount: null, maxAmount: null, eventId: null, eventName: "Epic Wave Berlin", eventCode: "B41-0091",
   title: "General admission", description: "Doors 19:00", venue: "Berlin", eventDate: "2026-11-20", amount: 3500, currency: "eur", feeBps: 1000, adjustableQuantity: true, maxQuantity: 10,
   branding: { accentColor: "#e11d48", fontFamily: "inter", imageUrl: "https://example.com/p.jpg" }, status: "ACTIVE", expiresAt: null, createdBy: null, createdAt: new Date(), updatedAt: new Date(), ...over,
 });
@@ -45,6 +45,17 @@ describe("payment links — pure", () => {
     expect(ticketQuantity(null, p.payment_intent_data!.metadata as Record<string, string>, "quantity")).toBe(2);
   });
 
+  it("custom links never claim an event; embedded mode returns to the thank-you page on our card colour", () => {
+    const c = row({ kind: "CUSTOM", eventCode: null, eventName: "Stage hire deposit", title: "Deposit" });
+    expect(saleDescription(c)).toBe("Payment (payment link): Stage hire deposit — Deposit");
+    expect(extractEventCode({ description: saleDescription(c) }, DEFAULT_RULES, new Set(["B41-0091"]))).toMatchObject({ ok: false });
+    expect((checkoutParams(c, opts).line_items![1]!.price_data!.product_data as { name: string }).name).toBe("Service fee");
+    const e = checkoutParams(row(), { ...opts, embedded: true });
+    expect(e).toMatchObject({ ui_mode: "embedded_page", return_url: "https://finance.example.test/pay/abcDEF123_-x/thanks?session_id={CHECKOUT_SESSION_ID}" });
+    expect(e.success_url).toBeUndefined();
+    expect(e.branding_settings?.background_color).toBe("#f4f5f7");
+  });
+
   it("rejects bad branding input", () => {
     const base = { mode: "test", eventName: "X event", title: "Ticket", amount: 100, currency: "gbp" };
     expect(LinkInput.safeParse({ ...base, branding: { accentColor: "red" } }).success).toBe(false);
@@ -64,7 +75,7 @@ describe("payment links — flow", () => {
     eventId = e!.id;
     setCheckoutFactory(() => ({
       ping: async () => undefined,
-      create: async (p) => { created.push(p); return { id: `cs_test_${Math.random().toString(36).slice(2).padEnd(12, "x")}${created.length}`, url: "https://checkout.stripe.test/c/1", amount_total: 0 } as unknown as Stripe.Checkout.Session; },
+      create: async (p) => { created.push(p); return { id: `cs_test_${Math.random().toString(36).slice(2).padEnd(12, "x")}${created.length}`, url: p.ui_mode === "embedded_page" ? null : "https://checkout.stripe.test/c/1", client_secret: p.ui_mode === "embedded_page" ? "cs_secret_1" : null, amount_total: 0 } as unknown as Stripe.Checkout.Session; },
       retrieve: async (id) => ({ id, metadata: created.at(-1)!.metadata, payment_status: paid ? "paid" : "unpaid", status: paid ? "complete" : "open", amount_total: 22000, customer_details: { email: "buyer@example.test", name: "Buyer" }, payment_intent: "pi_1" }) as unknown as Stripe.Checkout.Session,
     }));
     await updateLinkSettings({ orgId, userId, ctx: ctxFor() }, { mode: "test", apiKey: "rk_test_abcdefghijklmnop" });
@@ -96,6 +107,21 @@ describe("payment links — flow", () => {
     await updateLink(a, l.id, { status: "DISABLED" });
     expect((await publicLink(l.slug))?.available).toBe(false);
     await expect(startCheckout(l.slug, { quantity: 1 }, ctxFor())).rejects.toThrow(/no longer available/);
+  });
+
+  it("custom link with a payer-chosen amount: enforces the range and switches to embedded with a publishable key", async () => {
+    const a = { orgId, userId, ctx: ctxFor() };
+    expect(LinkInput.safeParse({ mode: "test", kind: "CUSTOM", eventName: "Deposit", title: "Deposit", amount: 5000, currency: "gbp", openAmount: true }).success).toBe(false);
+    const l = await createLink(a, LinkInput.parse({ mode: "test", kind: "CUSTOM", eventId, eventName: "Stage hire deposit", title: "Deposit", amount: 5000, currency: "gbp", openAmount: true, minAmount: 1000, maxAmount: 20000 }));
+    expect(l).toMatchObject({ kind: "CUSTOM", eventId: null, eventCode: null });
+    await expect(startCheckout(l.slug, { quantity: 1, amount: 500 }, ctxFor())).rejects.toThrow(/range/);
+    expect(await startCheckout(l.slug, { quantity: 3, amount: 12345 }, ctxFor())).toEqual({ url: "https://checkout.stripe.test/c/1" });
+    expect(created.at(-1)!.line_items).toEqual([expect.objectContaining({ quantity: 1, price_data: expect.objectContaining({ unit_amount: 12345 }) })]);
+    expect(created.at(-1)!.payment_intent_data!.metadata).not.toHaveProperty("event_code");
+    await updateLinkSettings(a, { mode: "test", publishableKey: "pk_test_abcdefghijklmnop" });
+    expect(await startCheckout(l.slug, { quantity: 1, amount: 2000 }, ctxFor())).toEqual({ clientSecret: "cs_secret_1", publishableKey: "pk_test_abcdefghijklmnop" });
+    expect(created.at(-1)!.ui_mode).toBe("embedded_page");
+    await expect(updateLinkSettings(a, { mode: "test", publishableKey: "pk_live_abcdefghijklmnop" })).rejects.toThrow(/live key/);
   });
 
   it("ignores unknown slugs and sessions from other links", async () => {

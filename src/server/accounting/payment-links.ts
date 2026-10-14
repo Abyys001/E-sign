@@ -24,7 +24,7 @@ import { getStripeAccount, safeStripeError } from "./stripe-gateway";
  * lacks it, so a separate key can be stored per mode; without one the import key is tried.
  */
 type Actor = { orgId: string; userId: string; ctx: RequestContext };
-type Conn = { keyEnc?: string | null; keyHint?: string | null; lastTestedAt?: string | null; lastError?: string | null };
+type Conn = { keyEnc?: string | null; keyHint?: string | null; publishableKey?: string | null; lastTestedAt?: string | null; lastError?: string | null };
 type Stored = Partial<Record<Mode, Conn>>;
 
 export const FONTS = ["default", "inter", "montserrat", "lato", "open_sans", "roboto", "raleway", "nunito", "lora", "noto_sans", "pt_sans", "source_sans_pro"] as const;
@@ -48,8 +48,9 @@ export const LinkBranding = z.object({
 });
 export type LinkBranding = z.infer<typeof LinkBranding>;
 
-export const LinkInput = z.object({
+const LinkFields = z.object({
   mode: ModeSchema,
+  kind: z.enum(["EVENT", "CUSTOM"]).default("EVENT"),
   eventId: z.string().uuid().optional().nullable(),
   eventName: z.string().trim().min(2).max(120),
   eventCode: z.string().trim().max(64).regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/, "Letters, digits, . _ - only").optional().nullable(),
@@ -58,6 +59,9 @@ export const LinkInput = z.object({
   venue: z.string().trim().max(120).optional().nullable(),
   eventDate: IsoDate.optional().nullable(),
   amount: z.number().int().positive().max(100_000_000),
+  openAmount: z.boolean().default(false),
+  minAmount: z.number().int().positive().max(100_000_000).optional().nullable(),
+  maxAmount: z.number().int().positive().max(100_000_000).optional().nullable(),
   currency: Currency,
   feeBps: z.number().int().min(0).max(5000).default(0),
   adjustableQuantity: z.boolean().default(true),
@@ -65,7 +69,10 @@ export const LinkInput = z.object({
   branding: LinkBranding.default({}),
   expiresAt: z.string().datetime({ offset: true }).optional().nullable(),
 });
-export const LinkPatch = LinkInput.omit({ mode: true }).partial().extend({ status: z.enum(["ACTIVE", "DISABLED"]).optional() });
+const openRange = (v: { openAmount?: boolean; minAmount?: number | null; maxAmount?: number | null }) => !v.openAmount || (!!v.minAmount && !!v.maxAmount && v.maxAmount >= v.minAmount);
+const openRangeMsg = { message: "Set a minimum and a maximum (maximum ≥ minimum) when the payer chooses the amount", path: ["maxAmount"] };
+export const LinkInput = LinkFields.refine(openRange, openRangeMsg);
+export const LinkPatch = LinkFields.omit({ mode: true, kind: true }).partial().extend({ status: z.enum(["ACTIVE", "DISABLED"]).optional() });
 
 // ---------- Stripe seam ----------
 type CheckoutApi = {
@@ -108,29 +115,38 @@ async function checkoutFor(orgId: string, mode: Mode): Promise<CheckoutApi> {
 export async function getLinkSettings(orgId: string, mode: Mode) {
   const c = (await stored(orgId))[mode] ?? {};
   const imp = await getStripeAccount(orgId, mode);
-  return { mode, dedicatedKey: !!c.keyEnc, keyHint: c.keyHint ?? null, importKeyHint: imp?.keyHint ?? null, lastTestedAt: c.lastTestedAt ?? null, lastError: c.lastError ?? null };
+  return { mode, dedicatedKey: !!c.keyEnc, keyHint: c.keyHint ?? null, publishableKey: c.publishableKey ?? null, importKeyHint: imp?.keyHint ?? null, lastTestedAt: c.lastTestedAt ?? null, lastError: c.lastError ?? null };
 }
 
+const clean = (v: unknown) => (typeof v === "string" ? v.replace(/\s/g, "") || null : v);
 export const LinkSettingsInput = z.object({
   mode: ModeSchema,
-  apiKey: z.preprocess((v) => (typeof v === "string" ? v.replace(/\s/g, "") : v), z.string().regex(/^(rk|sk)_(test|live)_[A-Za-z0-9]{10,}$/, "Paste the key exactly as Stripe shows it (rk_live_…)").nullable()),
+  apiKey: z.preprocess(clean, z.string().regex(/^(rk|sk)_(test|live)_[A-Za-z0-9]{10,}$/, "Paste the key exactly as Stripe shows it (rk_live_…)").nullable()).optional(),
+  // public by design (it goes to the browser); turns on embedded checkout inside the branded page
+  publishableKey: z.preprocess(clean, z.string().regex(/^pk_(test|live)_[A-Za-z0-9]{10,}$/, "Paste the publishable key (pk_live_…)").nullable()).optional(),
 });
 
-/** Save (tested against Stripe) or remove (null) the payment-links key for one mode. */
+/** Save (tested against Stripe) or remove (null) the payment-links secret key, and/or set the publishable key, for one mode. */
 export async function updateLinkSettings(a: Actor, input: z.infer<typeof LinkSettingsInput>) {
   const all = await stored(a.orgId);
   const prev = all[input.mode] ?? {};
-  if (input.apiKey === null) all[input.mode] = {};
-  else {
-    const live = input.apiKey.includes("_live_");
-    if (live !== (input.mode === "live")) throw new AppError("validation_failed", `That is a ${live ? "live" : "test"} key; you are in ${input.mode} mode.`, [{ path: "apiKey", message: "Wrong mode" }]);
+  const next: Conn = { ...prev };
+  const wrongMode = (k: string, path: string) => {
+    const live = k.includes("_live_");
+    if (live !== (input.mode === "live")) throw new AppError("validation_failed", `That is a ${live ? "live" : "test"} key; you are in ${input.mode} mode.`, [{ path, message: "Wrong mode" }]);
+  };
+  if (input.apiKey === null) { next.keyEnc = null; next.keyHint = null; }
+  else if (input.apiKey) {
+    wrongMode(input.apiKey, "apiKey");
     try { await (g.__checkoutFactory ?? defaultFactory)(input.apiKey).ping(); }
     catch (e) { throw new AppError("validation_failed", `Stripe refused the key: ${safeStripeError(e)}. It needs Checkout Sessions read + write.`, [{ path: "apiKey", message: "Rejected by Stripe" }]); }
-    all[input.mode] = { keyEnc: encrypt(input.apiKey), keyHint: `${input.apiKey.slice(0, 8)}…${input.apiKey.slice(-4)}`, lastTestedAt: new Date().toISOString(), lastError: null };
+    Object.assign(next, { keyEnc: encrypt(input.apiKey), keyHint: `${input.apiKey.slice(0, 8)}…${input.apiKey.slice(-4)}`, lastTestedAt: new Date().toISOString(), lastError: null });
   }
+  if (input.publishableKey !== undefined) { if (input.publishableKey) wrongMode(input.publishableKey, "publishableKey"); next.publishableKey = input.publishableKey; }
+  all[input.mode] = next;
   await db.transaction(async (tx) => {
     await tx.update(schema.acctSettings).set({ paymentLinkSettings: all }).where(eq(schema.acctSettings.organisationId, a.orgId));
-    await acctAudit(tx, { ...a, action: input.apiKey === null ? "payment_links.key_removed" : "payment_links.key_saved", old: { keyHint: prev.keyHint ?? null }, new: { keyHint: all[input.mode]?.keyHint ?? null }, extra: { mode: input.mode } });
+    await acctAudit(tx, { ...a, action: "payment_links.settings_updated", old: { keyHint: prev.keyHint ?? null, publishableKey: prev.publishableKey ?? null }, new: { keyHint: next.keyHint ?? null, publishableKey: next.publishableKey ?? null }, extra: { mode: input.mode } });
   });
   return getLinkSettings(a.orgId, input.mode);
 }
@@ -147,12 +163,12 @@ export function priceFor(l: Pick<LinkRow, "amount" | "feeBps">, quantity: number
   return { unit: l.amount, fee, total: (l.amount + fee) * quantity };
 }
 
-/** The Stripe description the importer's default rule reads: "… for event: NAME (CODE)". */
-export const saleDescription = (l: Pick<LinkRow, "eventName" | "eventCode" | "title">) =>
-  `Order (payment link) for event: ${l.eventName}${l.eventCode ? ` (${l.eventCode})` : ""} — ${l.title}`.slice(0, 1000);
+/** The Stripe description. Event links use the importer's default rule "… for event: NAME (CODE)"; custom links never claim an event. */
+export const saleDescription = (l: Pick<LinkRow, "kind" | "eventName" | "eventCode" | "title">) =>
+  (l.kind === "CUSTOM" ? `Payment (payment link): ${l.eventName} — ${l.title}` : `Order (payment link) for event: ${l.eventName}${l.eventCode ? ` (${l.eventCode})` : ""} — ${l.title}`).slice(0, 1000);
 
 /** Checkout Session parameters for one link + quantity. Pure: everything it needs is passed in. */
-export function checkoutParams(l: LinkRow, o: { quantity: number; appUrl: string; logoUrl: string | null; displayName: string; ticketQuantityKey: string; withBranding: boolean }): Stripe.Checkout.SessionCreateParams {
+export function checkoutParams(l: LinkRow, o: { quantity: number; appUrl: string; logoUrl: string | null; displayName: string; ticketQuantityKey: string; withBranding: boolean; embedded?: boolean }): Stripe.Checkout.SessionCreateParams {
   const { unit, fee } = priceFor(l, o.quantity);
   const b = LinkBranding.parse(l.branding ?? {});
   const base = o.appUrl.replace(/\/$/, "");
@@ -163,12 +179,14 @@ export function checkoutParams(l: LinkRow, o: { quantity: number; appUrl: string
     quantity: o.quantity,
     price_data: { currency: l.currency, unit_amount: unit, product_data: { name: `${l.eventName} — ${l.title}`.slice(0, 250), ...(l.description || when ? { description: [when, l.description].filter(Boolean).join(" · ").slice(0, 500) } : {}), ...(b.imageUrl ? { images: [b.imageUrl] } : {}) } },
   }];
-  if (fee) items.push({ quantity: o.quantity, price_data: { currency: l.currency, unit_amount: fee, product_data: { name: "Booking fee" } } });
+  if (fee) items.push({ quantity: o.quantity, price_data: { currency: l.currency, unit_amount: fee, product_data: { name: l.kind === "CUSTOM" ? "Service fee" : "Booking fee" } } });
   const p: Stripe.Checkout.SessionCreateParams = {
     mode: "payment",
     line_items: items,
-    success_url: `${base}/pay/${l.slug}/thanks?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${base}/pay/${l.slug}`,
+    // embedded: Stripe's form sits inside our branded page and returns to the thank-you page; otherwise Stripe's hosted page
+    ...(o.embedded
+      ? { ui_mode: "embedded_page" as const, return_url: `${base}/pay/${l.slug}/thanks?session_id={CHECKOUT_SESSION_ID}` }
+      : { success_url: `${base}/pay/${l.slug}/thanks?session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${base}/pay/${l.slug}` }),
     customer_creation: "if_required",
     billing_address_collection: "auto",
     metadata: meta,
@@ -178,7 +196,8 @@ export function checkoutParams(l: LinkRow, o: { quantity: number; appUrl: string
     p.branding_settings = {
       display_name: (b.displayName || o.displayName).slice(0, 60),
       button_color: b.accentColor || BRAND_DEFAULTS.accent,
-      background_color: b.backgroundColor || BRAND_DEFAULTS.background,
+      // embedded, the form sits on our card, so it takes the card colour; hosted, it takes the page background
+      background_color: o.embedded ? b.cardColor || BRAND_DEFAULTS.card : b.backgroundColor || BRAND_DEFAULTS.background,
       ...(b.fontFamily ? { font_family: b.fontFamily } : {}),
       ...(b.borderStyle ? { border_style: b.borderStyle } : {}),
       ...(o.logoUrl ? { logo: { type: "url", url: o.logoUrl } } : {}),
@@ -215,12 +234,13 @@ async function checkEvent(orgId: string, eventId: string | null | undefined, cur
   return e;
 }
 
-export async function createLink(a: Actor, input: z.infer<typeof LinkInput>) {
+export async function createLink(a: Actor, raw: z.infer<typeof LinkInput>) {
+  const input = raw.kind === "CUSTOM" ? { ...raw, eventId: null, eventCode: null } : raw;
   const e = await checkEvent(a.orgId, input.eventId, input.currency);
   const { mode, expiresAt, ...rest } = input;
   return db.transaction(async (tx) => {
     const [l] = await tx.insert(schema.acctPaymentLinks).values({
-      ...rest, organisationId: a.orgId, livemode: isLive(mode), slug: newSlug(), eventId: e?.id ?? null, eventCode: e?.code ?? input.eventCode ?? null,
+      ...rest, ...(rest.openAmount ? {} : { minAmount: null, maxAmount: null }), organisationId: a.orgId, livemode: isLive(mode), slug: newSlug(), eventId: e?.id ?? null, eventCode: e?.code ?? input.eventCode ?? null,
       expiresAt: expiresAt ? new Date(expiresAt) : null, createdBy: a.userId,
     }).returning();
     await acctAudit(tx, { ...a, action: "payment_link.created", entity: "acct_payment_link", entityId: l!.id, new: { eventName: l!.eventName, amount: l!.amount, currency: l!.currency, feeBps: l!.feeBps } });
@@ -231,7 +251,10 @@ export async function createLink(a: Actor, input: z.infer<typeof LinkInput>) {
 export async function updateLink(a: Actor, id: string, patch: z.infer<typeof LinkPatch>) {
   const prev = await ownLink(a.orgId, id);
   const sold = await db.select({ n: sql<number>`count(*)::int` }).from(schema.acctPaymentLinkSessions).where(and(eq(schema.acctPaymentLinkSessions.linkId, id), eq(schema.acctPaymentLinkSessions.status, "PAID")));
-  if ((sold[0]?.n ?? 0) > 0 && ((patch.amount !== undefined && patch.amount !== prev.amount) || (patch.currency && patch.currency !== prev.currency) || (patch.feeBps !== undefined && patch.feeBps !== prev.feeBps)))
+  if (!openRange({ openAmount: patch.openAmount ?? prev.openAmount, minAmount: patch.minAmount === undefined ? prev.minAmount : patch.minAmount, maxAmount: patch.maxAmount === undefined ? prev.maxAmount : patch.maxAmount }))
+    throw new AppError("validation_failed", openRangeMsg.message, [{ path: "maxAmount", message: openRangeMsg.message }]);
+  if (prev.kind === "CUSTOM") { patch = { ...patch, eventId: null, eventCode: null }; }
+  if ((sold[0]?.n ?? 0) > 0 && ((patch.openAmount !== undefined && patch.openAmount !== prev.openAmount) || (patch.amount !== undefined && patch.amount !== prev.amount) || (patch.currency && patch.currency !== prev.currency) || (patch.feeBps !== undefined && patch.feeBps !== prev.feeBps)))
     throw new AppError("invalid_state", "This link already has payments, so its price, fee and currency are locked. Create a new link for a new price.");
   const eventId = patch.eventId === undefined ? prev.eventId : patch.eventId;
   const e = await checkEvent(a.orgId, eventId, patch.currency ?? prev.currency);
@@ -317,7 +340,8 @@ export async function publicLink(slug: string) {
   const org = await brandFor(l.organisationId);
   const b = LinkBranding.parse(l.branding ?? {});
   return {
-    available: usable(l), slug: l.slug, test: !l.livemode,
+    available: usable(l), slug: l.slug, test: !l.livemode, kind: l.kind as "EVENT" | "CUSTOM",
+    openAmount: l.openAmount, minAmount: l.minAmount, maxAmount: l.maxAmount, feeBps: l.feeBps,
     eventName: l.eventName, title: l.title, description: l.description, venue: l.venue, eventDate: l.eventDate,
     currency: l.currency, adjustableQuantity: l.adjustableQuantity, maxQuantity: l.maxQuantity, ...priceFor(l, 1),
     brand: {
@@ -328,19 +352,26 @@ export async function publicLink(slug: string) {
   };
 }
 
-export const CheckoutInput = z.object({ quantity: z.number().int().min(1).max(99).default(1) });
+export const CheckoutInput = z.object({ quantity: z.number().int().min(1).max(99).default(1), amount: z.number().int().positive().max(100_000_000).optional() });
 
 /** Start a Stripe Checkout for a public link. Rate-limited per IP; the link must be active and not expired. */
 export async function startCheckout(slug: string, input: z.infer<typeof CheckoutInput>, ctx: RequestContext) {
   await rateLimit("payCheckout", ctx.ip ?? "unknown");
-  const l = await linkBySlug(slug);
-  if (!usable(l)) throw new AppError("not_found", "This payment link is no longer available.");
-  const quantity = l.adjustableQuantity ? Math.min(input.quantity, l.maxQuantity) : 1;
+  const found = await linkBySlug(slug);
+  if (!usable(found)) throw new AppError("not_found", "This payment link is no longer available.");
+  let l = found;
+  if (l.openAmount) {
+    const amt = input.amount ?? 0;
+    if (amt < (l.minAmount ?? 1) || amt > (l.maxAmount ?? 0)) throw new AppError("validation_failed", "Enter an amount within the allowed range.", [{ path: "amount", message: "Out of range" }]);
+    l = { ...l, amount: amt }; // the payer's amount is the price for this checkout only
+  }
+  const quantity = l.adjustableQuantity && !l.openAmount ? Math.min(input.quantity, l.maxQuantity) : 1;
   const [settings, org] = await Promise.all([getAcctSettings(l.organisationId), brandFor(l.organisationId)]);
   const appUrl = env().APP_URL;
   const logoUrl = org.checkoutLogoPath && appUrl.startsWith("https://") ? `${appUrl.replace(/\/$/, "")}${org.checkoutLogoPath}` : null;
   const api = await checkoutFor(l.organisationId, modeOf(l.livemode));
-  const opts = { quantity, appUrl, logoUrl, displayName: org.displayName, ticketQuantityKey: settings.ticketQuantityKey, withBranding: true };
+  const publishableKey = (await stored(l.organisationId))[modeOf(l.livemode)]?.publishableKey ?? null;
+  const opts = { quantity, appUrl, logoUrl, displayName: org.displayName, ticketQuantityKey: settings.ticketQuantityKey, withBranding: true, embedded: !!publishableKey };
   const key = `bilit-plink-${l.id}-${randomBytes(8).toString("hex")}`;
   let cs: Stripe.Checkout.Session;
   try { cs = await api.create(checkoutParams(l, opts), key); }
@@ -351,9 +382,9 @@ export async function startCheckout(slug: string, input: z.infer<typeof Checkout
       try { cs = await api.create(checkoutParams(l, { ...opts, withBranding: false }), `${key}-nb`); } catch (e2) { throw checkoutError(l, e2); }
     } else throw checkoutError(l, e);
   }
-  if (!cs.url) throw new AppError("invalid_state", "Stripe did not return a checkout page.");
+  if (publishableKey ? !cs.client_secret : !cs.url) throw new AppError("invalid_state", "Stripe did not return a checkout page.");
   await db.insert(schema.acctPaymentLinkSessions).values({ linkId: l.id, sessionId: cs.id, quantity, amountTotal: cs.amount_total ?? priceFor(l, quantity).total, currency: l.currency });
-  return { url: cs.url };
+  return publishableKey ? { clientSecret: cs.client_secret!, publishableKey } : { url: cs.url! };
 }
 
 function checkoutError(l: LinkRow, e: unknown) {
