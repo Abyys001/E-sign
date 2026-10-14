@@ -289,9 +289,18 @@ async function linkBySlug(slug: string) {
   return l;
 }
 
+const LOGO_EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/svg+xml": "svg" };
+
 async function brandFor(orgId: string) {
   const b = await getOrgBranding(orgId);
-  return { displayName: b.displayName || b.orgName, logoUrl: b.logoObjectId ? `/api/branding/logo/${orgId}` : null, primaryColor: b.primaryColor, supportEmail: b.supportEmail || null };
+  const [obj] = b.logoObjectId ? await db.select({ type: schema.storageObjects.contentType }).from(schema.storageObjects).where(eq(schema.storageObjects.id, b.logoObjectId)) : [];
+  const ext = obj ? LOGO_EXT[obj.type.toLowerCase()] : undefined;
+  return {
+    displayName: b.displayName || b.orgName, logoUrl: b.logoObjectId ? `/api/branding/logo/${orgId}` : null,
+    // Stripe only accepts a logo URL whose path ends in .png/.jpg/.svg; other formats are left off the checkout page
+    checkoutLogoPath: ext ? `/api/branding/logo/${orgId}/logo.${ext}` : null,
+    primaryColor: b.primaryColor, supportEmail: b.supportEmail || null,
+  };
 }
 
 /** What the public page shows. Null = unknown slug; `available: false` = disabled or expired. */
@@ -318,15 +327,15 @@ export async function startCheckout(slug: string, input: z.infer<typeof Checkout
   const quantity = l.adjustableQuantity ? Math.min(input.quantity, l.maxQuantity) : 1;
   const [settings, org] = await Promise.all([getAcctSettings(l.organisationId), brandFor(l.organisationId)]);
   const appUrl = env().APP_URL;
-  const logoUrl = org.logoUrl && appUrl.startsWith("https://") ? `${appUrl.replace(/\/$/, "")}${org.logoUrl}` : null;
+  const logoUrl = org.checkoutLogoPath && appUrl.startsWith("https://") ? `${appUrl.replace(/\/$/, "")}${org.checkoutLogoPath}` : null;
   const api = await checkoutFor(l.organisationId, modeOf(l.livemode));
   const opts = { quantity, appUrl, logoUrl, displayName: org.displayName, ticketQuantityKey: settings.ticketQuantityKey, withBranding: true };
   const key = `bilit-plink-${l.id}-${randomBytes(8).toString("hex")}`;
   let cs: Stripe.Checkout.Session;
   try { cs = await api.create(checkoutParams(l, opts), key); }
   catch (e) {
-    // branding_settings is newer than some accounts' API access: retry once without it rather than refusing the buyer
-    if (e instanceof Stripe.errors.StripeInvalidRequestError && (e.param ?? "").startsWith("branding_settings")) {
+    // a branding detail Stripe won't take (logo, colour, or no access to branding_settings): retry once without branding rather than refusing the buyer
+    if (e instanceof Stripe.errors.StripeInvalidRequestError && /branding|logo|font|color|border/i.test(`${e.param ?? ""} ${e.message}`)) {
       log.warn("payment_links.branding_refused", { link: l.id, err: safeStripeError(e) });
       try { cs = await api.create(checkoutParams(l, { ...opts, withBranding: false }), `${key}-nb`); } catch (e2) { throw checkoutError(l, e2); }
     } else throw checkoutError(l, e);
