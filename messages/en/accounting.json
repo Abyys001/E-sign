@@ -41,7 +41,8 @@
       "organisers": "Organisers",
       "accounting": "Accounting",
       "integrations": "Integrations"
-    }
+    },
+    "treasury": "Treasury cards"
   },
   "range": {
     "label": "Period",

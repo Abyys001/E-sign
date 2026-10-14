@@ -1,6 +1,6 @@
 import { ArrowLeftRight, Banknote, BookOpen, Bot, CalendarDays, CheckCircle2, CreditCard, FileBarChart, HandCoins, Landmark, LayoutDashboard, Library, Scale, Send, Settings, TrendingUp, Undo2, Users, type LucideIcon } from "lucide-react";
 
-export type NavItem = { href: string; key: string; icon: LucideIcon; exact?: true; perm?: "accounting.admin" | "accounting.manage" };
+export type NavItem = { href: string; key: string; icon: LucideIcon; exact?: true; perm?: "accounting.admin" | "accounting.manage" | "treasury.admin" };
 /** Finance sections grouped the way accountants look for them. Routes are unchanged; only presentation is grouped. */
 export const NAV_GROUPS: ReadonlyArray<{ key: string; items: ReadonlyArray<NavItem> }> = [
   { key: "overview", items: [
@@ -24,6 +24,7 @@ export const NAV_GROUPS: ReadonlyArray<{ key: string; items: ReadonlyArray<NavIt
   { key: "accounting", items: [
     { href: "/accounting/books", key: "books", icon: BookOpen },
     { href: "/accounting/profit-share", key: "profitShare", icon: HandCoins },
+    { href: "/accounting/treasury", key: "treasury", icon: CreditCard, perm: "treasury.admin" },
     { href: "/accounting/ledger", key: "ledger", icon: Library },
   ] },
   { key: "integrations", items: [

@@ -691,3 +691,4 @@ export const intakeReminders = pgTable("intake_reminders", {
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("intake_reminders_uq").on(t.invitationId, t.slot)]);
 export * from "./accounting-schema";
+export * from "./treasury-schema";
