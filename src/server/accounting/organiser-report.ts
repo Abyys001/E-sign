@@ -10,7 +10,7 @@ import { syncCashback } from "./cashback";
 import { getInvoiceSettings, registrationLines } from "./invoices";
 import { organiserContracts } from "./organiser-contracts";
 
-type Range = { from?: string | null; to?: string | null; eventIds?: string[] | null };
+type Range = { from?: string | null; to?: string | null; eventIds?: string[] | null; /** one-event report: don't apply payments on account to it, show the organiser's whole account instead */ eventReport?: boolean };
 
 /**
  * Settlement statement for a chosen set of events (e.g. the finished ones). Per currency: due on those events, payments
@@ -63,9 +63,9 @@ export async function organiserReportData(orgId: string, mode: Mode, organiserId
   const allPayments = payments.map((x) => ({ ...x, amount: Number(x.amount) }));
   // statement mode: payments tagged to the chosen events + every payment on account; other events' payments are left out
   const pay = sel ? allPayments.filter((p) => !p.eventCode || selCodes.has(p.eventCode)) : allPayments;
-  const statement = sel ? statementLines(events, pay.filter((p) => !p.eventCode && p.status === "PAID")) : null;
+  const statement = sel ? statementLines(events, r.eventReport ? [] : pay.filter((p) => !p.eventCode && p.status === "PAID")) : null;
   return {
-    organiser: o, totals: sel ? totalsByCurrency(events) : fin.totals, events, eventCount: sel ? events.length : fin.eventCount, contracts, statement,
+    organiser: o, totals: sel ? totalsByCurrency(events) : fin.totals, accountTotals: fin.totals, events, eventCount: sel ? events.length : fin.eventCount, contracts, statement,
     payments: pay,
     refunds: refunds.rows.filter((x) => !sel || (x.event_code && selCodes.has(x.event_code))).map((x) => {
       const ticket = n(x.sale_amount) - n(x.sale_fee), so = n(x.refunded_so_far), amt = n(x.amount);
@@ -84,10 +84,10 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   const d = await organiserReportData(orgId, mode, organiserId, r);
   const s = await getInvoiceSettings(orgId);
   const [org] = await db.select({ name: schema.organisations.name }).from(schema.organisations).where(eq(schema.organisations.id, orgId));
-  const o = d.organiser, internal = !!r.internal, st = d.statement;
+  const o = d.organiser, internal = !!r.internal, st = d.statement, evr = !!r.eventReport && d.events.length > 0, ev0 = d.events[0];
   const fnt = load();
   const M = 40;
-  const doc = new PDFDocument({ size: "A4", margin: 0, bufferPages: true, info: { Title: `${st ? "Settlement statement" : "Account report"} — ${o.name}`, Author: s.legalName ?? org?.name ?? "Bilit" } });
+  const doc = new PDFDocument({ size: "A4", margin: 0, bufferPages: true, info: { Title: `${evr ? `Event report — ${ev0!.eventName}` : st ? "Settlement statement" : "Account report"} — ${o.name}`, Author: s.legalName ?? org?.name ?? "Bilit" } });
   doc.registerFont("reg", fnt.reg); doc.registerFont("bold", fnt.bold); doc.registerFont("fa", fnt.faReg); doc.registerFont("faBold", fnt.faBold);
   const chunks: Buffer[] = [];
   doc.on("data", (c: Buffer) => chunks.push(c));
@@ -97,10 +97,10 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   const money = (v: number, c: string) => formatMoney(v, c, "en");
   const at = (t: string, x: number, y: number, op: { bold?: boolean; size?: number; color?: string; width?: number; align?: "left" | "right" | "center" } = {}) =>
     doc.font(hasRtl(t) ? (op.bold ? "faBold" : "fa") : op.bold ? "bold" : "reg").fontSize(op.size ?? 9).fillColor(op.color ?? C.text).text(rtl(t), x, y, { width: op.width, align: op.align ?? "left", lineBreak: !!op.width });
-  const period = st ? `${d.events.length} event(s)` : r.from || r.to ? `${r.from ?? "start"} – ${r.to ?? "today"}` : "all activity";
+  const period = evr ? `${ev0!.eventName} (${ev0!.eventCode})` : st ? `${d.events.length} event(s)` : r.from || r.to ? `${r.from ?? "start"} – ${r.to ?? "today"}` : "all activity";
   const chrome = () => {
     doc.rect(0, 0, PW, 84).fill(DARK); doc.image(fnt.logo, M, 22, { height: 38 }); doc.rect(0, 84, PW, 4).fill(C.primary);
-    at(st ? (internal ? "SETTLEMENT STATEMENT (INTERNAL)" : "SETTLEMENT STATEMENT") : internal ? "ORGANISER ACCOUNT REPORT (INTERNAL)" : "ACCOUNT REPORT", M, 26, { bold: true, size: 14, color: "#ffffff", width: W, align: "right" });
+    at(evr ? (internal ? "EVENT REPORT (INTERNAL)" : "EVENT REPORT") : st ? (internal ? "SETTLEMENT STATEMENT (INTERNAL)" : "SETTLEMENT STATEMENT") : internal ? "ORGANISER ACCOUNT REPORT (INTERNAL)" : "ACCOUNT REPORT", M, 26, { bold: true, size: 14, color: "#ffffff", width: W, align: "right" });
     at(`${o.name} · ${period}`, M, 48, { size: 9, color: "#c7c7cc", width: W, align: "right" });
     doc.rect(0, PH - 62, PW, 62).fill(DARK); doc.rect(0, PH - 62, PW, 3).fill(C.primary);
     at([seller.name, seller.website].filter(Boolean).join(" · "), M, PH - 46, { bold: true, size: 9, color: "#ffffff", width: W, align: "center" });
@@ -132,7 +132,10 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   const block = (lines: Array<string | null | undefined>, x: number) => { let yy = y0 + 12; lines.filter(Boolean).forEach((l, i) => { for (const part of String(l).split("\n")) { at(part, x, yy, { size: 9, bold: i === 0, width: col - 14 }); yy += 12; } }); return yy; };
   doc.y = Math.max(block([seller.name, seller.address, ...seller.reg, seller.email], M), block([o.companyName ?? o.name, o.companyName && o.companyName !== o.name ? o.name : null, o.address, o.vatNumber && `VAT no. ${o.vatNumber}`, o.email], M + col)) + 6;
   at(`Generated ${new Date().toISOString().slice(0, 10)} · ${st ? "Events" : "Period"}: ${period}${st ? "" : ` · Events: ${d.eventCount}`}${mode === "test" ? " · TEST DATA" : ""}`, M, doc.y, { size: 8.5, color: C.muted, width: W }); doc.y += 6;
-  if (st) { at(`Covers: ${d.events.map((e) => `${e.eventName} (${e.eventCode})`).filter((v, i, a) => a.indexOf(v) === i).join(" · ")}`, M, doc.y + 6, { size: 8.5, width: W }); doc.y += 8; }
+  if (evr) {
+    const e = ev0!, fees = e.stripeFeesBorneBy === "BILIT" ? `paid by ${seller.name}` : "charged to the organiser";
+    at([`Event: ${e.eventName} (${e.eventCode})`, e.startsOn ? `Date: ${e.startsOn}` : null, `Status: ${e.eventStatus === "COMPLETED" ? "Finished" : e.eventStatus.toLowerCase()}`, `Orders: ${e.orders}`, e.bookingFeeBps != null ? `Booking fee: ${e.bookingFeeBps / 100}%` : null, `Payment processing fees: ${fees}`, o.cashbackBps ? `Cashback: ${o.cashbackBps / 100}%` : null].filter(Boolean).join(" · "), M, doc.y + 6, { size: 8.5, width: W }); doc.y += 8;
+  } else if (st) { at(`Covers: ${d.events.map((e) => `${e.eventName} (${e.eventCode})`).filter((v, i, a) => a.indexOf(v) === i).join(" · ")}`, M, doc.y + 6, { size: 8.5, width: W }); doc.y += 8; }
 
   // Summary per currency
   heading("Account summary", internal ? "Ticket sales include booking fees. Bilit profit is after Stripe fees and platform expenses." : "Ticket sales are stated net of booking fees. A negative balance means the amount is owed to " + seller.name + ".");
@@ -144,10 +147,12 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
       ["Refunds & chargebacks", -(f.refunds + f.chargebacks)],
       ...(f.feesRecharged ? [["Payment processing fees charged", -f.feesRecharged] as [string, number]] : []),
       ...(f.deductions ? [["Other deductions", -f.deductions] as [string, number]] : []),
-      ...(f.cashback ? [[`Cashback from ${seller.name}${o.cashbackBps ? ` (${o.cashbackBps / 100}% of ticket sales after refunds)` : ""}`, f.cashback] as [string, number]] : []),
+      ...(f.cashback ? [[`Cashback${o.cashbackBps ? ` (${o.cashbackBps / 100}%)` : ""}`, f.cashback] as [string, number]] : []),
       ...(() => {
         const l = st?.find((x) => x.currency === c);
         if (!l) return [["Amount due to organiser", f.organiserDue, true], ["Paid to organiser", -f.organiserPaid], ["Balance remaining", f.remaining, true]] as Array<[string, number, boolean?]>;
+        if (evr) return [["Amount due on this event", l.due, true], ["Paid against this event", -l.paidOnEvents],
+          [l.balance >= 0 ? "Balance on this event" : "Paid beyond this event's amount", Math.abs(l.balance), true]] as Array<[string, number, boolean?]>;
         return [["Amount due on these events", l.due, true], ["Paid against these events", -l.paidOnEvents], ["Payments on account (not tied to an event)", -l.paidOnAccount],
           [l.balance >= 0 ? "Balance due to organiser" : "Overpaid — balance owed to " + seller.name, Math.abs(l.balance), true]] as Array<[string, number, boolean?]>;
       })(),
@@ -156,13 +161,25 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
     ensure(20 + rows.length * 15);
     at(c.toUpperCase(), M, doc.y, { bold: true, size: 10 }); doc.y += 14;
     for (const [k, v, b] of rows) { const y = doc.y; if (b) doc.moveTo(M, y - 2).lineTo(M + 330, y - 2).lineWidth(0.6).strokeColor(C.rule).stroke(); at(k, M, y, { size: 9.5, bold: b, width: 230 }); at(money(v, c), M + 230, y, { size: 9.5, bold: b, width: 100, align: "right" }); doc.y = y + 15; }
-    if (st?.find((x) => x.currency === c)?.paidOnAccount) { at(`Payments on account are applied to the events in this statement.`, M, doc.y, { size: 8.5, color: C.muted, width: W }); doc.y += 13; }
+    if (!evr && st?.find((x) => x.currency === c)?.paidOnAccount) { at(`Payments on account are applied to the events in this statement.`, M, doc.y, { size: 8.5, color: C.muted, width: W }); doc.y += 13; }
+    if (f.cashback) { at(`Cashback = ${o.cashbackBps ? `${o.cashbackBps / 100}% of ` : ""}ticket sales after refunds, excluding booking fees, on finished events.`, M, doc.y, { size: 8.5, color: C.muted, width: W }); doc.y += 13; }
+    if (evr) { at("Payments on account are not included here. They are shown under Organiser account below.", M, doc.y, { size: 8.5, color: C.muted, width: W }); doc.y += 13; }
     if (f.bookingFeesRefunded) { at(`Refunds include ${money(f.bookingFeesRefunded, c)} of booking fees returned to customers, which is charged to the organiser.`, M, doc.y, { size: 8.5, color: C.muted, width: W }); doc.y += 13; }
     doc.y += 6;
   }
 
+  if (evr && d.accountTotals.length) {
+    heading("Organiser account — all events", `Payments on account are not tied to one event, so they are shown against ${o.name}'s whole account rather than this event.`);
+    for (const a of d.accountTotals) {
+      const rows: Array<[string, number, boolean?]> = [["Due on all events", a.organiserDue], ["Paid to organiser (all payments)", -a.organiserPaid], [a.remaining >= 0 ? "Balance due to organiser (all events)" : `Overpaid — owed to ${seller.name}`, Math.abs(a.remaining), true]];
+      ensure(20 + rows.length * 15); at(a.currency.toUpperCase(), M, doc.y, { bold: true, size: 10 }); doc.y += 14;
+      for (const [k, v, b] of rows) { const y = doc.y; if (b) doc.moveTo(M, y - 2).lineTo(M + 330, y - 2).lineWidth(0.6).strokeColor(C.rule).stroke(); at(k, M, y, { size: 9.5, bold: b, width: 230 }); at(money(v, a.currency), M + 230, y, { size: 9.5, bold: b, width: 100, align: "right" }); doc.y = y + 15; }
+      doc.y += 6;
+    }
+  }
+
   // Settlement by event
-  if (d.events.length) {
+  if (d.events.length && !evr) {
     heading("Settlement by event");
     const evCols: Col[] = [{ k: "Event", w: 140 }, { k: "Tickets", w: 46, r: true }, { k: internal ? "Gross" : "Ticket sales", w: 70, r: true }, ...(internal ? [{ k: "Booking fee", w: 62, r: true }] : []), { k: "Refunds", w: 62, r: true }, { k: "Due", w: 70, r: true }, ...(st ? [{ k: "Paid on event", w: 70, r: true }] : [{ k: "Paid", w: 70, r: true }, { k: "Remaining", w: 70, r: true }, { k: "Status", w: 58 }])];
     table(evCols, d.events.map((e) => [`${e.eventName} (${e.eventCode})${e.startsOn ? ` · ${e.startsOn}` : ""}${e.eventStatus === "CANCELLED" ? " — CANCELLED" : ""}`, String(e.tickets), money(internal ? e.grossSales : e.grossSales - e.bookingFees, e.currency), ...(internal ? [money(e.bookingFees, e.currency)] : []),
@@ -175,7 +192,7 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   if (!payments.length) { at("No payments in this period.", M, doc.y, { size: 9.5 }); doc.y += 14; }
   else {
     table([{ k: "Date", w: 60 }, { k: "Event", w: 140 }, { k: "Method", w: 62 }, { k: "Reference", w: 150 }, { k: "Status", w: 40 }, { k: "Amount", w: 70, r: true }],
-      payments.map((p) => [p.date, p.eventCode ? `${p.eventName} (${p.eventCode})` : st ? "On account (not tied to an event)" : "Total payable (all events)", ({ BANK_TRANSFER: "Bank transfer", STRIPE_TRANSFER: "Stripe", CASH: "Cash", OTHER: "Other" } as Record<string, string>)[p.method] ?? p.method, p.reference ?? "—", p.status === "VOIDED" ? `Voided${p.voidReason ? `: ${p.voidReason}` : ""}` : p.status.toLowerCase(), money(p.amount, p.currency)]),
+      payments.map((p) => [p.date, p.eventCode ? `${p.eventName} (${p.eventCode})` : st ? "On account (all events)" : "Total payable (all events)", ({ BANK_TRANSFER: "Bank transfer", STRIPE_TRANSFER: "Stripe", CASH: "Cash", OTHER: "Other" } as Record<string, string>)[p.method] ?? p.method, p.reference ?? "—", p.status === "VOIDED" ? `Voided${p.voidReason ? `: ${p.voidReason}` : ""}` : p.status.toLowerCase(), money(p.amount, p.currency)]),
     );
     const byCur = new Map<string, number>(); for (const p of payments) if (p.status === "PAID") byCur.set(p.currency, (byCur.get(p.currency) ?? 0) + p.amount);
     for (const [c, v] of byCur) { ensure(14); const y = doc.y; at(`Total paid (${c.toUpperCase()})`, M, y, { bold: true, size: 9.5, width: W - 110 }); at(money(v, c), M + W - 110, y, { bold: true, size: 9.5, width: 110, align: "right" }); doc.y = y + 14; }
@@ -201,5 +218,5 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   const range = doc.bufferedPageRange();
   for (let i = 0; i < range.count; i++) { doc.switchToPage(i); at(`Page ${i + 1} of ${range.count}`, M, PH - 20, { size: 7, color: "#8e8e93", width: W, align: "center" }); }
   doc.end();
-  return { bytes: await done, name: `${st ? "settlement-statement" : "account-report"}-${o.name.normalize("NFKD").replace(/[^\w]+/g, "-").slice(0, 40)}${internal ? "-internal" : ""}-${new Date().toISOString().slice(0, 10)}.pdf` };
+  return { bytes: await done, name: `${evr ? `event-report-${ev0!.eventCode}` : st ? "settlement-statement" : "account-report"}-${o.name.normalize("NFKD").replace(/[^\w]+/g, "-").slice(0, 40)}${internal ? "-internal" : ""}-${new Date().toISOString().slice(0, 10)}.pdf` };
 }

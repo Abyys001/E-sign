@@ -1265,6 +1265,15 @@
       "statement": {
         "title": "Organiser statement",
         "desc": "Running balance of everything owed to and paid to the organiser."
+      },
+      "pdf": "Download PDF",
+      "eventReport": {
+        "title": "Event report",
+        "desc": "Sales, refunds, booking fee, processing fees, cashback, every payment against this event, and the organiser's balance across all events. Organiser copy."
+      },
+      "eventReportInternal": {
+        "title": "Event report (internal)",
+        "desc": "The same report with gross sales, booking fees and Bilit profit. For Bilit only."
       }
     },
     "audit": {
@@ -1412,7 +1421,8 @@
       "own": "Bilit's own money after everything owed",
       "notEnough": "Not enough {c} available right now — part of the balance is still pending in Stripe, or move money in from another currency.",
       "note": "Nothing is paid or recorded until you press the button. Paying what is owed does not change Bilit's own money; only an overpayment does."
-    }
+    },
+    "reportPdf": "Report PDF"
   },
   "books": {
     "nav": {

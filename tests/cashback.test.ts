@@ -9,7 +9,7 @@ import { setStripeGatewayFactory, type StripeAccountRow } from "@/server/account
 import { importBalanceTransaction, importContext } from "@/server/accounting/importer";
 import { createEvent, createOrganiser, updateEvent, updateOrganiser } from "@/server/accounting/entities";
 import { cashbackTarget, syncCashback } from "@/server/accounting/cashback";
-import { eventFinancials } from "@/server/accounting/finance";
+import { eventFinancials, organiserFinancials } from "@/server/accounting/finance";
 import { organiserReportData } from "@/server/accounting/organiser-report";
 import { ctxFor, makeOrg } from "./helpers";
 import { FakeStripe } from "./stripe-fixtures";
@@ -63,6 +63,9 @@ describe("cashback in the books", () => {
     expect(after.organiserDue).toBe(before.organiserDue + after.cashback);
     expect(after.deductions).toBe(before.deductions);
     expect(after.bilitProfit).toBe(before.bilitProfit - after.cashback);
+    // organiser-level balances see it too (lines carry the organiser)
+    const acct = await organiserFinancials(orgId, "test", organiserId);
+    expect(acct.totals[0]!.organiserDue).toBe(after.organiserDue);
   });
 
   it("is idempotent, follows a rate change, and is withdrawn if the event is re-opened", async () => {
@@ -90,4 +93,22 @@ describe("cashback in the books", () => {
     const [o] = await db.select().from(schema.acctOrganisers).where(eq(schema.acctOrganisers.id, organiserId));
     expect(o!.cashbackBps).toBe(200);
   });
+
+  it("repairs cashback booked without the organiser on its lines: reversed and re-booked once, totals then agree", async () => {
+    await syncCashback(orgId, "test");
+    const f = await fig();
+    // simulate an entry from before the fix: reverse the current ones, post an old-style entry with no organiser on lines
+    const cur = await db.execute<{ id: string }>(sql`select id from acct_journal_entries where organisation_id = ${orgId} and source_type = 'organiser_cashback' and status <> 'REVERSED' and entry_type <> 'REVERSAL'`);
+    const { postEntry, reverseEntry } = await import("@/server/accounting/ledger");
+    for (const r of cur.rows) await db.transaction((tx) => reverseEntry(tx, { orgId, entryId: r.id, reason: "test", timezone: "UTC" }));
+    await db.transaction((tx) => postEntry(tx, { orgId, livemode: false, entryType: "ADJUSTMENT", sourceDate: new Date(), entryDate: "2026-10-14", currency: "eur", description: "old style", eventId, organiserId, sourceType: "organiser_cashback", sourceId: organiserId, idempotencyKey: `old:${randomBytes(4).toString("hex")}`, timezone: "UTC",
+      postings: [{ account: "organiser_cashback", amount: f.cashback, eventId }, { account: "organiser_payable", amount: -f.cashback, eventId }] }));
+    expect((await organiserFinancials(orgId, "test", organiserId)).totals[0]!.organiserDue).toBe(f.organiserDue - f.cashback); // the bug
+    await syncCashback(orgId, "test");
+    expect((await fig()).cashback).toBe(f.cashback);
+    expect((await organiserFinancials(orgId, "test", organiserId)).totals[0]!.organiserDue).toBe(f.organiserDue);
+    await syncCashback(orgId, "test"); // nothing left to repair
+    expect((await fig()).cashback).toBe(f.cashback);
+  });
 });
+

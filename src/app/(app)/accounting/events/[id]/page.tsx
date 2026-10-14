@@ -55,6 +55,7 @@ function EventFinance({ id }: { id: string }) {
         description={[e.startsOn ? fmtDate(`${e.startsOn}T12:00:00Z`, locale, { dateStyle: "long" }) : null, e.code].filter(Boolean).join(" · ")}
         actions={<>
           <LinkButton href="/accounting/events"><ArrowLeft className="size-4 rtl:rotate-180" aria-hidden />{te("back")}</LinkButton>
+          {e.organiserId && <a href={q(`/api/accounting/events/${id}/report`)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-line-strong px-4 text-sm font-medium hover:bg-surface-2"><FileDown className="size-4" aria-hidden />{t("reportPdf")}</a>}
           {manage && <Button onClick={() => setEdit(true)}><Pencil className="size-4" aria-hidden />{te("edit")}</Button>}
           {manage && e.organiserId && <Button variant="primary" onClick={() => setPay(true)}><Banknote className="size-4" aria-hidden />{t("payOrganiser")}</Button>}
         </>} />
@@ -270,7 +271,8 @@ function ReportsTab({ e }: { e: Ev }) {
   const ensure = useElevation();
   const doExport = useExport();
   const { q } = useMode();
-  const items: Array<{ k: string; url?: string; href?: string }> = [
+  const items: Array<{ k: string; url?: string; href?: string; pdf?: string }> = [
+    ...(e.organiserId ? [{ k: "eventReport", pdf: q(`/api/accounting/events/${e.id}/report`) }, { k: "eventReportInternal", pdf: q(`/api/accounting/events/${e.id}/report?internal=1`) }] : []),
     { k: "summary", url: `/api/accounting/finance/events?eventId=${e.id}` },
     { k: "sales", url: `/api/accounting/reports/sales?eventId=${e.id}` },
     { k: "transactions", url: `/api/accounting/transactions?eventId=${e.id}` },
@@ -282,7 +284,8 @@ function ReportsTab({ e }: { e: Ev }) {
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{items.map((x) => (
       <Card key={x.k} className="flex flex-col justify-between gap-4 p-5">
         <div><h3 className="font-semibold">{t(`${x.k}.title`)}</h3><p className="mt-1 text-sm text-muted">{t(`${x.k}.desc`)}</p></div>
-        {x.url ? <Button onClick={() => doExport(ensure, q(x.url!))}><Download className="size-4" aria-hidden />{t("csv")}</Button> : <LinkButton href={x.href!}>{t("open")}</LinkButton>}
+        {x.pdf ? <a href={x.pdf} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-line-strong px-4 text-sm font-medium hover:bg-surface-2"><FileDown className="size-4" aria-hidden />{t("pdf")}</a>
+          : x.url ? <Button onClick={() => doExport(ensure, q(x.url!))}><Download className="size-4" aria-hidden />{t("csv")}</Button> : <LinkButton href={x.href!}>{t("open")}</LinkButton>}
       </Card>
     ))}</div>
   );
