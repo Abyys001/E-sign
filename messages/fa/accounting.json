@@ -2936,9 +2936,8 @@
     "secBrand": "Branding",
     "displayName": "Display name",
     "displayNameHint": "Defaults to your organisation's branding name.",
-    "accent": "Accent / button colour",
+    "accent": "Primary colour",
     "background": "Page background",
-    "backgroundHint": "Leave empty for the default.",
     "font": "Checkout font",
     "border": "Checkout corners",
     "stripeOnly": "Applies on the Stripe checkout page.",
@@ -2993,6 +2992,11 @@
       "paidFor": "{qty} × {title} for {event} · {amount}",
       "receipt": "A receipt has been sent to {email}.",
       "pending": "Your payment is still being confirmed. You can close this page; you'll get an email from Stripe."
-    }
+    },
+    "secondary": "Secondary colour",
+    "card": "Card background",
+    "text": "Text colour",
+    "header": "Header background (behind the logo)",
+    "resetPalette": "Use Bilit colours"
   }
 }

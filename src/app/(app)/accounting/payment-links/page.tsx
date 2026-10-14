@@ -15,7 +15,7 @@ import { api, errMsg, useApi } from "@/lib/api";
 import { onAccent } from "@/components/pay/pay-page";
 import { applyBps, bpsToPercent, formatMoney, parseMajor, percentToBps, toDecimalString } from "@/lib/money";
 
-type Branding = { displayName?: string | null; accentColor?: string | null; backgroundColor?: string | null; fontFamily?: string | null; borderStyle?: string | null; imageUrl?: string | null };
+type Branding = { displayName?: string | null; accentColor?: string | null; secondaryColor?: string | null; cardColor?: string | null; textColor?: string | null; headerColor?: string | null; backgroundColor?: string | null; fontFamily?: string | null; borderStyle?: string | null; imageUrl?: string | null };
 type PLink = {
   id: string; slug: string; url: string; eventId: string | null; eventName: string; eventCode: string | null; title: string; description: string | null; venue: string | null; eventDate: string | null;
   amount: number; currency: string; feeBps: number; fee: number; adjustableQuantity: boolean; maxQuantity: number; branding: Branding; status: "ACTIVE" | "DISABLED"; expiresAt: string | null; expired: boolean;
@@ -25,6 +25,8 @@ type Ev = { id: string; name: string; code: string; currency: string; startsOn: 
 type KeyInfo = { dedicatedKey: boolean; keyHint: string | null; importKeyHint: string | null; lastTestedAt: string | null };
 type Sess = { id: string; sessionId: string; quantity: number; amountTotal: number; currency: string; status: string; customerEmail: string | null; customerName: string | null; createdAt: string; completedAt: string | null };
 
+const PALETTE = { accentColor: "#20ac6a", secondaryColor: "#e8f7ef", backgroundColor: "#252525", cardColor: "#f4f5f7", textColor: "#252525", headerColor: "#252525" };
+const HEX = /^#[0-9a-fA-F]{6}$/;
 const FONTS = ["default", "inter", "montserrat", "lato", "open_sans", "roboto", "raleway", "nunito", "lora", "noto_sans", "pt_sans", "source_sans_pro"];
 const BORDERS = ["rounded", "rectangular", "pill"];
 
@@ -106,7 +108,10 @@ function LinkDialog({ link, mode, onClose, onSaved }: { link: PLink | null; mode
   const [multi, setMulti] = useState(link?.adjustableQuantity ?? true);
   const [maxQty, setMaxQty] = useState(String(link?.maxQuantity ?? 10));
   const [expires, setExpires] = useState(link?.expiresAt ? link.expiresAt.slice(0, 10) : "");
-  const [b, setB] = useState<Branding>({ displayName: "", accentColor: "#e11d48", backgroundColor: "", fontFamily: "default", borderStyle: "rounded", imageUrl: "", ...link?.branding });
+  const [b, setB] = useState<Branding>(() => {
+    const saved = Object.fromEntries(Object.entries(link?.branding ?? {}).filter(([, v]) => v != null && v !== ""));
+    return { displayName: "", fontFamily: "default", borderStyle: "rounded", imageUrl: "", ...PALETTE, ...saved };
+  });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const ev = events.data?.items.find((e) => e.id === eventId);
@@ -129,7 +134,7 @@ function LinkDialog({ link, mode, onClose, onSaved }: { link: PLink | null; mode
         eventId: eventId || null, eventName, eventCode: nul(eventCode), title, description: nul(description), venue: nul(venue), eventDate: nul(eventDate),
         amount: parseMajor(price, currency), currency, feeBps: percentToBps(fee || "0"), adjustableQuantity: multi, maxQuantity: Number(maxQty) || 1,
         expiresAt: expires ? new Date(`${expires}T23:59:59Z`).toISOString() : null,
-        branding: { displayName: nul(b.displayName), accentColor: nul(b.accentColor), backgroundColor: nul(b.backgroundColor), fontFamily: b.fontFamily && b.fontFamily !== "default" ? b.fontFamily : null, borderStyle: nul(b.borderStyle), imageUrl: nul(b.imageUrl) },
+        branding: { displayName: nul(b.displayName), accentColor: nul(b.accentColor), secondaryColor: nul(b.secondaryColor), backgroundColor: nul(b.backgroundColor), cardColor: nul(b.cardColor), textColor: nul(b.textColor), headerColor: nul(b.headerColor), fontFamily: b.fontFamily && b.fontFamily !== "default" ? b.fontFamily : null, borderStyle: nul(b.borderStyle), imageUrl: nul(b.imageUrl) },
       };
       const r = link ? await api<PLink>(`/api/accounting/payment-links/${link.id}`, { method: "PATCH", json }) : await api<PLink>("/api/accounting/payment-links", { json: { ...json, mode } });
       if (!link) void navigator.clipboard?.writeText(r.url).catch(() => undefined);
@@ -138,7 +143,8 @@ function LinkDialog({ link, mode, onClose, onSaved }: { link: PLink | null; mode
     } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
   };
 
-  const accent = /^#[0-9a-fA-F]{6}$/.test(b.accentColor ?? "") ? b.accentColor! : "#e11d48";
+  const col = (k: keyof typeof PALETTE) => (HEX.test(b[k] ?? "") ? b[k]! : PALETTE[k]);
+  const accent = col("accentColor");
   return (
     <Modal open size="xl" onClose={onClose} title={link ? t("editTitle") : t("newTitle")} description={t("dialogDesc", { mode: mode.toUpperCase() })}
       footer={<><Button onClick={onClose}>{c("cancel")}</Button><Button variant="primary" loading={busy} disabled={!eventName.trim() || !title.trim() || !amounts.ok} onClick={save}>{link ? t("save") : t("create")}</Button></>}>
@@ -172,7 +178,12 @@ function LinkDialog({ link, mode, onClose, onSaved }: { link: PLink | null; mode
             <legend className="mb-2 text-sm font-semibold">{t("secBrand")}</legend>
             <Field label={t("displayName")} hint={t("displayNameHint")}>{(p) => <Input {...p} value={b.displayName ?? ""} maxLength={60} onChange={(e) => set("displayName")(e.target.value)} />}</Field>
             <ColorField label={t("accent")} value={b.accentColor ?? ""} onChange={set("accentColor")} />
-            <ColorField label={t("background")} hint={t("backgroundHint")} value={b.backgroundColor ?? ""} onChange={set("backgroundColor")} />
+            <ColorField label={t("secondary")} value={b.secondaryColor ?? ""} onChange={set("secondaryColor")} />
+            <ColorField label={t("background")} value={b.backgroundColor ?? ""} onChange={set("backgroundColor")} />
+            <ColorField label={t("card")} value={b.cardColor ?? ""} onChange={set("cardColor")} />
+            <ColorField label={t("text")} value={b.textColor ?? ""} onChange={set("textColor")} />
+            <ColorField label={t("header")} value={b.headerColor ?? ""} onChange={set("headerColor")} />
+            <div className="sm:col-span-2"><Button size="sm" variant="ghost" onClick={() => setB((x) => ({ ...x, ...PALETTE }))}>{t("resetPalette")}</Button></div>
             <Field label={t("font")} hint={t("stripeOnly")}>{(p) => <Select {...p} value={b.fontFamily ?? "default"} onChange={(e) => set("fontFamily")(e.target.value)}>{FONTS.map((f) => <option key={f} value={f}>{f === "default" ? t("fontDefault") : f.replace(/_/g, " ")}</option>)}</Select>}</Field>
             <Field label={t("border")} hint={t("stripeOnly")}>{(p) => <Select {...p} value={b.borderStyle ?? "rounded"} onChange={(e) => set("borderStyle")(e.target.value)}>{BORDERS.map((x) => <option key={x} value={x}>{t(`borders.${x}`)}</option>)}</Select>}</Field>
             <Field label={t("image")} hint={t("imageHint")}>{(p) => <Input {...p} type="url" value={b.imageUrl ?? ""} placeholder="https://…" onChange={(e) => set("imageUrl")(e.target.value)} />}</Field>
@@ -181,15 +192,18 @@ function LinkDialog({ link, mode, onClose, onSaved }: { link: PLink | null; mode
         </div>
         <aside aria-label={t("preview")} className="lg:sticky lg:top-0 lg:self-start">
           <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">{t("preview")}</p>
-          <div className="rounded-2xl border border-line p-3" style={b.backgroundColor && /^#[0-9a-fA-F]{6}$/.test(b.backgroundColor) ? { backgroundColor: b.backgroundColor } : undefined}>
-            <p className="mb-2 text-xs font-semibold">{b.displayName || t("orgName")}</p>
-            <div className="overflow-hidden rounded-xl border border-line bg-surface">
+          <div className="rounded-2xl p-3" style={{ backgroundColor: col("backgroundColor") }}>
+            <div className="overflow-hidden rounded-xl" style={{ backgroundColor: col("cardColor"), color: col("textColor") }}>
+              <div className="flex items-center gap-2 px-3 py-2" style={{ backgroundColor: col("headerColor"), color: onAccent(col("headerColor")) }}>
+                <span className="grid size-5 place-items-center rounded text-[10px] font-bold" style={{ backgroundColor: accent, color: onAccent(accent) }}>{(b.displayName || t("orgName")).slice(0, 1)}</span>
+                <span className="text-xs font-semibold">{b.displayName || t("orgName")}</span>
+              </div>
               <div className="h-1" style={{ backgroundColor: accent }} />
               <div className="space-y-2 p-3">
                 <p className="text-base font-semibold leading-tight">{eventName || t("eventName")}</p>
-                <p className="flex items-center gap-1 text-xs font-medium" style={{ color: accent }}><Ticket className="size-3.5" aria-hidden />{title}</p>
-                {(eventDate || venue) && <p className="text-xs text-muted">{[eventDate, venue].filter(Boolean).join(" · ")}</p>}
-                <div className="flex justify-between rounded-lg bg-surface-2 px-2 py-1.5 text-xs"><span>{t("total")}</span><span className="font-semibold tabular-nums">{amounts.ok ? formatMoney(amounts.a + amounts.f, currency) : "—"}</span></div>
+                <p className="flex items-center gap-1 text-xs font-medium"><Ticket className="size-3.5" style={{ color: accent }} aria-hidden />{title}</p>
+                {(eventDate || venue) && <p className="text-xs opacity-70">{[eventDate, venue].filter(Boolean).join(" · ")}</p>}
+                <div className="flex justify-between rounded-lg px-2 py-1.5 text-xs" style={{ backgroundColor: col("secondaryColor") }}><span>{t("total")}</span><span className="font-semibold tabular-nums">{amounts.ok ? formatMoney(amounts.a + amounts.f, currency) : "—"}</span></div>
                 <div className="rounded-full py-1.5 text-center text-xs font-semibold" style={{ backgroundColor: accent, color: onAccent(accent) }}>{t("payNow")}</div>
               </div>
             </div>

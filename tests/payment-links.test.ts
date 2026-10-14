@@ -32,7 +32,7 @@ describe("payment links — pure", () => {
       { quantity: 2, price_data: { currency: "eur", unit_amount: 350, product_data: { name: "Booking fee" } } },
     ]);
     expect(p.success_url).toBe("https://finance.example.test/pay/abcDEF123_-x/thanks?session_id={CHECKOUT_SESSION_ID}");
-    expect(p.branding_settings).toEqual({ display_name: "Bilit", button_color: "#e11d48", font_family: "inter", logo: { type: "url", url: opts.logoUrl } });
+    expect(p.branding_settings).toEqual({ display_name: "Bilit", button_color: "#e11d48", background_color: "#252525", font_family: "inter", logo: { type: "url", url: opts.logoUrl } });
     expect(p.payment_intent_data?.metadata).toMatchObject({ event_code: "B41-0091", quantity: "2", payment_link_id: row().id });
     expect(checkoutParams(row(), { ...opts, withBranding: false }).branding_settings).toBeUndefined();
   });

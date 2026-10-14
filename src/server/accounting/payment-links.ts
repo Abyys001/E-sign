@@ -31,10 +31,17 @@ export const FONTS = ["default", "inter", "montserrat", "lato", "open_sans", "ro
 export const BORDERS = ["rounded", "rectangular", "pill"] as const;
 const Hex = z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, "Use a colour like #E11D48");
 
+/** Bilit's palette: used for any colour a link leaves empty. */
+export const BRAND_DEFAULTS = { accent: "#20ac6a", secondary: "#e8f7ef", background: "#252525", card: "#f4f5f7", text: "#252525", header: "#252525" } as const;
+
 export const LinkBranding = z.object({
   displayName: z.string().trim().max(60).optional().nullable(),
-  accentColor: Hex.optional().nullable(),
-  backgroundColor: Hex.optional().nullable(),
+  accentColor: Hex.optional().nullable(), // primary: buttons, highlights
+  secondaryColor: Hex.optional().nullable(), // soft panels (price summary)
+  backgroundColor: Hex.optional().nullable(), // page background
+  cardColor: Hex.optional().nullable(), // the card holding the event
+  textColor: Hex.optional().nullable(),
+  headerColor: Hex.optional().nullable(), // band behind the logo
   fontFamily: z.enum(FONTS).optional().nullable(),
   borderStyle: z.enum(BORDERS).optional().nullable(),
   imageUrl: z.string().trim().url().max(500).refine((u) => u.startsWith("https://"), "Use an https:// image address").optional().nullable(),
@@ -170,8 +177,8 @@ export function checkoutParams(l: LinkRow, o: { quantity: number; appUrl: string
   if (o.withBranding) {
     p.branding_settings = {
       display_name: (b.displayName || o.displayName).slice(0, 60),
-      ...(b.accentColor ? { button_color: b.accentColor } : {}),
-      ...(b.backgroundColor ? { background_color: b.backgroundColor } : {}),
+      button_color: b.accentColor || BRAND_DEFAULTS.accent,
+      background_color: b.backgroundColor || BRAND_DEFAULTS.background,
       ...(b.fontFamily ? { font_family: b.fontFamily } : {}),
       ...(b.borderStyle ? { border_style: b.borderStyle } : {}),
       ...(o.logoUrl ? { logo: { type: "url", url: o.logoUrl } } : {}),
@@ -313,7 +320,11 @@ export async function publicLink(slug: string) {
     available: usable(l), slug: l.slug, test: !l.livemode,
     eventName: l.eventName, title: l.title, description: l.description, venue: l.venue, eventDate: l.eventDate,
     currency: l.currency, adjustableQuantity: l.adjustableQuantity, maxQuantity: l.maxQuantity, ...priceFor(l, 1),
-    brand: { displayName: b.displayName || org.displayName, logoUrl: org.logoUrl, accent: b.accentColor || org.primaryColor || "#e11d48", background: b.backgroundColor ?? null, imageUrl: b.imageUrl ?? null, supportEmail: org.supportEmail },
+    brand: {
+      displayName: b.displayName || org.displayName, logoUrl: org.logoUrl, imageUrl: b.imageUrl ?? null, supportEmail: org.supportEmail,
+      accent: b.accentColor || BRAND_DEFAULTS.accent, secondary: b.secondaryColor || BRAND_DEFAULTS.secondary, background: b.backgroundColor || BRAND_DEFAULTS.background,
+      card: b.cardColor || BRAND_DEFAULTS.card, text: b.textColor || BRAND_DEFAULTS.text, header: b.headerColor || BRAND_DEFAULTS.header,
+    },
   };
 }
 
