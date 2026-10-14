@@ -27,6 +27,7 @@ export const acctSettings = pgTable("acct_settings", {
   xeSettings: jsonb("xe_settings").notNull().default({}), // { accountId, apiKeyEnc, keyHint, lastRates, lastAt, lastError } — XE Currency Data API
   monitorSettings: jsonb("monitor_settings").notNull().default({}), // thresholds for coded checks + forecast assumptions (server/accounting/monitor.ts); {} = defaults
   payoutSettings: jsonb("payout_settings").notNull().default({}), // { live|test: { keyEnc, keyHint, financialAccountId, … } } — Stripe Global Payouts (server/accounting/stripe-payouts.ts)
+  paymentLinkSettings: jsonb("payment_link_settings").notNull().default({}), // { live|test: { keyEnc, keyHint, lastTestedAt, lastError } } — key that creates Checkout Sessions for payment links (server/accounting/payment-links.ts)
   treasurySettings: jsonb("treasury_settings").notNull().default({}), // { live|test: { keyEnc, keyHint, financialAccountId } } — Stripe Treasury/Issuing (server/treasury/stripe.ts)
   aiSettings: jsonb("ai_settings").notNull().default({}), // { enabled, model, apiKeyEnc, keyHint, instructions } — the key is encrypted, never returned // platform policy: refunds never reduce Bilit's booking fee // seller details + VAT treatment for customer invoices // { eur: "0.85", usd: "0.74" } = 1 unit of key in the reporting currency; reporting only, never posted
   updatedBy: uuid("updated_by").references(() => users.id),
@@ -803,4 +804,54 @@ export const acctStripeOutbound = pgTable("acct_stripe_outbound", {
   index("acct_stripe_outbound_org_idx").on(t.organisationId, t.livemode, t.createdAt.desc()),
   uniqueIndex("acct_stripe_outbound_stripe_uq").on(t.stripeId).where(sql`${t.stripeId} is not null`),
   check("acct_stripe_outbound_amount_ck", sql`${t.amount} > 0`),
+]);
+
+// ---------- payment links ----------
+/** A branded public page (/pay/<slug>) for one event + price; paying opens a Stripe Checkout Session (server/accounting/payment-links.ts). */
+export const acctPaymentLinks = pgTable("acct_payment_links", {
+  id: id(),
+  organisationId: org(),
+  livemode: boolean("livemode").notNull(),
+  slug: text("slug").notNull(),
+  eventId: uuid("event_id").references(() => acctEvents.id),
+  eventName: text("event_name").notNull(),
+  eventCode: text("event_code"), // put in the Stripe description + metadata so the importer matches the sale to the event
+  title: text("title").notNull(), // what is bought, e.g. "General admission"
+  description: text("description"),
+  venue: text("venue"),
+  eventDate: date("event_date"),
+  amount: money("amount").notNull(), // price per item, minor units
+  currency: text("currency").notNull(),
+  feeBps: integer("fee_bps").notNull().default(0), // booking fee ADDED on top of the price, as its own checkout line
+  adjustableQuantity: boolean("adjustable_quantity").notNull().default(true),
+  maxQuantity: integer("max_quantity").notNull().default(10),
+  branding: jsonb("branding").notNull().default({}), // { displayName, accentColor, backgroundColor, fontFamily, borderStyle, imageUrl }
+  status: text("status").notNull().default("ACTIVE"), // ACTIVE | DISABLED
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+}, (t) => [
+  uniqueIndex("acct_payment_links_slug_uq").on(t.slug),
+  index("acct_payment_links_org_idx").on(t.organisationId, t.livemode, t.createdAt.desc()),
+  check("acct_payment_links_amount_ck", sql`${t.amount} > 0`),
+  check("acct_payment_links_fee_ck", sql`${t.feeBps} >= 0 and ${t.feeBps} <= 5000`),
+  check("acct_payment_links_qty_ck", sql`${t.maxQuantity} >= 1 and ${t.maxQuantity} <= 99`),
+]);
+
+export const acctPaymentLinkSessions = pgTable("acct_payment_link_sessions", {
+  id: id(),
+  linkId: uuid("link_id").notNull().references(() => acctPaymentLinks.id),
+  sessionId: text("session_id").notNull(), // cs_…
+  quantity: integer("quantity").notNull(),
+  amountTotal: money("amount_total").notNull(),
+  currency: text("currency").notNull(),
+  status: text("status").notNull().default("OPEN"), // OPEN | PAID | EXPIRED
+  customerEmail: text("customer_email"),
+  customerName: text("customer_name"),
+  paymentIntentId: text("payment_intent_id"),
+  createdAt: createdAt(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+}, (t) => [
+  uniqueIndex("acct_payment_link_sessions_uq").on(t.sessionId),
+  index("acct_payment_link_sessions_link_idx").on(t.linkId, t.createdAt.desc()),
 ]);

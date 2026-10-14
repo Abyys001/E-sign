@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Banknote, BookOpen, Bot, CalendarDays, CheckCircle2, CreditCard, FileBarChart, HandCoins, Landmark, LayoutDashboard, Library, Scale, Send, Settings, TrendingUp, Undo2, Users, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, Banknote, BookOpen, Bot, CalendarDays, CheckCircle2, CreditCard, FileBarChart, HandCoins, Landmark, LayoutDashboard, Library, Link2, Scale, Send, Settings, TrendingUp, Undo2, Users, type LucideIcon } from "lucide-react";
 
 export type NavItem = { href: string; key: string; icon: LucideIcon; exact?: true; perm?: "accounting.admin" | "accounting.manage" | "treasury.admin" };
 /** Finance sections grouped the way accountants look for them. Routes are unchanged; only presentation is grouped. */
@@ -15,7 +15,10 @@ export const NAV_GROUPS: ReadonlyArray<{ key: string; items: ReadonlyArray<NavIt
     { href: "/accounting/refunds", key: "refunds", icon: Undo2 },
     { href: "/accounting/reconciliation", key: "reconciliation", icon: CheckCircle2 },
   ] },
-  { key: "events", items: [{ href: "/accounting/events", key: "events", icon: CalendarDays }] },
+  { key: "events", items: [
+    { href: "/accounting/events", key: "events", icon: CalendarDays },
+    { href: "/accounting/payment-links", key: "paymentLinks", icon: Link2 },
+  ] },
   { key: "organisers", items: [
     { href: "/accounting/organisers", key: "organisers", icon: Users },
     { href: "/accounting/payments", key: "payments", icon: Banknote },

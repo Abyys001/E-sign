@@ -35,6 +35,7 @@ export const LIMITS = {
   treasuryLoginIp: { limit: 20, windowSec: 900 }, // staff portal login attempts, per IP
   treasuryLoginEmail: { limit: 6, windowSec: 900 }, // staff portal login attempts, per email
   treasuryStaff: { limit: 240, windowSec: 60 }, // authenticated staff portal requests
+  payCheckout: { limit: 30, windowSec: 600 }, // public payment-link checkouts / confirmations, per IP
 } as const;
 export type LimitName = keyof typeof LIMITS;
 

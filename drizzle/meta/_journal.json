@@ -169,6 +169,13 @@
       "when": 1791510834374,
       "tag": "0023_organiser_cashback",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791514434374,
+      "tag": "0024_payment_links",
+      "breakpoints": true
     }
   ]
 }
