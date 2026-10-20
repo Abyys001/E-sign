@@ -51,4 +51,12 @@ describe("ticket export CSV", () => {
     expect(summary.refunded).toEqual(["o1"]);
     expect(summary.amountLow).toEqual([{ order: "o2", site: 4815, stripe: 4000 }]);
   });
+  it("reconciles two orders paid in one Stripe payment as one", () => {
+    const rows = parseTicketCsv([HEAD, row("oA", "Gold", "45.00", "3.15", "48.15"), row("oB", "Gold", "45.00", "3.15", "48.15")].join("\n"), "eur");
+    const { summary, orders } = computeImport(rows, [{ order: "oA", orders: ["oA", "oB"], amount: 9630, commission: 630, refunded: false }], "eur");
+    expect(orders).toHaveLength(1);
+    expect(orders[0]).toMatchObject({ order: "oA", merged: ["oB"], tickets: 2, status: "MATCHED", addOnAmount: 0 });
+    expect(summary.siteOnly).toEqual([]);
+    expect(summary.paidTickets).toBe(2);
+  });
 });

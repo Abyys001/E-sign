@@ -21,6 +21,7 @@ export type TicketRow = { order: string; type: string; price: number; bookingFee
 export type OrderLine = {
   order: string; tickets: number; free: boolean; types: string[]; price: number; fee: number; total: number; addOnTickets: number;
   stripe: number | null; addOnAmount: number; bookedFee: number | null; targetFee: number | null; status: "MATCHED" | "FREE" | "SITE_ONLY" | "AMOUNT_LOW" | "REFUNDED";
+  /** other orders paid in the same Stripe payment, folded into this one */ merged?: string[];
 };
 export type TypeLine = { type: string; tickets: number; paid: number; free: number; price: number; fee: number };
 export type ImportSummary = {
@@ -93,7 +94,7 @@ export function parseTicketCsv(text: string, currency: string): TicketRow[] {
 }
 
 // ---------- calculation ----------
-export type StripeSale = { order: string | null; amount: number; commission: number; refunded: boolean };
+export type StripeSale = { order: string | null; amount: number; commission: number; refunded: boolean; /** every order ref on the payment (a basket can pay several) */ orders?: string[] };
 
 /**
  * Pure reconciliation of export rows against the event's Stripe sales. Bilit's fee per order = booking + transaction fee
@@ -101,6 +102,12 @@ export type StripeSale = { order: string | null; amount: number; commission: num
  * the export says, or have no Stripe sale keep their booked fee (listed for review, never corrected blindly).
  */
 export function computeImport(rows: TicketRow[], sales: StripeSale[], currency: string): { summary: ImportSummary; orders: OrderLine[] } {
+  // One Stripe payment can cover several orders ("Order (A) … Order (B) …"): the later ones are reconciled as part of the first.
+  const alias = new Map<string, string>();
+  for (const s of sales) for (const o of s.orders ?? []) if (s.order && o !== s.order) alias.set(o, s.order);
+  rows = rows.map((r) => alias.has(r.order) ? { ...r, order: alias.get(r.order)! } : r);
+  const mergedInto = new Map<string, string[]>();
+  for (const [o, into] of alias) mergedInto.set(into, [...(mergedInto.get(into) ?? []), o]);
   const byOrder = new Map<string, TicketRow[]>();
   for (const r of rows) byOrder.set(r.order, [...(byOrder.get(r.order) ?? []), r]);
   const sale = new Map<string, StripeSale>(); const unref: StripeSale[] = [];
@@ -109,7 +116,7 @@ export function computeImport(rows: TicketRow[], sales: StripeSale[], currency: 
   for (const [order, rs] of byOrder) {
     const price = rs.reduce((a, r) => a + r.price + r.facilityFee, 0), fee = rs.reduce((a, r) => a + r.bookingFee + r.transactionFee, 0), total = rs.reduce((a, r) => a + r.total, 0);
     const s = sale.get(order) ?? null, free = total === 0;
-    const base = { order, tickets: rs.length, free, types: [...new Set(rs.map((r) => r.type))], price, fee, total, addOnTickets: rs.filter((r) => r.addOn).length, stripe: s?.amount ?? null, bookedFee: s?.commission ?? null };
+    const base = { order, tickets: rs.length, free, types: [...new Set(rs.map((r) => r.type))], price, fee, total, addOnTickets: rs.filter((r) => r.addOn).length, stripe: s?.amount ?? null, bookedFee: s?.commission ?? null, ...(mergedInto.has(order) ? { merged: mergedInto.get(order) } : {}) };
     if (!s) { orders.push({ ...base, addOnAmount: 0, targetFee: null, status: free ? "FREE" : "SITE_ONLY" }); continue; }
     if (s.refunded) { orders.push({ ...base, addOnAmount: 0, targetFee: null, status: "REFUNDED" }); continue; }
     if (s.amount < total) { orders.push({ ...base, addOnAmount: 0, targetFee: null, status: "AMOUNT_LOW" }); continue; }
@@ -147,12 +154,13 @@ export function computeImport(rows: TicketRow[], sales: StripeSale[], currency: 
 
 // ---------- persistence ----------
 async function eventSales(orgId: string, mode: Mode, eventId: string): Promise<StripeSale[]> {
-  const r = await db.execute<{ order: string | null; amount: string; commission: string; refunded: boolean }>(sql`
-    select substring(coalesce(c.description, bt.description) from 'Order \\(([^)]+)\\)') as "order", bt.amount::text as amount, coalesce(bt.commission_amount, 0)::text as commission,
+  const r = await db.execute<{ order: string | null; orders: string[] | null; amount: string; commission: string; refunded: boolean }>(sql`
+    select substring(coalesce(c.description, bt.description) from 'Order \\(([^)]+)\\)') as "order",
+      array(select m[1] from regexp_matches(coalesce(c.description, bt.description, ''), 'Order \\(([^)]+)\\)', 'g') m) as orders, bt.amount::text as amount, coalesce(bt.commission_amount, 0)::text as commission,
       exists (select 1 from stripe_balance_transactions r where r.stripe_account_ref = bt.stripe_account_ref and r.charge_id = bt.charge_id and r.kind in ('REFUND', 'DISPUTE')) as refunded
     from stripe_balance_transactions bt left join stripe_charges c on c.stripe_account_ref = bt.stripe_account_ref and c.charge_id = bt.charge_id
     where bt.organisation_id = ${orgId} and bt.livemode = ${isLive(mode)} and bt.event_id = ${eventId} and bt.kind = 'SALE' and bt.match_status = 'MATCHED'`);
-  return r.rows.map((x) => ({ order: x.order, amount: Number(x.amount), commission: Number(x.commission), refunded: x.refunded }));
+  return r.rows.map((x) => ({ order: x.order, orders: x.orders ?? [], amount: Number(x.amount), commission: Number(x.commission), refunded: x.refunded }));
 }
 
 async function loadEvent(orgId: string, eventId: string) {
