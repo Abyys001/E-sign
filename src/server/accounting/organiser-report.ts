@@ -191,7 +191,7 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   }
 
   // Refunds
-  heading("Refunds & chargebacks", "Refunds on this organiser's events.");
+  heading("Refunds & chargebacks", d.refunds.some((x) => x.bookingFeePart) ? "Refunds on this organiser's events. Under the refund policy the booking fee is non-refundable, so the booking fee returned to customers is deducted from the organiser." : "Refunds on this organiser's events.");
   if (!d.refunds.length) { at("No refunds in this period.", M, doc.y, { size: 9.5 }); doc.y += 14; }
   else {
     table([{ k: "Date", w: 60 }, { k: "Event", w: 130 }, { k: "Order", w: 60 }, { k: "Customer", w: 110 }, { k: "Type", w: 55 }, { k: "Refunded", w: 70, r: true }, { k: "Of which booking fee", w: 70, r: true }],
