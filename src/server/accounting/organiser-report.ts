@@ -61,7 +61,9 @@ export async function organiserReportData(orgId: string, mode: Mode, organiserId
   const events = sel ? fin.events.filter((e) => sel.has(e.eventId)) : fin.events;
   if (sel && !events.length) throw new AppError("validation_failed", "Choose at least one event of this organiser.");
   const selCodes = new Set(events.map((e) => e.eventCode));
-  const allPayments = payments.map((x) => ({ ...x, amount: Number(x.amount) }));
+  const paid0 = payments.map((x) => ({ ...x, amount: Number(x.amount) }));
+  // A payment split across events (same reference, several PAID records) carries its other parts, so each report can say so.
+  const allPayments = paid0.map((x) => ({ ...x, parts: x.reference && x.status === "PAID" ? paid0.filter((y) => y.id !== x.id && y.status === "PAID" && y.reference === x.reference && y.currency === x.currency).map((y) => ({ amount: y.amount, eventName: y.eventName, eventCode: y.eventCode })) : [] }));
   // statement mode: payments tagged to the chosen events + every payment on account; other events' payments are left out
   const pay = sel ? allPayments.filter((p) => !p.eventCode || selCodes.has(p.eventCode)) : allPayments;
   const statement = sel ? statementLines(events, r.eventReport ? [] : pay.filter((p) => !p.eventCode && p.status === "PAID")) : null;
@@ -124,6 +126,15 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
       doc.y = y + h; doc.moveTo(M, doc.y).lineTo(M + W, doc.y).lineWidth(0.3).strokeColor(C.rule).stroke();
     });
     doc.y += 6;
+  };
+  // One line per payment that was split across events: the full amount and where the other part(s) are counted.
+  const splitNotes = (list: typeof d.payments, c: string, size: number) => {
+    for (const p of list) {
+      if (!p.parts?.length) continue;
+      const total = p.amount + p.parts.reduce((a, x) => a + x.amount, 0);
+      const t = `${p.reference} (${money(total, c)}) is split between events: ${money(p.amount, c)} ${p.eventCode ? `on ${p.eventName} (${p.eventCode})` : "on account"}, ${p.parts.map((x) => `${money(x.amount, c)} on ${x.eventCode ? `${x.eventName} (${x.eventCode})` : "account"}`).join(", ")}.`;
+      ensure(28); at(t, M, doc.y, { size, color: C.muted, width: W }); doc.y += doc.heightOfString(t, { width: W }) + 4;
+    }
   };
 
   chrome(); doc.y = TOP;
@@ -188,6 +199,7 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
       else {
         table([{ k: "Date", w: 90 }, { k: "Paid by", w: 100 }, { k: "Reference", w: 230 }, { k: "Amount", w: 95, r: true }],
           [...mine.map((p) => [day(String(p.date)), how(p.method), p.reference ?? "—", money(p.amount, c)]), ["Total paid", "", "", money(paid, c)]], { size: 10, bold: [...mine.map(() => false), true] });
+        splitNotes(mine, c, 9.5);
       }
       // Refunds
       heading("Refunds");
@@ -254,6 +266,7 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
     );
     const byCur = new Map<string, number>(); for (const p of payments) if (p.status === "PAID") byCur.set(p.currency, (byCur.get(p.currency) ?? 0) + p.amount);
     for (const [c, v] of byCur) { ensure(14); const y = doc.y; at(`Total paid (${c.toUpperCase()})`, M, y, { bold: true, size: 9.5, width: W - 110 }); at(money(v, c), M + W - 110, y, { bold: true, size: 9.5, width: 110, align: "right" }); doc.y = y + 14; }
+    for (const c of byCur.keys()) splitNotes(payments.filter((p) => p.currency === c), c, 8.5);
   }
 
   // Refunds
