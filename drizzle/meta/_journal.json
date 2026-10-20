@@ -183,6 +183,13 @@
       "when": 1791518034374,
       "tag": "0025_custom_payment_links",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792506756771,
+      "tag": "0026_ticket_imports",
+      "breakpoints": true
     }
   ]
 }

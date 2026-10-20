@@ -8,6 +8,7 @@ import { isLive, type Mode } from "./core";
 import { organiserFinancials, totalsByCurrency } from "./finance";
 import { syncCashback } from "./cashback";
 import { getInvoiceSettings, registrationLines } from "./invoices";
+import { appliedTicketImport } from "./ticket-import";
 import { organiserContracts } from "./organiser-contracts";
 
 type Range = { from?: string | null; to?: string | null; eventIds?: string[] | null; /** one-event report: don't apply payments on account to it, show the organiser's whole account instead */ eventReport?: boolean };
@@ -143,6 +144,7 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   if (easy) {
     const day = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
     const pays = d.payments.filter((p) => p.status === "PAID" && d.events.some((e) => e.eventCode === p.eventCode));
+    const tix = await appliedTicketImport(orgId, mode, ev0!.eventId);
     const how = (m: string) => ({ BANK_TRANSFER: "Bank transfer", STRIPE_TRANSFER: "Stripe", CASH: "Cash", OTHER: "Other" } as Record<string, string>)[m] ?? m;
     for (const f of d.totals) {
       const c = f.currency, l = st?.find((x) => x.currency === c), due = l?.due ?? f.organiserDue, paid = l?.paidOnEvents ?? f.organiserPaid, bal = due - paid;
@@ -170,6 +172,14 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
       ensure(lines.length * 19 + 10);
       for (const [k, v, b] of lines) { const y = doc.y; if (b) doc.moveTo(M, y - 3).lineTo(M + 360, y - 3).lineWidth(0.8).strokeColor(C.rule).stroke(); at(k, M, y, { size: 11, bold: b, width: 240 }); at(v, M + 240, y, { size: 11, bold: b, width: 120, align: "right" }); doc.y = y + 19; }
       if (f.bookingFeesRefunded) { at(`Refunds include ${money(f.bookingFeesRefunded, c)} of booking fee returned to customers. The booking fee is non-refundable, so it is taken from the event total.`, M, doc.y + 2, { size: 9, color: C.muted, width: W }); doc.y += 26; }
+      // Tickets sold, from the applied ticket-system export
+      if (tix && tix.currency === c) {
+        heading("Tickets sold", `${tix.tickets} tickets: ${tix.paidTickets} paid, ${tix.freeTickets} free.`);
+        table([{ k: "Ticket type", w: 200 }, { k: "Tickets", w: 70, r: true }, { k: "Free", w: 70, r: true }, { k: "Ticket sales", w: 120, r: true }],
+          [...tix.byType.map((x) => [x.type, String(x.tickets), String(x.free), money(x.price, c)]),
+            ...(tix.addOnAmount ? [["Add-ons (meet & greet)", String(tix.addOnTickets), "", money(tix.addOnAmount, c)]] : []),
+            ["Total", String(tix.tickets), String(tix.freeTickets), money(tix.ticketPrice + tix.addOnAmount, c)]], { size: 10, bold: [...tix.byType.map(() => false), ...(tix.addOnAmount ? [false] : []), true] });
+      }
       // Payments
       heading("Payments made");
       const mine = pays.filter((p) => p.currency === c);

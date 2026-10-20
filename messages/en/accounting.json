@@ -1079,7 +1079,8 @@
       "refunds": "Refunds",
       "pl": "Profit & loss",
       "reports": "Reports",
-      "audit": "Audit log"
+      "audit": "Audit log",
+      "tickets": "Ticket export"
     },
     "flow": {
       "title": "Where the money went",
@@ -3030,5 +3031,71 @@
     "embedOff": "Add your Stripe publishable key (Stripe key → Publishable key) to show the card form embedded inside your branded page instead.",
     "pkLabel": "Publishable key (embedded checkout)",
     "pkHint": "Stripe Dashboard → Developers → API keys → Publishable key (pk_live_…). Safe to share; leave empty to use Stripe's hosted page."
+  },
+  "tix": {
+    "title": "Ticket export",
+    "desc": "Upload the ticket system's CSV export for this event. It is matched order by order with Stripe, and the booking fee in the books is corrected to what customers were really charged.",
+    "upload": "Upload CSV",
+    "reading": "Reading…",
+    "choose": "Choose a CSV file",
+    "empty": "No ticket export yet",
+    "emptyDesc": "Upload the CSV export of this event's tickets (one row per ticket, with Order ID, Ticket Price and Booking Fee).",
+    "applied": "Applied to the books",
+    "preview": "Preview — not applied yet",
+    "otherEvent": "The file names a different event",
+    "k": {
+      "tickets": "Tickets",
+      "ticketsSub": "{paid} paid · {free} free",
+      "ticketPrice": "Ticket sales (organiser)",
+      "withAddOns": "incl. {amount} add-ons (e.g. meet & greet)",
+      "organiserMoney": "Ticket price, excluding booking fee",
+      "bookingFees": "Booking fees charged",
+      "paid": "Customers paid",
+      "stripe": "Stripe: {amount} in {n} payments"
+    },
+    "fix": {
+      "title": "Booking fee in the books",
+      "booked": "Booked at the agreement % ({n} orders)",
+      "charged": "Actually charged (from the export)",
+      "toOrganiser": "Correction — owed to the organiser",
+      "toBilit": "Correction — owed to Bilit",
+      "already": "Already corrected by an earlier import",
+      "apply": "Apply correction of {amount}",
+      "applyNoChange": "Mark as applied (no change)",
+      "note": "Posts one correction entry. Uploading a newer file later trues it up again.",
+      "done": "This export is applied: the event's booking fee matches what customers were charged.",
+      "confirmTitle": "Apply the ticket export?",
+      "confirmDesc": "The event's booking fee will be corrected to the amounts in the export. One balanced entry is posted to the ledger; it shows in the audit log.",
+      "confirm": "Apply",
+      "toast": "Booking fee corrected ({amount})"
+    },
+    "checks": {
+      "title": "Check these orders",
+      "siteOnly": "{n} paid order(s) in the export with no Stripe payment",
+      "stripeOnly": "{n} Stripe payment(s) not in the export (kept as booked)",
+      "noRef": "no order code",
+      "amountLow": "{n} order(s) where Stripe received less than the export says (export / Stripe)",
+      "refunded": "{n} refunded order(s), kept as booked"
+    },
+    "type": {
+      "type": "Ticket type",
+      "tickets": "Tickets",
+      "free": "Free",
+      "price": "Ticket sales",
+      "fee": "Booking fees",
+      "addOns": "Add-ons (meet & greet etc.)"
+    },
+    "history": "Uploads",
+    "h": {
+      "date": "Uploaded",
+      "file": "File",
+      "status": "Status",
+      "correction": "Correction"
+    },
+    "status": {
+      "PREVIEW": "Preview",
+      "APPLIED": "Applied",
+      "SUPERSEDED": "Replaced"
+    }
   }
 }

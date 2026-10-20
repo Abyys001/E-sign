@@ -859,3 +859,22 @@ export const acctPaymentLinkSessions = pgTable("acct_payment_link_sessions", {
   uniqueIndex("acct_payment_link_sessions_uq").on(t.sessionId),
   index("acct_payment_link_sessions_link_idx").on(t.linkId, t.createdAt.desc()),
 ]);
+
+// Ticket-system CSV export for one event (order, ticket type, ticket price, booking fee, add-ons). APPLIED imports true up
+// the booked booking fee to what customers were really charged; a newer applied import supersedes the older one.
+export const acctTicketImports = pgTable("acct_ticket_imports", {
+  id: id(),
+  organisationId: org(),
+  livemode: boolean("livemode").notNull(),
+  eventId: uuid("event_id").notNull().references(() => acctEvents.id),
+  fileName: text("file_name"),
+  status: text("status").notNull().default("PREVIEW"), // PREVIEW | APPLIED | SUPERSEDED
+  summary: jsonb("summary").notNull(),
+  orders: jsonb("orders").notNull(),
+  appliedAmount: money("applied_amount"), // cumulative booking-fee correction booked for the event once this import is applied
+  journalEntryId: uuid("journal_entry_id").references(() => acctJournalEntries.id),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  appliedBy: uuid("applied_by").references(() => users.id),
+  appliedAt: timestamp("applied_at", { withTimezone: true }),
+}, (t) => [index("acct_ticket_imports_event_idx").on(t.organisationId, t.eventId, t.createdAt)]);

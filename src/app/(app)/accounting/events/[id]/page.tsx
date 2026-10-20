@@ -9,6 +9,7 @@ import { AmountCard, Badge, Money, RangePicker, rangeFor, rangeQuery, useExport,
 import { AgreementFields, agreementFrom, agreementPayload, emptyAgreement, EventDialog, type AgreementValue } from "@/components/accounting/forms";
 import { AuditList, BookingFeeDialog, ExpenseDialog, moneyFlow, PayOrganiserDialog, PaymentEditDialog, PaymentViewDialog, marginOf, pct, profitAndLoss, SettlementBadge, SettlementSummary, Statement, type AuditItem, type ExpenseRow, type Fig, type PaymentRow } from "@/components/accounting/finance";
 import { EventContractStatus } from "@/components/accounting/organiser-tabs";
+import { TicketImportTab } from "@/components/accounting/ticket-import";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardHeader, PageHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm";
@@ -25,7 +26,7 @@ import { bpsToPercent, formatMoney } from "@/lib/money";
 type Ag = { id: string; version: number; percentBps: number; percentBasis: string; fixedPerTicket: number; fixedEventFee: number; stripeFeesBorneBy: string; chargebacksBorneBy: string; refundsReverseCommission: boolean; notes: string | null; createdAt: string };
 type Ev = { id: string; name: string; code: string; currency: string; status: string; startsOn: string | null; organiserId: string | null; organiserName: string | null; notes: string | null; currentAgreementId: string | null };
 type FinData = { event: Ev; agreement: Ag | null; figures: Array<Fig & { bookingFeeBps: number | null }> };
-type TabId = "overview" | "transactions" | "payments" | "expenses" | "refunds" | "pl" | "reports" | "audit";
+type TabId = "overview" | "transactions" | "tickets" | "payments" | "expenses" | "refunds" | "pl" | "reports" | "audit";
 
 export default function Page({ params }: { params: Promise<{ id: string }> }) { const { id } = use(params); return <EventFinance id={id} />; }
 
@@ -47,7 +48,7 @@ function EventFinance({ id }: { id: string }) {
   const f = data.figures.find((x) => x.currency === cur) ?? data.figures.find((x) => x.currency === e.currency) ?? data.figures[0]!;
   const bps = data.agreement?.percentBps ?? null;
   const manage = can("accounting.manage");
-  const tabs: Array<{ id: TabId; label: string }> = (["overview", "transactions", "payments", "expenses", "refunds", "pl", "reports", "audit"] as TabId[]).map((k) => ({ id: k, label: t(`tabs.${k}`) }));
+  const tabs: Array<{ id: TabId; label: string }> = (["overview", "transactions", "tickets", "payments", "expenses", "refunds", "pl", "reports", "audit"] as TabId[]).map((k) => ({ id: k, label: t(`tabs.${k}`) }));
   return (
     <div className="space-y-6">
       <PageHeader
@@ -88,6 +89,7 @@ function EventFinance({ id }: { id: string }) {
         <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="pt-5">
           {tab === "overview" && <Overview e={e} f={f} agreement={data.agreement} reload={reload} />}
           {tab === "transactions" && <TxTab eventId={id} kinds={["SALE"]} />}
+          {tab === "tickets" && <TicketImportTab eventId={id} eventName={e.name} manage={manage} onApplied={reload} />}
           {tab === "refunds" && <TxTab eventId={id} kinds={["REFUND", "DISPUTE", "DISPUTE_REVERSAL"]} />}
           {tab === "payments" && <PaymentsTab e={e} onPay={() => setPay(true)} onChanged={reload} />}
           {tab === "expenses" && <ExpensesTab e={e} onChanged={reload} />}

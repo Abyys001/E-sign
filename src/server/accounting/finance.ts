@@ -58,7 +58,7 @@ function fold(ledger: LedgerRow[], bts: BtRow[], pending: Array<{ dim: string; c
     // Settlement is cumulative (everything up to the end of the range), the rest is period activity.
     if (r.key === "organiser_payable") {
       if (r.src === "organiser_payment") f.organiserPaid += dr; else f.organiserDue += cr;
-      if (r.src !== "organiser_payment" && r.src !== "stripe_balance_transaction" && r.src !== "organiser_cashback" && r.inp) f.deductions += dr;
+      if (r.src !== "organiser_payment" && r.src !== "stripe_balance_transaction" && r.src !== "organiser_cashback" && r.src !== "ticket_import" && r.inp) f.deductions += dr;
       if (r.src === "event_expense" && r.inp) f.expensesOrganiser += dr;
     }
     if (!r.inp) continue;
@@ -70,7 +70,8 @@ function fold(ledger: LedgerRow[], bts: BtRow[], pending: Array<{ dim: string; c
       case "stripe_fee_recharges": f.feesRecharged += cr; break;
       case "bilit_commission": f.eventFees += cr; break;
       case "other_revenue": f.otherRevenue += cr; break;
-      case "organiser_share": f.organiserShare += dr; break;
+      // A ticket-export correction moves booking fee to the organiser: it lowers the booking fee, not a deduction.
+      case "organiser_share": f.organiserShare += dr; if (r.src === "ticket_import") f.bookingFees -= dr; break;
       case "other_expenses": if (r.src === "event_expense") f.expensesBilit += dr; else f.otherCosts += dr; break;
       case "profit_share": f.profitShare += dr; break;
       case "organiser_cashback": f.cashback += dr; break;
