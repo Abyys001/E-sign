@@ -34,7 +34,8 @@ describe("ticket export CSV", () => {
       { order: null, amount: 5300, commission: 568, refunded: false },
     ];
     const { summary, orders } = computeImport(rows, sales, "eur");
-    expect(summary).toMatchObject({ tickets: 5, paidTickets: 4, freeTickets: 1, ticketPrice: 24000, bookingFees: 2420, addOnAmount: 5000, addOnTickets: 1, matchedOrders: 2 });
+    expect(summary).toMatchObject({ tickets: 4, paidTickets: 3, freeTickets: 1, ticketPrice: 17500, bookingFees: 1575, addOnAmount: 5000, addOnTickets: 1, matchedOrders: 2 });
+    expect(summary.unpaid).toEqual([{ order: "o4", tickets: 1, total: 7345, types: ["Gold"] }]); // issued but never paid: left out
     expect(summary.bookedFee).toBe(1032 + 1548);
     expect(summary.targetFee).toBe(630 + 945);
     expect(summary.correction).toBe(2580 - 1575);

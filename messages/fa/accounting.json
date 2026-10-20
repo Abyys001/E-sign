@@ -3071,7 +3071,7 @@
     },
     "checks": {
       "title": "Check these orders",
-      "siteOnly": "{n} paid order(s) in the export with no Stripe payment",
+      "siteOnly": "{n} order(s) issued by the ticket system without a successful Stripe payment — left out of ticket sales",
       "stripeOnly": "{n} Stripe payment(s) not in the export (kept as booked)",
       "noRef": "no order code",
       "amountLow": "{n} order(s) where Stripe received less than the export says (export / Stripe)",

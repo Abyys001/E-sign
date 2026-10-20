@@ -30,6 +30,8 @@ export type ImportSummary = {
   stripeSales: number; stripeAmount: number; matchedOrders: number;
   siteOnly: Array<{ order: string; total: number }>; stripeOnly: Array<{ order: string | null; amount: number }>; amountLow: Array<{ order: string; site: number; stripe: number }>; refunded: string[];
   bookedFee: number; targetFee: number; correction: number; eventNames: string[];
+  /** Tickets the ticket system issued for orders with no successful Stripe payment: left out of every total above. */
+  unpaid?: Array<{ order: string; tickets: number; total: number; types: string[] }>;
 };
 
 // ---------- CSV ----------
@@ -114,6 +116,10 @@ export function computeImport(rows: TicketRow[], sales: StripeSale[], currency: 
     orders.push({ ...base, addOnAmount: s.amount - total, targetFee: fee, status: "MATCHED" });
   }
   const matched = orders.filter((o) => o.status === "MATCHED");
+  // Paid-looking orders with no Stripe payment were never paid for: they are not ticket sales of the event.
+  const unpaidSet = new Set(orders.filter((o) => o.status === "SITE_ONLY").map((o) => o.order));
+  const allRows = rows;
+  rows = rows.filter((r) => !unpaidSet.has(r.order));
   const types = new Map<string, TypeLine>();
   for (const r of rows) { const t = types.get(r.type) ?? { type: r.type, tickets: 0, paid: 0, free: 0, price: 0, fee: 0 }; t.tickets++; if (r.total === 0) t.free++; else t.paid++; t.price += r.price + r.facilityFee; t.fee += r.bookingFee + r.transactionFee; types.set(r.type, t); }
   const rates = new Map<string, number>();
@@ -122,7 +128,7 @@ export function computeImport(rows: TicketRow[], sales: StripeSale[], currency: 
   const bookedFee = sum(matched.map((o) => o.bookedFee ?? 0)), targetFee = sum(matched.map((o) => o.targetFee ?? 0));
   const summary: ImportSummary = {
     currency, rows: rows.length, tickets: rows.length, paidTickets: rows.filter((r) => r.total > 0).length, freeTickets: rows.filter((r) => r.total === 0).length, checkedIn: rows.filter((r) => r.checkedIn).length,
-    orders: byOrder.size, paidOrders: orders.filter((o) => !o.free).length,
+    orders: byOrder.size - unpaidSet.size, paidOrders: orders.filter((o) => !o.free && !unpaidSet.has(o.order)).length,
     ticketPrice: sum(rows.map((r) => r.price + r.facilityFee)), bookingFees: sum(rows.map((r) => r.bookingFee + r.transactionFee)), customersPaid: sum(rows.map((r) => r.total)),
     addOnTickets: rows.filter((r) => r.addOn && r.total > 0).length, addOnAmount: sum(matched.map((o) => o.addOnAmount)),
     byType: [...types.values()].sort((a, b) => b.price / Math.max(1, b.tickets) - a.price / Math.max(1, a.tickets)),
@@ -133,7 +139,8 @@ export function computeImport(rows: TicketRow[], sales: StripeSale[], currency: 
     amountLow: orders.filter((o) => o.status === "AMOUNT_LOW").map((o) => ({ order: o.order, site: o.total, stripe: o.stripe ?? 0 })),
     refunded: orders.filter((o) => o.status === "REFUNDED").map((o) => o.order),
     bookedFee, targetFee, correction: bookedFee - targetFee,
-    eventNames: [...new Set(rows.map((r) => r.eventName).filter((x): x is string => !!x))],
+    eventNames: [...new Set(allRows.map((r) => r.eventName).filter((x): x is string => !!x))],
+    unpaid: orders.filter((o) => o.status === "SITE_ONLY").map((o) => ({ order: o.order, tickets: o.tickets, total: o.total, types: o.types })),
   };
   return { summary, orders };
 }

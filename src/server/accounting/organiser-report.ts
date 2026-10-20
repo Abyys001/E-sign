@@ -174,7 +174,7 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
       if (f.bookingFeesRefunded) { at(`Refunds include ${money(f.bookingFeesRefunded, c)} of booking fee returned to customers. The booking fee is non-refundable, so it is taken from the event total.`, M, doc.y + 2, { size: 9, color: C.muted, width: W }); doc.y += 26; }
       // Tickets sold, from the applied ticket-system export
       if (tix && tix.currency === c) {
-        heading("Tickets sold", `${tix.tickets} tickets: ${tix.paidTickets} paid, ${tix.freeTickets} free.`);
+        heading("Tickets sold", `${tix.tickets} tickets: ${tix.paidTickets} paid, ${tix.freeTickets} free.${tix.unpaid?.length ? ` Not included: ${tix.unpaid.reduce((n, u) => n + u.tickets, 0)} ticket(s) issued without a successful payment.` : ""}`);
         table([{ k: "Ticket type", w: 200 }, { k: "Tickets", w: 70, r: true }, { k: "Free", w: 70, r: true }, { k: "Ticket sales", w: 120, r: true }],
           [...tix.byType.map((x) => [x.type, String(x.tickets), String(x.free), money(x.price, c)]),
             ...(tix.addOnAmount ? [["Add-ons (meet & greet)", String(tix.addOnTickets), "", money(tix.addOnAmount, c)]] : []),
