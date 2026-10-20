@@ -101,7 +101,7 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   const chrome = () => {
     doc.rect(0, 0, PW, 84).fill(DARK); doc.image(fnt.logo, M, 22, { height: 38 }); doc.rect(0, 84, PW, 4).fill(C.primary);
     at(evr ? (internal ? "EVENT REPORT (INTERNAL)" : "EVENT REPORT") : st ? (internal ? "SETTLEMENT STATEMENT (INTERNAL)" : "SETTLEMENT STATEMENT") : internal ? "ORGANISER ACCOUNT REPORT (INTERNAL)" : "ACCOUNT REPORT", M, 26, { bold: true, size: 14, color: "#ffffff", width: W, align: "right" });
-    at(`${o.name} · ${period}`, M, 48, { size: 9, color: "#c7c7cc", width: W, align: "right" });
+    at(`${o.name} · ${period}`, M + 190, 48, { size: 8.5, color: "#c7c7cc", width: W - 190, align: "right" });
     doc.rect(0, PH - 62, PW, 62).fill(DARK); doc.rect(0, PH - 62, PW, 3).fill(C.primary);
     at([seller.name, seller.website].filter(Boolean).join(" · "), M, PH - 46, { bold: true, size: 9, color: "#ffffff", width: W, align: "center" });
     at([...seller.reg, seller.email].filter(Boolean).join(" · ") || "Issued from the Bilit finance system", M, PH - 33, { size: 8, color: "#c7c7cc", width: W, align: "center" });
@@ -110,16 +110,16 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   const ensure = (h: number) => { if (doc.y + h > BOTTOM) newPage(); };
   const heading = (t: string, sub?: string) => { ensure(60); doc.y += 8; at(t, M, doc.y, { bold: true, size: 12.5, color: C.primary }); doc.y += 18; if (sub) { at(sub, M, doc.y, { size: 8.5, color: C.muted, width: W }); doc.y += 4; } };
   type Col = { k: string; w: number; r?: boolean };
-  const table = (cols: Col[], rows: string[][], opts: { strike?: boolean[]; bold?: boolean[] } = {}) => {
-    const scale = W / cols.reduce((a, c) => a + c.w, 0);
-    const head = () => { const y = doc.y; doc.rect(M, y, W, 16).fill(C.tint); let x = M; for (const c of cols) { at(c.k, x + 3, y + 4, { bold: true, size: 7.5, width: c.w * scale - 6, align: c.r ? "right" : "left" }); x += c.w * scale; } doc.y = y + 18; };
+  const table = (cols: Col[], rows: string[][], opts: { strike?: boolean[]; bold?: boolean[]; size?: number } = {}) => {
+    const scale = W / cols.reduce((a, c) => a + c.w, 0), fs = opts.size ?? 7.5;
+    const head = () => { const y = doc.y, hh = fs + 9; doc.rect(M, y, W, hh).fill(C.tint); let x = M; for (const c of cols) { at(c.k, x + 3, y + 4, { bold: true, size: fs, width: c.w * scale - 6, align: c.r ? "right" : "left" }); x += c.w * scale; } doc.y = y + hh + 2; };
     ensure(34); head();
     rows.forEach((cells, ri) => {
-      const hs = cells.map((c, i) => doc.font("reg").fontSize(7.5).heightOfString(c, { width: cols[i]!.w * scale - 6 }));
-      const h = Math.max(12, ...hs) + 4;
+      const hs = cells.map((c, i) => doc.font("reg").fontSize(fs).heightOfString(c, { width: cols[i]!.w * scale - 6 }));
+      const h = Math.max(fs + 4.5, ...hs) + (fs > 8 ? 7 : 4);
       if (doc.y + h > BOTTOM) { newPage(); head(); }
       const y = doc.y; let x = M;
-      cells.forEach((c, i) => { at(c, x + 3, y + 2, { size: 7.5, bold: opts.bold?.[ri], color: opts.strike?.[ri] ? C.muted : C.text, width: cols[i]!.w * scale - 6, align: cols[i]!.r ? "right" : "left" }); x += cols[i]!.w * scale; });
+      cells.forEach((c, i) => { at(c, x + 3, y + (fs > 8 ? 4 : 2), { size: fs, bold: opts.bold?.[ri], color: opts.strike?.[ri] ? C.muted : C.text, width: cols[i]!.w * scale - 6, align: cols[i]!.r ? "right" : "left" }); x += cols[i]!.w * scale; });
       doc.y = y + h; doc.moveTo(M, doc.y).lineTo(M + W, doc.y).lineWidth(0.3).strokeColor(C.rule).stroke();
     });
     doc.y += 6;
@@ -138,7 +138,62 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
     at([`Event: ${e.eventName} (${e.eventCode})`, e.startsOn ? `Date: ${e.startsOn}` : null, `Status: ${e.eventStatus === "COMPLETED" ? "Finished" : e.eventStatus.toLowerCase()}`, `Orders: ${e.orders}`, o.cashbackBps ? `Cashback: ${o.cashbackBps / 100}%` : null].filter(Boolean).join(" · "), M, doc.y + 6, { size: 8.5, width: W }); doc.y += 8;
   } else if (st) { at(`Covers: ${d.events.map((e) => `${e.eventName} (${e.eventCode})`).filter((v, i, a) => a.indexOf(v) === i).join(" · ")}`, M, doc.y + 6, { size: 8.5, width: W }); doc.y += 8; }
 
+  // Easy-reading event report (what organisers receive): one headline balance, a short worked sum, then the lists.
+  const easy = evr && !internal;
+  if (easy) {
+    const day = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+    const pays = d.payments.filter((p) => p.status === "PAID" && d.events.some((e) => e.eventCode === p.eventCode));
+    const how = (m: string) => ({ BANK_TRANSFER: "Bank transfer", STRIPE_TRANSFER: "Stripe", CASH: "Cash", OTHER: "Other" } as Record<string, string>)[m] ?? m;
+    for (const f of d.totals) {
+      const c = f.currency, l = st?.find((x) => x.currency === c), due = l?.due ?? f.organiserDue, paid = l?.paidOnEvents ?? f.organiserPaid, bal = due - paid;
+      // Headline
+      doc.y += 14; ensure(90); const hy = doc.y;
+      doc.roundedRect(M, hy, W, 78, 8).fill(C.tint); doc.rect(M, hy, 5, 78).fill(C.primary);
+      at(bal >= 0 ? `Still to pay to ${o.name}` : `Paid beyond this event — owed to ${seller.name}`, M + 20, hy + 14, { size: 10.5, color: C.muted, width: W - 40 });
+      at(money(Math.abs(bal), c), M + 20, hy + 32, { bold: true, size: 26, color: C.primary, width: W / 2 });
+      at(`Event total  ${money(due, c)}`, M + W / 2, hy + 24, { size: 10.5, width: W / 2 - 20, align: "right" });
+      at(`Paid so far  ${money(paid, c)}`, M + W / 2, hy + 42, { size: 10.5, width: W / 2 - 20, align: "right" });
+      doc.y = hy + 92;
+      // Worked sum
+      heading("How this is worked out");
+      const adj = -(f.deductions ?? 0), signed = (v: number) => `${v >= 0 ? "+" : "−"}${money(Math.abs(v), c)}`;
+      const lines: Array<[string, string, boolean?]> = [
+        [`Ticket sales (${f.orders} order${f.orders === 1 ? "" : "s"})`, money(f.grossSales - f.bookingFees, c)],
+        ...(f.refunds + f.chargebacks ? [["Refunds to customers", signed(-(f.refunds + f.chargebacks))] as [string, string]] : []),
+        ...(f.feesRecharged ? [["Card processing fees", signed(-f.feesRecharged)] as [string, string]] : []),
+        ...(adj ? [[adj > 0 ? "Correction in your favour" : "Correction", signed(adj)] as [string, string]] : []),
+        ...(f.cashback ? [["Cashback", signed(f.cashback)] as [string, string]] : []),
+        ["Event total", money(due, c), true],
+        ["Paid so far", signed(-paid)],
+        [bal >= 0 ? "Still to pay" : "Paid beyond this event", money(Math.abs(bal), c), true],
+      ];
+      ensure(lines.length * 19 + 10);
+      for (const [k, v, b] of lines) { const y = doc.y; if (b) doc.moveTo(M, y - 3).lineTo(M + 360, y - 3).lineWidth(0.8).strokeColor(C.rule).stroke(); at(k, M, y, { size: 11, bold: b, width: 240 }); at(v, M + 240, y, { size: 11, bold: b, width: 120, align: "right" }); doc.y = y + 19; }
+      if (f.bookingFeesRefunded) { at(`Refunds include ${money(f.bookingFeesRefunded, c)} of booking fee returned to customers. The booking fee is non-refundable, so it is taken from the event total.`, M, doc.y + 2, { size: 9, color: C.muted, width: W }); doc.y += 26; }
+      // Payments
+      heading("Payments made");
+      const mine = pays.filter((p) => p.currency === c);
+      if (!mine.length) { at("No payments yet.", M, doc.y, { size: 10.5 }); doc.y += 18; }
+      else {
+        table([{ k: "Date", w: 90 }, { k: "Paid by", w: 100 }, { k: "Reference", w: 230 }, { k: "Amount", w: 95, r: true }],
+          [...mine.map((p) => [day(String(p.date)), how(p.method), p.reference ?? "—", money(p.amount, c)]), ["Total paid", "", "", money(paid, c)]], { size: 10, bold: [...mine.map(() => false), true] });
+      }
+      // Refunds
+      heading("Refunds");
+      const rf = d.refunds.filter((x) => x.currency === c);
+      if (!rf.length) { at("No refunds on this event.", M, doc.y, { size: 10.5 }); doc.y += 18; }
+      else {
+        const fee = rf.reduce((a, x) => a + x.bookingFeePart, 0), tot = rf.reduce((a, x) => a + x.amount, 0);
+        table([{ k: "Date", w: 80 }, { k: "Customer", w: 140 }, { k: "Refunded", w: 95, r: true }, { k: "Ticket price", w: 95, r: true }, { k: "Booking fee", w: 95, r: true }],
+          [...rf.map((x) => [day(x.date), `${x.customer ?? "—"}${x.kind === "DISPUTE" ? " (chargeback)" : ""}`, money(x.amount, c), money(x.amount - x.bookingFeePart, c), x.bookingFeePart ? money(x.bookingFeePart, c) : "—"]),
+            ["Total", "", money(tot, c), money(tot - fee, c), money(fee, c)]], { size: 10, bold: [...rf.map(() => false), true] });
+        if (fee) { ensure(20); at(`Booking fee to return to ${seller.name}: ${money(fee, c)}. It is already taken off the event total above.`, M, doc.y, { bold: true, size: 10, width: W }); doc.y += 18; }
+      }
+    }
+  }
+
   // Summary per currency
+  if (!easy) {
   heading("Account summary", internal ? "Ticket sales include booking fees. Bilit profit is after Stripe fees and platform expenses." : "A negative balance means the amount is owed to " + seller.name + ".");
   if (!d.totals.length) { at("No activity in this period.", M, doc.y, { size: 10 }); doc.y += 16; }
   for (const f of d.totals) {
@@ -204,6 +259,8 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
       for (const [k, v, bold] of rows) { const y = doc.y; if (bold) doc.moveTo(M, y - 2).lineTo(M + 330, y - 2).lineWidth(0.6).strokeColor(C.rule).stroke(); at(k, M, y, { size: 9.5, bold, width: 230 }); at(money(v, c), M + 230, y, { size: 9.5, bold, width: 100, align: "right" }); doc.y = y + 15; }
       if (g.f) { at(`The booking fee is non-refundable, so the ${money(g.f, c)} returned to customers is deducted from the amount due to the organiser.`, M, doc.y, { size: 8.5, color: C.muted, width: W }); doc.y += 13; }
     }
+  }
+
   }
 
   // Contracts
