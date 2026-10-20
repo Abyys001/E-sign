@@ -37,7 +37,10 @@ export async function organiserReportData(orgId: string, mode: Mode, organiserId
   const p = schema.acctOrganiserPayments;
   const [fin, payments, refunds, contracts] = await Promise.all([
     organiserFinancials(orgId, mode, organiserId, { from: r.from ?? undefined, to: r.to ?? undefined }),
-    db.select({ id: p.id, date: p.paymentDate, amount: p.amount, currency: p.currency, method: p.method, reference: p.bankReference, status: p.status, notes: p.notes, voidReason: p.voidReason, eventName: schema.acctEvents.name, eventCode: schema.acctEvents.code })
+    db.select({ id: p.id, date: p.paymentDate, amount: p.amount, currency: p.currency, method: p.method, reference: p.bankReference, status: p.status, notes: p.notes, voidReason: p.voidReason, eventName: schema.acctEvents.name, eventCode: schema.acctEvents.code,
+        // who actually received a bank transfer (e.g. a venue or supplier paid on the organiser's behalf), from the linked Wise transfer
+        paidTo: sql<string | null>`(select w.counterparty from acct_wise_transactions w where w.organiser_payment_id = ${p.id} order by w.occurred_at limit 1)`,
+        payeeRef: sql<string | null>`(select w.reference from acct_wise_transactions w where w.organiser_payment_id = ${p.id} order by w.occurred_at limit 1)` })
       .from(p).leftJoin(schema.acctEvents, eq(schema.acctEvents.id, p.eventId))
       .where(and(eq(p.organisationId, orgId), eq(p.organiserId, organiserId), eq(p.livemode, live), r.from ? gte(p.paymentDate, r.from) : undefined, r.to ? lte(p.paymentDate, r.to) : undefined))
       .orderBy(asc(p.paymentDate), asc(p.createdAt)),
@@ -77,6 +80,10 @@ export async function organiserReportData(orgId: string, mode: Mode, organiserId
     }),
   };
 }
+
+const norm = (v: string) => v.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "");
+/** True when a bank payee is the organiser itself (by name or company name). */
+const sameParty = (payee: string, ...names: Array<string | null | undefined>) => names.some((x) => x && (norm(x).includes(norm(payee)) || norm(payee).includes(norm(x))));
 
 /**
  * Organiser account report (PDF): account summary per currency, settlement per event, every payment made to the organiser
@@ -126,6 +133,11 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
       doc.y = y + h; doc.moveTo(M, doc.y).lineTo(M + W, doc.y).lineWidth(0.3).strokeColor(C.rule).stroke();
     });
     doc.y += 6;
+  };
+  // Reference, plus who received it when that was not the organiser (and their own reference, e.g. an invoice number).
+  const payRef = (p: (typeof d.payments)[number]) => {
+    const to = p.paidTo && !sameParty(p.paidTo, o.name, o.companyName) ? p.paidTo : null;
+    return [p.reference ?? "—", to ? `to ${to}${p.payeeRef && p.payeeRef !== p.reference ? ` (${p.payeeRef})` : ""}` : null].filter(Boolean).join("\n");
   };
   // One line per payment that was split across events: the full amount and where the other part(s) are counted.
   const splitNotes = (list: typeof d.payments, c: string, size: number) => {
@@ -198,7 +210,7 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
       if (!mine.length) { at("No payments yet.", M, doc.y, { size: 10.5 }); doc.y += 18; }
       else {
         table([{ k: "Date", w: 90 }, { k: "Paid by", w: 100 }, { k: "Reference", w: 230 }, { k: "Amount", w: 95, r: true }],
-          [...mine.map((p) => [day(String(p.date)), how(p.method), p.reference ?? "—", money(p.amount, c)]), ["Total paid", "", "", money(paid, c)]], { size: 10, bold: [...mine.map(() => false), true] });
+          [...mine.map((p) => [day(String(p.date)), how(p.method), payRef(p), money(p.amount, c)]), ["Total paid", "", "", money(paid, c)]], { size: 10, bold: [...mine.map(() => false), true] });
         splitNotes(mine, c, 9.5);
       }
       // Refunds
@@ -262,7 +274,7 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   if (!payments.length) { at("No payments in this period.", M, doc.y, { size: 9.5 }); doc.y += 14; }
   else {
     table([{ k: "Date", w: 60 }, { k: "Event", w: 140 }, { k: "Method", w: 62 }, { k: "Reference", w: 150 }, { k: "Status", w: 40 }, { k: "Amount", w: 70, r: true }],
-      payments.map((p) => [p.date, p.eventCode ? `${p.eventName} (${p.eventCode})` : st ? "On account (all events)" : "Total payable (all events)", ({ BANK_TRANSFER: "Bank transfer", STRIPE_TRANSFER: "Stripe", CASH: "Cash", OTHER: "Other" } as Record<string, string>)[p.method] ?? p.method, p.reference ?? "—", p.status === "VOIDED" ? `Voided${p.voidReason ? `: ${p.voidReason}` : ""}` : p.status.toLowerCase(), money(p.amount, p.currency)]),
+      payments.map((p) => [p.date, p.eventCode ? `${p.eventName} (${p.eventCode})` : st ? "On account (all events)" : "Total payable (all events)", ({ BANK_TRANSFER: "Bank transfer", STRIPE_TRANSFER: "Stripe", CASH: "Cash", OTHER: "Other" } as Record<string, string>)[p.method] ?? p.method, payRef(p), p.status === "VOIDED" ? `Voided${p.voidReason ? `: ${p.voidReason}` : ""}` : p.status.toLowerCase(), money(p.amount, p.currency)]),
     );
     const byCur = new Map<string, number>(); for (const p of payments) if (p.status === "PAID") byCur.set(p.currency, (byCur.get(p.currency) ?? 0) + p.amount);
     for (const [c, v] of byCur) { ensure(14); const y = doc.y; at(`Total paid (${c.toUpperCase()})`, M, y, { bold: true, size: 9.5, width: W - 110 }); at(money(v, c), M + W - 110, y, { bold: true, size: 9.5, width: 110, align: "right" }); doc.y = y + 14; }
