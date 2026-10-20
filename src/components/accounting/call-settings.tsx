@@ -12,7 +12,7 @@ import { api, ApiError, errMsg, useApi } from "@/lib/api";
 
 const OPENAI_VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"] as const;
 const ELEVEN_MODELS = ["eleven_flash_v2_5", "eleven_turbo_v2_5", "eleven_multilingual_v2", "eleven_v3"] as const;
-type Settings = { enabled: boolean; voiceProvider: "elevenlabs" | "openai"; realtimeModel: string; openaiVoice: string; elevenVoiceId: string; elevenVoiceName: string; elevenModel: string; stability: number; similarity: number; speed: number; greeting: string; callPrompt: string; maxMinutes: number; allowInterrupt: boolean };
+type Settings = { enabled: boolean; voiceProvider: "elevenlabs" | "openai"; realtimeModel: string; openaiVoice: string; elevenVoiceId: string; elevenVoiceName: string; elevenModel: string; elevenVoiceIdFa: string; elevenVoiceNameFa: string; elevenModelFa: string; startLanguage: "en" | "fa"; greetingFa: string; stability: number; similarity: number; speed: number; greeting: string; callPrompt: string; maxMinutes: number; allowInterrupt: boolean };
 type Data = { settings: Settings; defaultPrompt: string; hasElevenKey: boolean; elevenKeyHint: string | null; openAiReady: boolean };
 type Voice = { id: string; name: string; category: string | null; labels: string };
 
@@ -24,7 +24,7 @@ export function CallSettingsCard({ admin }: { admin: boolean }) {
   const { data, reload } = useApi<Data>("/api/accounting/settings/ai/call");
   const [v, setV] = useState<(Settings & { elevenApiKey: string }) | null>(null);
   const [voices, setVoices] = useState<Voice[] | null>(null);
-  const [busy, setBusy] = useState<"save" | "voices" | "test" | null>(null);
+  const [busy, setBusy] = useState<"save" | "voices" | "test" | "testFa" | null>(null);
   const [err, setErr] = useState<string | null>(null); const [errs, setErrs] = useState<Record<string, string>>({});
   const player = useRef<HTMLAudioElement | null>(null);
   useEffect(() => { if (data && !v) setV({ ...data.settings, callPrompt: data.settings.callPrompt || data.defaultPrompt, elevenApiKey: "" }); }, [data, v]);
@@ -52,10 +52,10 @@ export function CallSettingsCard({ admin }: { admin: boolean }) {
     try { setVoices((await api<{ voices: Voice[] }>("/api/accounting/settings/ai/call/voices")).voices); }
     catch (e) { fail(e); } finally { setBusy(null); }
   };
-  const test = async () => {
-    setBusy("test"); setErr(null);
+  const test = async (lang: "en" | "fa") => {
+    setBusy(lang === "fa" ? "testFa" : "test"); setErr(null);
     try {
-      const res = await fetch("/api/accounting/settings/ai/call/test", { method: "POST", credentials: "same-origin", headers: { "x-csrf-token": document.cookie.split("; ").find((c) => c.startsWith("bes_csrf="))?.slice(9) ?? "" } });
+      const res = await fetch(`/api/accounting/settings/ai/call/test${lang === "fa" ? "?lang=fa" : ""}`, { method: "POST", credentials: "same-origin", headers: { "x-csrf-token": document.cookie.split("; ").find((c) => c.startsWith("bes_csrf="))?.slice(9) ?? "" } });
       if (!res.ok) { const b = await res.json().catch(() => null) as { error?: { message?: string } } | null; throw new Error(b?.error?.message ?? t("testFailed")); }
       const url = URL.createObjectURL(await res.blob());
       player.current?.pause(); player.current = new Audio(url); player.current.onended = () => URL.revokeObjectURL(url); await player.current.play();
@@ -86,11 +86,22 @@ export function CallSettingsCard({ admin }: { admin: boolean }) {
                 : <Input {...p} className="font-mono" placeholder={t("voiceIdPh")} value={v.elevenVoiceId} onChange={(e) => set({ elevenVoiceId: e.target.value.trim(), elevenVoiceName: "" })} />}</Field>
               <div className="flex items-end gap-2 pb-0.5">
                 <Button size="sm" loading={busy === "voices"} disabled={!data.hasElevenKey} onClick={loadVoices}><RefreshCw className="size-4" aria-hidden />{t("loadVoices")}</Button>
-                <Button size="sm" loading={busy === "test"} disabled={!data.hasElevenKey || !data.settings.elevenVoiceId} onClick={test}><Play className="size-4" aria-hidden />{t("test")}</Button>
+                <Button size="sm" loading={busy === "test"} disabled={!data.hasElevenKey || !data.settings.elevenVoiceId} onClick={() => test("en")}><Play className="size-4" aria-hidden />{t("test")}</Button>
               </div>
               <Field label={t("stability")} hint={t("stabilityHint")} error={errs.stability}>{(p) => <Input {...p} type="number" min={0} max={1} step={0.05} value={v.stability} onChange={(e) => set({ stability: Number(e.target.value) })} />}</Field>
               <Field label={t("similarity")} hint={t("similarityHint")} error={errs.similarity}>{(p) => <Input {...p} type="number" min={0} max={1} step={0.05} value={v.similarity} onChange={(e) => set({ similarity: Number(e.target.value) })} />}</Field>
               <Field label={t("speed")} hint={t("speedHint")} error={errs.speed}>{(p) => <Input {...p} type="number" min={0.7} max={1.2} step={0.05} value={v.speed} onChange={(e) => set({ speed: Number(e.target.value) })} />}</Field>
+            </div>
+            <div className="space-y-3 rounded-xl border border-line bg-surface-2/40 p-3">
+              <p className="text-sm font-semibold">{t("faTitle")}</p>
+              <p className="text-xs text-muted">{t("faDesc")}</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label={t("voiceFa")} error={errs.elevenVoiceIdFa} hint={v.elevenVoiceNameFa ? t("voiceCurrent", { name: v.elevenVoiceNameFa }) : t("voiceFaHint")}>{(p) => voices
+                  ? <Select {...p} value={v.elevenVoiceIdFa} onChange={(e) => set({ elevenVoiceIdFa: e.target.value, elevenVoiceNameFa: voices.find((x) => x.id === e.target.value)?.name ?? "" })}><option value="">{t("sameVoice")}</option>{voices.map((x) => <option key={x.id} value={x.id}>{x.name}{x.labels ? ` — ${x.labels}` : ""}</option>)}</Select>
+                  : <Input {...p} className="font-mono" placeholder={t("sameVoice")} value={v.elevenVoiceIdFa} onChange={(e) => set({ elevenVoiceIdFa: e.target.value.trim(), elevenVoiceNameFa: "" })} />}</Field>
+                <Field label={t("elevenModelFa")} hint={t("elevenModelFaHint")} error={errs.elevenModelFa}>{(p) => <Input {...p} className="font-mono" list="eleven-models" value={v.elevenModelFa} onChange={(e) => set({ elevenModelFa: e.target.value })} />}</Field>
+              </div>
+              <Button size="sm" loading={busy === "testFa"} disabled={!data.hasElevenKey || !data.settings.elevenVoiceId} onClick={() => test("fa")}><Play className="size-4" aria-hidden />{t("testFa")}</Button>
             </div>
             {!data.hasElevenKey && <p className="text-xs text-muted">{t("saveKeyFirst")}</p>}
           </fieldset>
@@ -102,7 +113,11 @@ export function CallSettingsCard({ admin }: { admin: boolean }) {
         )}
         <fieldset className="space-y-3 rounded-xl border border-line p-4" disabled={!admin}>
           <legend className="px-1 text-sm font-semibold">{t("behaviourTitle")}</legend>
-          <Field label={t("greeting")} hint={t("greetingHint")} error={errs.greeting}>{(p) => <Input {...p} dir="auto" value={v.greeting} onChange={(e) => set({ greeting: e.target.value })} />}</Field>
+          <div className="grid gap-4 sm:grid-cols-[12rem_1fr]">
+            <Field label={t("startLanguage")} hint={t("startLanguageHint")}>{(p) => <Select {...p} value={v.startLanguage} onChange={(e) => set({ startLanguage: e.target.value as "en" | "fa" })}><option value="en">English</option><option value="fa">فارسی</option></Select>}</Field>
+            <Field label={t("greeting")} hint={t("greetingHint")} error={errs.greeting}>{(p) => <Input {...p} dir="auto" value={v.greeting} onChange={(e) => set({ greeting: e.target.value })} />}</Field>
+          </div>
+          <Field label={t("greetingFa")} error={errs.greetingFa}>{(p) => <Input {...p} dir="rtl" value={v.greetingFa} onChange={(e) => set({ greetingFa: e.target.value })} />}</Field>
           <Field label={t("prompt")} hint={t("promptHint")} error={errs.callPrompt}>{(p) => <Textarea {...p} dir="auto" className="min-h-64 font-mono text-xs" value={v.callPrompt} onChange={(e) => set({ callPrompt: e.target.value })} />}</Field>
           <div className="flex justify-end"><Button size="sm" variant="ghost" onClick={() => set({ callPrompt: data.defaultPrompt })}>{t("resetPrompt")}</Button></div>
           <div className="grid gap-4 sm:grid-cols-2">

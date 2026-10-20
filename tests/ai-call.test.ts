@@ -66,6 +66,18 @@ describe("AI accountant voice call settings", () => {
     expect(spoken.slice(-2)).toEqual([{ key: "sk_good_0123456789abcdef", voiceId: "Voice123", model: "eleven_v3", text: "Test" }, { key: "sk_good_0123456789abcdef", voiceId: "Voice123", model: "eleven_v3", text: "Cash is £28.00." }]);
   });
 
+  it("voices Persian sentences with the Persian voice and model, English with the English ones", async () => {
+    const a = await seed();
+    await updateCallSettings(a, { ...base, enabled: true, elevenVoiceId: "Voice123", elevenVoiceIdFa: "Library9", elevenModel: "eleven_flash_v2_5", elevenModelFa: "eleven_v3", elevenApiKey: "sk_good_0123456789abcdef" });
+    await speakCall(a.orgId, "موجودی نقدی ۲۸ پوند است.");
+    await speakCall(a.orgId, "Cash is £28.00.");
+    expect(spoken.slice(-2).map((x) => [x.voiceId, x.model])).toEqual([["Library9", "eleven_v3"], ["Voice123", "eleven_flash_v2_5"]]);
+    // no Persian voice set → the English voice, still with the Persian model
+    await updateCallSettings(a, { ...(await getCallSettings(a.orgId)).settings, elevenVoiceIdFa: "" });
+    await speakCall(a.orgId, "سلام");
+    expect(spoken.at(-1)).toMatchObject({ voiceId: "Voice123", model: "eleven_v3" });
+  });
+
   it("uses the behaviour prompt first and the finance rules after it; only read-only tools are callable", async () => {
     const a = await seed();
     const s = await accountantCallSetup(a, "test", DEFAULT_CALL_PROMPT);

@@ -3183,7 +3183,7 @@
       "speedHint": "0.7–1.2 (1 = normal).",
       "saveKeyFirst": "Save the API key first, then load voices and test.",
       "behaviourTitle": "How the agent talks",
-      "greeting": "Greeting",
+      "greeting": "English greeting",
       "greetingHint": "Said when the call connects.",
       "prompt": "Call behaviour prompt",
       "promptHint": "Shapes tone, questions and call flow. The finance rules (read-only, every figure from the books) are always added after it and cannot be switched off here.",
@@ -3195,7 +3195,18 @@
       "openCall": "Open call page",
       "removeKey": "Remove ElevenLabs key",
       "save": "Save",
-      "saved": "Voice call settings saved"
+      "saved": "Voice call settings saved",
+      "faTitle": "Persian (Farsi) voice",
+      "faDesc": "Each sentence the AI says in Persian is voiced with this voice and model; English sentences use the voice above. The AI answers in the language you speak.",
+      "voiceFa": "Persian voice",
+      "voiceFaHint": "Pick a voice that sounds natural in Persian (e.g. a multilingual or Persian voice from the Voice Library).",
+      "sameVoice": "Same as the English voice",
+      "elevenModelFa": "Persian model",
+      "elevenModelFaHint": "eleven_v3 speaks Persian. Flash/turbo models do not.",
+      "testFa": "Test Persian voice",
+      "startLanguage": "Greeting language",
+      "startLanguageHint": "After the greeting the AI follows the language you speak.",
+      "greetingFa": "Persian greeting"
     }
   }
 }

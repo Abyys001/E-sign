@@ -6,6 +6,7 @@ import { decrypt, encrypt } from "../crypto";
 import { AppError } from "../errors";
 import { stored } from "./ai";
 import { DEFAULT_CALL_PROMPT } from "./ai-call-prompt";
+import { detectLanguage } from "@/lib/lang";
 import { ACCOUNTANT_TOOL_NAMES, accountantCallSetup, runAccountantTool } from "./ai-accountant";
 import { acctAudit, type Mode } from "./core";
 
@@ -36,6 +37,12 @@ export const CallSettings = z.object({
   elevenVoiceId: z.string().trim().max(64).regex(/^[A-Za-z0-9]*$/, "A voice ID contains only letters and digits").default(""),
   elevenVoiceName: z.string().trim().max(120).default(""),
   elevenModel: ModelName.default("eleven_flash_v2_5"),
+  // Persian sentences are voiced with their own voice/model (eleven_v3 speaks Persian); empty voice = use the voice above.
+  elevenVoiceIdFa: z.string().trim().max(64).regex(/^[A-Za-z0-9]*$/, "A voice ID contains only letters and digits").default(""),
+  elevenVoiceNameFa: z.string().trim().max(120).default(""),
+  elevenModelFa: ModelName.default("eleven_v3"),
+  startLanguage: z.enum(["en", "fa"]).default("en"), // language of the greeting; afterwards the agent follows the caller
+  greetingFa: z.string().trim().max(300).default("سلام، من دستیار هوشمند حسابداری بیلیت هستم. درباره‌ی امور مالی چه کمکی از دستم برمیاد؟"),
   stability: z.coerce.number().min(0).max(1).default(0.5),
   similarity: z.coerce.number().min(0).max(1).default(0.75),
   speed: z.coerce.number().min(0.7).max(1.2).default(1),
@@ -116,7 +123,8 @@ export async function updateCallSettings(a: Actor, input: z.infer<typeof CallSet
     if (!call.elevenVoiceId) throw new AppError("validation_failed", "Choose an ElevenLabs voice.", [{ path: "elevenVoiceId", message: "Choose a voice" }]);
   }
   // Check the key + voice with ElevenLabs before saving, so mistakes show up here rather than on the first call.
-  if (keyEnc && call.elevenVoiceId) call.elevenVoiceName = await checkVoice(decrypt(keyEnc), call);
+  if (keyEnc && call.elevenVoiceId) call.elevenVoiceName = await checkVoice(decrypt(keyEnc), call, "en");
+  if (keyEnc && call.elevenVoiceIdFa) call.elevenVoiceNameFa = await checkVoice(decrypt(keyEnc), call, "fa");
   if (call.enabled && !(s.enabled && s.apiKeyEnc)) throw new AppError("validation_failed", "Set up the AI accountant (OpenAI key) above first — it does the listening and thinking on calls.");
   const patch = { call, elevenKeyEnc: keyEnc, elevenKeyHint: keyHint };
   await db.transaction(async (tx) => {
@@ -129,15 +137,20 @@ export async function updateCallSettings(a: Actor, input: z.infer<typeof CallSet
 
 /** Name of the voice. Voice Library voices are not listed under the account's own voices, so when the lookup does
  * not find it, a two-word test sentence decides: if ElevenLabs can speak with it, it is usable. */
-async function checkVoice(key: string, call: CallSettingsT) {
-  const v = await eleven().voice(key, call.elevenVoiceId);
-  if (v) return v.name;
-  try { await eleven().speak(key, { voiceId: call.elevenVoiceId, model: call.elevenModel, text: "Hello.", stability: call.stability, similarity: call.similarity, speed: call.speed }).then((r) => r.body?.cancel()); }
+async function checkVoice(key: string, call: CallSettingsT, lang: "en" | "fa") {
+  const v = voiceFor(call, lang);
+  const found = await eleven().voice(key, v.voiceId);
+  if (found) return found.name;
+  try { await eleven().speak(key, { ...v, text: lang === "fa" ? "سلام." : "Hello.", stability: call.stability, similarity: call.similarity, speed: call.speed }).then((r) => r.body?.cancel()); }
   catch (e) {
-    throw new AppError("validation_failed", `ElevenLabs cannot use voice ${call.elevenVoiceId} with this key${e instanceof AppError ? ` (${e.message})` : ""}. If it is from the Voice Library, open it on elevenlabs.io and choose "Add to my voices", then press "Load my voices" here.`.slice(0, 500),
-      [{ path: "elevenVoiceId", message: "Voice not available on this ElevenLabs account" }]);
+    throw new AppError("validation_failed", `ElevenLabs cannot use voice ${v.voiceId} with this key${e instanceof AppError ? ` (${e.message})` : ""}. If it is from the Voice Library, open it on elevenlabs.io and choose "Add to my voices", then press "Load my voices" here.`.slice(0, 500),
+      [{ path: lang === "fa" ? "elevenVoiceIdFa" : "elevenVoiceId", message: "Voice not available on this ElevenLabs account" }]);
   }
-  return call.elevenVoiceName || `Voice Library ${call.elevenVoiceId}`;
+  return (lang === "fa" ? call.elevenVoiceNameFa : call.elevenVoiceName) || `Voice Library ${v.voiceId}`;
+}
+/** Voice + model for a language: Persian uses its own voice when one is set (else the main voice) and its own model. */
+function voiceFor(call: CallSettingsT, lang: "en" | "fa") {
+  return lang === "fa" ? { voiceId: call.elevenVoiceIdFa || call.elevenVoiceId, model: call.elevenModelFa } : { voiceId: call.elevenVoiceId, model: call.elevenModel };
 }
 
 /** Settings for the audit log: the (long) behaviour prompt is logged by length only. */
@@ -183,7 +196,7 @@ export async function startAccountantCall(a: Actor, mode: Mode) {
   const body = await res.json().catch(() => null) as { value?: string; error?: { message?: string } } | null;
   if (!res.ok || !body?.value) throw new AppError("invalid_state", `OpenAI did not start the call (check the key has Realtime access and the model name). OpenAI: ${body?.error?.message ?? `HTTP ${res.status}`}`.replace(/sk-[A-Za-z0-9_*.-]+/g, "sk-…").slice(0, 400));
   await db.transaction((tx) => acctAudit(tx, { ...a, action: "ai_accountant.call_started", entity: "ai_accountant", entityId: "voice_call", new: { mode, model: call.realtimeModel, voice: eleven ? `elevenlabs:${call.elevenVoiceName || call.elevenVoiceId}` : `openai:${call.openaiVoice}` } }));
-  return { clientSecret: body.value, voiceProvider: call.voiceProvider, greeting: call.greeting, maxMinutes: call.maxMinutes, allowInterrupt: call.allowInterrupt };
+  return { clientSecret: body.value, voiceProvider: call.voiceProvider, greeting: call.startLanguage === "fa" ? call.greetingFa : call.greeting, maxMinutes: call.maxMinutes, allowInterrupt: call.allowInterrupt };
 }
 
 export async function callTool(a: Actor, mode: Mode, input: z.infer<typeof CallToolInput>) {
@@ -195,11 +208,11 @@ export async function callTool(a: Actor, mode: Mode, input: z.infer<typeof CallT
   return { output: r.output };
 }
 
-/** One sentence of the AI's answer, voiced by ElevenLabs. Streams MP3 back; nothing is stored. `test` = the settings
- * page's "Test voice", which works before calls are switched on. */
+/** One sentence of the AI's answer, voiced by ElevenLabs in the sentence's language. Streams MP3 back; nothing is
+ * stored. `test` = the settings page's "Test voice", which works before calls are switched on. */
 export async function speakCall(orgId: string, text: string, test = false) {
   const s = await stored(orgId);
   const call = test ? CallSettings.parse(s.call ?? {}) : (await readyCall(orgId)).call;
   if (!s.elevenKeyEnc || !call.elevenVoiceId) throw new AppError("invalid_state", "ElevenLabs is not set up (API key and voice) under Finance settings → AI accountant voice call.");
-  return eleven().speak(decrypt(s.elevenKeyEnc), { voiceId: call.elevenVoiceId, model: call.elevenModel, text, stability: call.stability, similarity: call.similarity, speed: call.speed });
+  return eleven().speak(decrypt(s.elevenKeyEnc), { ...voiceFor(call, detectLanguage(text)), text, stability: call.stability, similarity: call.similarity, speed: call.speed });
 }
