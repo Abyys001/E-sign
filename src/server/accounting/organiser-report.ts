@@ -139,7 +139,7 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   } else if (st) { at(`Covers: ${d.events.map((e) => `${e.eventName} (${e.eventCode})`).filter((v, i, a) => a.indexOf(v) === i).join(" · ")}`, M, doc.y + 6, { size: 8.5, width: W }); doc.y += 8; }
 
   // Summary per currency
-  heading("Account summary", internal ? "Ticket sales include booking fees. Bilit profit is after Stripe fees and platform expenses." : "Ticket sales are stated net of booking fees. A negative balance means the amount is owed to " + seller.name + ".");
+  heading("Account summary", internal ? "Ticket sales include booking fees. Bilit profit is after Stripe fees and platform expenses." : "A negative balance means the amount is owed to " + seller.name + ".");
   if (!d.totals.length) { at("No activity in this period.", M, doc.y, { size: 10 }); doc.y += 16; }
   for (const f of d.totals) {
     const c = f.currency;
@@ -191,7 +191,7 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   }
 
   // Refunds
-  heading("Refunds & chargebacks", "Refunds on this organiser's events. The booking-fee part of a refund is charged to the organiser under the platform policy.");
+  heading("Refunds & chargebacks", "Refunds on this organiser's events.");
   if (!d.refunds.length) { at("No refunds in this period.", M, doc.y, { size: 9.5 }); doc.y += 14; }
   else {
     table([{ k: "Date", w: 60 }, { k: "Event", w: 130 }, { k: "Order", w: 60 }, { k: "Customer", w: 110 }, { k: "Type", w: 55 }, { k: "Refunded", w: 70, r: true }, { k: "Of which booking fee", w: 70, r: true }],
