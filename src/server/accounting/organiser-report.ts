@@ -133,8 +133,9 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   doc.y = Math.max(block([seller.name, seller.address, ...seller.reg, seller.email], M), block([o.companyName ?? o.name, o.companyName && o.companyName !== o.name ? o.name : null, o.address, o.vatNumber && `VAT no. ${o.vatNumber}`, o.email], M + col)) + 6;
   at(`Generated ${new Date().toISOString().slice(0, 10)} · ${st ? "Events" : "Period"}: ${period}${st ? "" : ` · Events: ${d.eventCount}`}${mode === "test" ? " · TEST DATA" : ""}`, M, doc.y, { size: 8.5, color: C.muted, width: W }); doc.y += 6;
   if (evr) {
-    const e = ev0!, fees = e.stripeFeesBorneBy === "BILIT" ? `paid by ${seller.name}` : "charged to the organiser";
-    at([`Event: ${e.eventName} (${e.eventCode})`, e.startsOn ? `Date: ${e.startsOn}` : null, `Status: ${e.eventStatus === "COMPLETED" ? "Finished" : e.eventStatus.toLowerCase()}`, `Orders: ${e.orders}`, e.bookingFeeBps != null ? `Booking fee: ${e.bookingFeeBps / 100}%` : null, `Payment processing fees: ${fees}`, o.cashbackBps ? `Cashback: ${o.cashbackBps / 100}%` : null].filter(Boolean).join(" · "), M, doc.y + 6, { size: 8.5, width: W }); doc.y += 8;
+    // Booking fee rate and who pays processing fees are internal terms: never printed on reports.
+    const e = ev0!;
+    at([`Event: ${e.eventName} (${e.eventCode})`, e.startsOn ? `Date: ${e.startsOn}` : null, `Status: ${e.eventStatus === "COMPLETED" ? "Finished" : e.eventStatus.toLowerCase()}`, `Orders: ${e.orders}`, o.cashbackBps ? `Cashback: ${o.cashbackBps / 100}%` : null].filter(Boolean).join(" · "), M, doc.y + 6, { size: 8.5, width: W }); doc.y += 8;
   } else if (st) { at(`Covers: ${d.events.map((e) => `${e.eventName} (${e.eventCode})`).filter((v, i, a) => a.indexOf(v) === i).join(" · ")}`, M, doc.y + 6, { size: 8.5, width: W }); doc.y += 8; }
 
   // Summary per currency
