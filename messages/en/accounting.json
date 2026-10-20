@@ -3208,5 +3208,44 @@
       "startLanguageHint": "After the greeting the AI follows the language you speak.",
       "greetingFa": "Persian greeting"
     }
+  },
+  "phone": {
+    "loading": "Loading",
+    "setupIntro": "Call the AI Accountant from your phone. Set up this phone once, then unlock it with your PIN.",
+    "phoneName": "Name of this phone",
+    "totp": "2FA code (to confirm it is you)",
+    "password": "Password for {name} (to confirm it is you)",
+    "continue": "Continue",
+    "choosePin": "Choose a 6-digit PIN",
+    "confirmPin": "Enter the PIN again",
+    "pinHelp": "You will use it to unlock Bilit Phone. Avoid 123456 or one repeated digit.",
+    "pinMismatch": "The PINs did not match. Try again.",
+    "scanTitle": "Scan the QR code",
+    "scanHelp": "On your computer, open Bilit Finance → Finance settings → Phone app and press “Show QR code”, then scan it with this phone's camera. Or sign in here, then open this page again.",
+    "signInHere": "Sign in on this phone",
+    "enterPin": "Enter your PIN",
+    "lockedHelp": "5 wrong PINs sign this phone out. Then scan a new QR code.",
+    "lock": "Lock",
+    "tapToCall": "Tap to call",
+    "footer": "Read-only · it cannot pay or change anything",
+    "settings": {
+      "title": "Phone app (Bilit Phone)",
+      "desc": "A full-screen phone app for calling the AI Accountant. Scan the QR code with your phone, choose a PIN, then add it to your home screen.",
+      "show": "Show QR code",
+      "expires": "Scan within 10 minutes. The code works once and only for you.",
+      "newCode": "New code",
+      "hide": "Hide",
+      "install": "After scanning: iPhone — Share → Add to Home Screen. Android — menu ⋮ → Install app / Add to Home screen.",
+      "link": "Or open on the phone:",
+      "devices": "Phones set up",
+      "none": "No phones set up yet.",
+      "lastUsed": "Last unlocked {when}",
+      "never": "never",
+      "signOut": "Sign out",
+      "signedOut": "Phone signed out",
+      "you": "you",
+      "copy": "Copy link",
+      "copied": "Link copied"
+    }
   }
 }

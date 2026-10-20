@@ -77,6 +77,7 @@ async function elevenError(res: Response, what: string) {
   const b = await res.json().catch(() => null) as { detail?: { message?: string; status?: string } | string } | null;
   const said = typeof b?.detail === "string" ? b.detail : b?.detail?.message ?? `HTTP ${res.status}`;
   if (res.status === 401) return new AppError("validation_failed", `ElevenLabs did not accept the API key (${said}).`, [{ path: "elevenApiKey", message: "ElevenLabs rejected this key" }]);
+  if (/library voices/i.test(said)) return new AppError("validation_failed", "Your ElevenLabs plan is Free, and free accounts cannot use Voice Library voices through the API. Choose a built-in (premade) voice from \"Load my voices\", or upgrade ElevenLabs to Starter or higher.", [{ path: "elevenVoiceId", message: "Library voice needs a paid ElevenLabs plan" }]);
   if (res.status === 404) return new AppError("validation_failed", "ElevenLabs has no voice with that ID on this account.", [{ path: "elevenVoiceId", message: "Voice not found" }]);
   return new AppError("invalid_state", `ElevenLabs ${what} failed: ${said}`.slice(0, 400));
 }
@@ -97,7 +98,9 @@ const elevenApi: Eleven = {
     if (!res) throw new AppError("invalid_state", "Could not reach ElevenLabs.");
     if (!res.ok) throw await elevenError(res, "voice list");
     const b = await res.json() as { voices?: Array<{ voice_id: string; name: string; category?: string; labels?: Record<string, string> }> };
-    return (b.voices ?? []).map((v) => ({ id: v.voice_id, name: v.name, category: v.category ?? null, labels: Object.values(v.labels ?? {}).join(", ") }));
+    // Built-in (premade) voices first: they work on every plan, including Free.
+    return (b.voices ?? []).map((v) => ({ id: v.voice_id, name: v.name, category: v.category ?? null, labels: [v.category === "premade" ? "built-in, free plan OK" : v.category, ...Object.values(v.labels ?? {})].filter(Boolean).join(", ") }))
+      .sort((x, y) => Number(y.category === "premade") - Number(x.category === "premade") || x.name.localeCompare(y.name));
   },
   async speak(key, { voiceId, model, text, stability, similarity, speed }) {
     const res = await fetch(`${EL}/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream?output_format=mp3_44100_128`, {

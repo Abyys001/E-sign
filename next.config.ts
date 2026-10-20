@@ -55,6 +55,19 @@ const config: NextConfig = {
       source: "/accounting/call",
       headers: [{ key: "Content-Security-Policy", value: csp.replace("connect-src 'self'", "connect-src 'self' https://api.openai.com") }],
     }, {
+      // Phone app (installable PWA): the same call, plus the microphone.
+      source: "/phone/:path*",
+      headers: [
+        { key: "Content-Security-Policy", value: csp.replace("connect-src 'self'", "connect-src 'self' https://api.openai.com") },
+        { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), payment=()" },
+      ],
+    }, {
+      source: "/phone",
+      headers: [
+        { key: "Content-Security-Policy", value: csp.replace("connect-src 'self'", "connect-src 'self' https://api.openai.com") },
+        { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), payment=()" },
+      ],
+    }, {
       // Payment links: embedded Stripe checkout (Apple Pay / Google Pay need the Payment Request API inside Stripe's frame).
       source: "/pay/:path*",
       headers: [

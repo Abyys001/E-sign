@@ -2,6 +2,7 @@
 import { useTranslations } from "next-intl";
 import { Phone } from "lucide-react";
 import { AccountantCall } from "@/components/accounting/ai-call";
+import { PhoneSettingsCard } from "@/components/accounting/phone-settings";
 import { LinkButton } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/card";
 import { Callout, Skeleton } from "@/components/ui/feedback";
@@ -14,7 +15,7 @@ export default function AccountantCallPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <PageHeader title={<span className="flex items-center gap-2"><Phone className="size-6" aria-hidden />{t("pageTitle")}</span>} description={t("pageSub")} />
-      {!data ? <Skeleton className="h-64" /> : data.settings.enabled ? <AccountantCall /> : (
+      {!data ? <Skeleton className="h-64" /> : data.settings.enabled ? <><AccountantCall /><PhoneSettingsCard /></> : (
         <Callout tone="info" title={t("off")}>{t("offHint")}<div className="mt-3"><LinkButton href="/accounting/settings#call" size="sm">{t("openSettings")}</LinkButton></div></Callout>
       )}
     </div>

@@ -881,3 +881,37 @@ export const acctTicketImports = pgTable("acct_ticket_imports", {
   appliedBy: uuid("applied_by").references(() => users.id),
   appliedAt: timestamp("applied_at", { withTimezone: true }),
 }, (t) => [index("acct_ticket_imports_event_idx").on(t.organisationId, t.eventId, t.createdAt)]);
+
+/**
+ * A phone enrolled for the AI Accountant phone app (/phone). Enrolment needs a full sign-in plus re-authentication;
+ * the phone then keeps a long-lived device token (httpOnly cookie) and unlocks with a PIN into a short call-only
+ * session. Only hashes are stored. Too many wrong PINs revoke the device (a full sign-in is needed to enrol again).
+ */
+export const acctPhoneDevices = pgTable("acct_phone_devices", {
+  id: id(),
+  organisationId: org(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  pinHash: text("pin_hash").notNull(),
+  failedAttempts: integer("failed_attempts").notNull().default(0),
+  sessionHash: text("session_hash"),
+  sessionExpiresAt: timestamp("session_expires_at", { withTimezone: true }),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  lastUnlockAt: timestamp("last_unlock_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  revokedReason: text("revoked_reason"),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("acct_phone_devices_token_uq").on(t.tokenHash), index("acct_phone_devices_user_idx").on(t.organisationId, t.userId)]);
+
+/** One-time QR pairing code: a signed-in, re-authenticated user shows it on screen; the phone scans it to enrol. */
+export const acctPhonePairings = pgTable("acct_phone_pairings", {
+  id: id(),
+  organisationId: org(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  codeHash: text("code_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  deviceId: uuid("device_id").references(() => acctPhoneDevices.id),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("acct_phone_pairings_code_uq").on(t.codeHash)]);

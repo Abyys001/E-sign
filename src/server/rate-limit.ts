@@ -35,6 +35,9 @@ export const LIMITS = {
   aiCall: { limit: 20, windowSec: 600 }, // live voice calls started with the AI Accountant, per user
   aiCallTool: { limit: 300, windowSec: 600 }, // lookups made by the voice model during calls, per user
   aiCallSpeak: { limit: 600, windowSec: 600 }, // sentences voiced by ElevenLabs during calls, per user
+  phoneEnrol: { limit: 5, windowSec: 900 }, // phone app enrolment / QR codes, per user
+  phonePair: { limit: 20, windowSec: 600 }, // QR pairing attempts, per IP
+  phoneUnlock: { limit: 10, windowSec: 300 }, // PIN attempts, per device (5 wrong PINs revoke it anyway)
   treasuryLoginIp: { limit: 20, windowSec: 900 }, // staff portal login attempts, per IP
   treasuryLoginEmail: { limit: 6, windowSec: 900 }, // staff portal login attempts, per email
   treasuryStaff: { limit: 240, windowSec: 60 }, // authenticated staff portal requests
