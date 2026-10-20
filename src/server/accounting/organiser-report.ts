@@ -180,7 +180,8 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
             ...(tix.addOnAmount ? [["Add-ons (meet & greet)", String(tix.addOnTickets), "", money(tix.addOnAmount, c)]] : []),
             ["Total", String(tix.tickets), String(tix.freeTickets), money(tix.ticketPrice + tix.addOnAmount, c)]], { size: 10, bold: [...tix.byType.map(() => false), ...(tix.addOnAmount ? [false] : []), true] });
       }
-      // Payments
+      // Payments start on their own page, so page 1 is the summary and ticket breakdown.
+      newPage();
       heading("Payments made");
       const mine = pays.filter((p) => p.currency === c);
       if (!mine.length) { at("No payments yet.", M, doc.y, { size: 10.5 }); doc.y += 18; }
