@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Banknote, Bot, CheckCircle2, Download, Eye, FileDown, Pencil, Trash2 } from "lucide-react";
+import { Banknote, Bot, CheckCircle2, Download, Eye, FileDown, Paperclip, Pencil, Trash2 } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { Badge, Money, useExport, useMode } from "@/components/accounting/kit";
@@ -19,7 +19,7 @@ import { Table, TableWrap, Td, Th, Tr } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { api, errMsg, fmtDate, useApi } from "@/lib/api";
 
-type P = { id: string; organiserId: string; organiserName: string; eventId: string | null; eventName: string | null; eventCode: string | null; amount: number; currency: string; paymentDate: string; bankReference: string | null; method: string; status: string; notes: string | null; voidReason: string | null; createdByName: string | null; createdAt: string };
+type P = { id: string; organiserId: string; organiserName: string; eventId: string | null; eventName: string | null; eventCode: string | null; amount: number; currency: string; paymentDate: string; bankReference: string | null; method: string; status: string; notes: string | null; voidReason: string | null; createdByName: string | null; createdAt: string; proofName?: string | null };
 
 export default function PaymentsPage() {
   const t = useTranslations("accounting.payments");
@@ -53,6 +53,7 @@ export default function PaymentsPage() {
               <Td className="text-end"><Money v={p.amount} c={p.currency} strong /></Td><Td><Badge s={p.status} />{p.voidReason && <span className="block text-xs text-muted">{p.voidReason}</span>}</Td>
               <Td className="text-end"><div className="flex justify-end gap-1">
                 <a href={`/api/accounting/organiser-payments/${p.id}/receipt`} className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-sm hover:bg-surface-2" title={tf("receipt")}><FileDown className="size-3.5" aria-hidden />{tf("receipt")}</a>
+                {p.proofName && <a href={`/api/accounting/organiser-payments/${p.id}/proof`} className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-sm hover:bg-surface-2" title={p.proofName}><Paperclip className="size-3.5" aria-hidden />{t("proof.label")}</a>}
                 <Button size="sm" variant="ghost" onClick={() => setView(p.id)} aria-label={tf("view")}><Eye className="size-3.5" aria-hidden /></Button>
                 {can("accounting.manage") && p.status !== "VOIDED" && <>
                 {p.status === "PENDING" && <Button size="sm" onClick={() => markPaid(p)}><CheckCircle2 className="size-3.5" aria-hidden />{t("markPaid")}</Button>}

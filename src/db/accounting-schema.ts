@@ -390,6 +390,9 @@ export const acctOrganiserPayments = pgTable("acct_organiser_payments", {
   voidReason: text("void_reason"),
   voidedBy: uuid("voided_by").references(() => users.id),
   voidedAt: timestamp("voided_at", { withTimezone: true }),
+  /** proof of payment (e.g. the Wise transfer confirmation PDF); several records of one split payment share it */
+  proofObjectId: uuid("proof_object_id").references(() => storageObjects.id),
+  proofName: text("proof_name"),
   updatedBy: uuid("updated_by").references(() => users.id),
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: createdAt(), updatedAt: updatedAt(),

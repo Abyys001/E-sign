@@ -604,7 +604,20 @@
     "voidDesc": "The payment is kept, marked VOIDED, and its ledger entry is reversed.",
     "voidReason": "Reason",
     "voided": "Payment voided",
-    "modeNote": "Recorded in {mode} mode books."
+    "modeNote": "Recorded in {mode} mode books.",
+    "proof": {
+      "label": "Proof",
+      "attach": "Add proof of payment",
+      "title": "Proof of payment",
+      "desc": "Attach the bank's transfer confirmation. A payment split across events gets it on every part (same reference).",
+      "wise": "Wise transfer number",
+      "wiseHint": "Digits only, e.g. 2443899063. Bilit fetches the transfer confirmation PDF from Wise.",
+      "fetch": "Get PDF from Wise",
+      "or": "or upload a file (PDF, PNG, JPEG)",
+      "upload": "Upload file",
+      "added": "Proof of payment attached to {n} payment(s)",
+      "current": "Attached: {name}"
+    }
   },
   "stripe": {
     "title": "Stripe",

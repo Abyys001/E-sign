@@ -420,3 +420,20 @@ describe("profit share (developer % of event profit)", () => {
     expect(pdf.bytes.subarray(0, 4).toString()).toBe("%PDF");
   });
 });
+
+describe("proof of payment", () => {
+  it("attaches one file to every part of a split payment and refuses non-documents", async () => {
+    const { recordOrganiserPayment } = await import("@/server/accounting/manual");
+    const { attachPaymentProof, paymentProofFor } = await import("@/server/accounting/payment-proof");
+    const base = { mode: "test" as const, organiserId: e.event.organiserId!, currency: "eur", paymentDate: "2026-10-20", bankReference: "Wise #2443899063", method: "BANK_TRANSFER" as const, notes: null, status: "PAID" as const };
+    const p1 = await recordOrganiserPayment(e.actor, { ...base, eventId: e.event.id, amount: 100 });
+    const p2 = await recordOrganiserPayment(e.actor, { ...base, eventId: null, amount: 50 });
+    const other = await recordOrganiserPayment(e.actor, { ...base, eventId: null, amount: 10, bankReference: "Wise #1" });
+    await expect(attachPaymentProof(e.actor, p1.id, Buffer.from("hello"), "x.txt")).rejects.toMatchObject({ code: "unsupported_media" });
+    const r = await attachPaymentProof(e.actor, p1.id, Buffer.from("%PDF-1.4\n%fake\n"), "Wise transfer 2443899063.pdf");
+    expect(r.proofName).toBe("Wise transfer 2443899063.pdf");
+    expect(new Set(r.payments)).toEqual(new Set([p1.id, p2.id]));
+    expect((await paymentProofFor(e.org.id, p2.id)).type).toBe("application/pdf");
+    await expect(paymentProofFor(e.org.id, other.id)).rejects.toMatchObject({ code: "not_found" });
+  });
+});

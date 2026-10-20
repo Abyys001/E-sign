@@ -190,6 +190,13 @@
       "when": 1792506756771,
       "tag": "0026_ticket_imports",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1792600000000,
+      "tag": "0027_payment_proof",
+      "breakpoints": true
     }
   ]
 }

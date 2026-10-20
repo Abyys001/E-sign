@@ -136,6 +136,17 @@ async function connection(orgId: string) {
   return c ?? null;
 }
 
+/** The transfer confirmation PDF Wise issues for an outgoing transfer (read-only call). */
+export async function wiseTransferReceipt(orgId: string, transferId: string): Promise<Buffer> {
+  if (!/^\d{5,15}$/.test(transferId)) throw new AppError("validation_failed", "Enter the Wise transfer number (digits only).", [{ path: "wiseTransferId", message: "Digits only" }]);
+  const c = await connection(orgId);
+  if (!c) throw new AppError("invalid_state", "Connect Wise first.");
+  const res = await call(decrypt(c.tokenEnc), `/v1/transfers/${transferId}/receipt.pdf`, { accept: "application/pdf" });
+  if (res.status === 404) throw new AppError("not_found", `Wise has no transfer #${transferId} on this account.`);
+  if (!res.ok) throw wiseError(res.status, await res.text().catch(() => ""));
+  return Buffer.from(await res.arrayBuffer());
+}
+
 export async function getWiseStatus(orgId: string) {
   const c = await connection(orgId);
   if (!c) return { connected: false as const };

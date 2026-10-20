@@ -117,7 +117,7 @@ export async function listExpenses(orgId: string, livemode: boolean, eventId: st
 }
 
 // ---------- receipts ----------
-const RECEIPT_TYPES: Array<{ type: string; ext: string; test: (b: Buffer) => boolean }> = [
+export const RECEIPT_TYPES: Array<{ type: string; ext: string; test: (b: Buffer) => boolean }> = [
   { type: "application/pdf", ext: "pdf", test: (b) => b.subarray(0, 1024).includes(Buffer.from("%PDF-")) },
   { type: "image/png", ext: "png", test: (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
   { type: "image/jpeg", ext: "jpg", test: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },

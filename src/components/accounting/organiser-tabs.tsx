@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Banknote, CheckCircle2, Download, Eye, FileDown, FileSignature, Link2, Pencil, ShieldAlert, ShieldCheck, Trash2, Unlink } from "lucide-react";
+import { Banknote, CheckCircle2, Download, Eye, FileDown, FileSignature, Link2, Paperclip, Pencil, ShieldAlert, ShieldCheck, Trash2, Unlink } from "lucide-react";
 import { useElevation } from "@/components/app/elevate";
 import { useMe } from "@/components/app/me";
 import { Badge, Money, RangePicker, rangeFor, rangeQuery, useExport, useMode, type RangeKey } from "@/components/accounting/kit";
@@ -36,7 +36,7 @@ export function OrganiserPayments({ id, onPay, onChanged }: { id: string; onPay?
   const { q } = useMode();
   const { data, loading, reload } = useApi<{ items: PaymentRow[] }>(q(`/api/accounting/organiser-payments?organiserId=${id}&pageSize=200`));
   const [view, setView] = useState<string | null>(null); const [edit, setEdit] = useState<PaymentRow | null>(null); const [del, setDel] = useState<PaymentRow | null>(null); const [reason, setReason] = useState("");
-  const [showVoided, setShowVoided] = useState(false);
+  const [showVoided, setShowVoided] = useState(false); const [proof, setProof] = useState<PaymentRow | null>(null);
   const after = async () => { await reload(); onChanged(); };
   const voided = (data?.items ?? []).filter((p) => p.status === "VOIDED").length;
   const items = (data?.items ?? []).filter((p) => showVoided || p.status !== "VOIDED");
@@ -58,6 +58,8 @@ export function OrganiserPayments({ id, onPay, onChanged }: { id: string; onPay?
             <Td><Badge s={p.status} />{p.voidReason && <span className="block text-xs">{p.voidReason}</span>}</Td>
             <Td className="text-end"><div className="flex justify-end gap-1">
               <a href={`/api/accounting/organiser-payments/${p.id}/receipt`} className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-sm hover:bg-surface-2"><FileDown className="size-3.5" aria-hidden />{tf("receipt")}</a>
+              {p.proofName && <a href={`/api/accounting/organiser-payments/${p.id}/proof`} className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-sm hover:bg-surface-2" title={p.proofName}><Paperclip className="size-3.5" aria-hidden />{tp("proof.label")}</a>}
+              {manage && p.status !== "VOIDED" && <Button size="sm" variant="ghost" onClick={() => setProof(p)} aria-label={tp("proof.attach")} title={tp("proof.attach")}><Paperclip className="size-3.5" aria-hidden />{!p.proofName && "+"}</Button>}
               <Button size="sm" variant="ghost" onClick={() => setView(p.id)} aria-label={tf("view")}><Eye className="size-3.5" aria-hidden /></Button>
               {manage && p.status === "PENDING" && <Button size="sm" onClick={() => markPaid(p)}><CheckCircle2 className="size-3.5" aria-hidden />{tp("markPaid")}</Button>}
               {manage && p.status !== "VOIDED" && <><Button size="sm" variant="ghost" onClick={() => setEdit(p)} aria-label={tf("editItem")}><Pencil className="size-3.5" aria-hidden /></Button>
@@ -66,12 +68,35 @@ export function OrganiserPayments({ id, onPay, onChanged }: { id: string; onPay?
         {totals.size > 0 && <p className="flex flex-wrap gap-x-6 border-t border-line px-5 py-3 text-sm">{[...totals].map(([c, v]) => <span key={c}><span className="text-muted">{t("pay.total")} ({c.toUpperCase()}): </span><Money v={v} c={c} strong /></span>)}</p>}
       </>}
       {view && <PaymentViewDialog id={view} onClose={() => setView(null)} />}
+      {proof && <PaymentProofDialog p={proof} onClose={() => setProof(null)} onSaved={() => void after()} />}
       {edit && <PaymentEditDialog p={edit} onClose={() => setEdit(null)} onSaved={() => void after()} />}
       <ConfirmDialog open={!!del} onClose={() => setDel(null)} title={tf("payDelete.title")} description={tf("payDelete.desc")} confirmLabel={tf("deleteItem")}
         onConfirm={async () => { try { await api(`/api/accounting/organiser-payments/${del!.id}/void`, { json: { reason } }); toast("ok", tp("voided")); await after(); } catch (x) { toast("error", errMsg(x)); throw x; } }}>
         <Field label={tp("voidReason")} required>{(p) => <Textarea {...p} value={reason} onChange={(x) => setReason(x.target.value)} />}</Field>
       </ConfirmDialog>
     </Card>
+  );
+}
+
+/** Attach the transfer confirmation: fetched from Wise by transfer number, or uploaded. */
+function PaymentProofDialog({ p, onClose, onSaved }: { p: PaymentRow; onClose: () => void; onSaved: () => void }) {
+  const tp = useTranslations("accounting.payments");
+  const toast = useToast();
+  const [tid, setTid] = useState(p.bankReference?.match(/wise\s*#?\s*(\d{5,15})/i)?.[1] ?? "");
+  const [busy, setBusy] = useState(false);
+  const done = (r: { payments: string[] }) => { toast("ok", tp("proof.added", { n: r.payments.length })); onSaved(); onClose(); };
+  const run = async (f: () => Promise<{ payments: string[] }>) => { setBusy(true); try { done(await f()); } catch (x) { toast("error", errMsg(x)); } finally { setBusy(false); } };
+  return (
+    <Modal open onClose={onClose} title={tp("proof.title")} description={tp("proof.desc")}>
+      <div className="space-y-4">
+        {p.proofName && <p className="text-sm text-muted">{tp("proof.current", { name: p.proofName })}</p>}
+        <Field label={tp("proof.wise")} hint={tp("proof.wiseHint")}>{(f) => <Input {...f} inputMode="numeric" value={tid} onChange={(e) => setTid(e.target.value.replace(/\D/g, ""))} />}</Field>
+        <Button variant="primary" disabled={busy || !tid} onClick={() => run(() => api(`/api/accounting/organiser-payments/${p.id}/proof`, { json: { wiseTransferId: tid } }))}><Download className="size-4" aria-hidden />{tp("proof.fetch")}</Button>
+        <p className="text-sm text-muted">{tp("proof.or")}</p>
+        <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" disabled={busy} className="block text-sm"
+          onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const form = new FormData(); form.append("file", file); void run(() => api(`/api/accounting/organiser-payments/${p.id}/proof`, { form })); }} />
+      </div>
+    </Modal>
   );
 }
 

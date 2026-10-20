@@ -224,7 +224,7 @@ export function BookingFeeDialog({ eventId, currentBps, currentBasis, onClose, o
 }
 
 // ---------- organiser payment (from the event: shows the settlement first) ----------
-export type PaymentRow = { id: string; organiserId: string; organiserName?: string; eventId: string | null; eventName: string | null; eventCode?: string | null; amount: number; currency: string; paymentDate: string; bankReference: string | null; method: string; status: string; notes: string | null; voidReason?: string | null; createdByName?: string | null; createdAt?: string };
+export type PaymentRow = { id: string; organiserId: string; organiserName?: string; eventId: string | null; eventName: string | null; eventCode?: string | null; amount: number; currency: string; paymentDate: string; bankReference: string | null; method: string; status: string; notes: string | null; voidReason?: string | null; createdByName?: string | null; createdAt?: string; proofName?: string | null };
 const METHODS = ["BANK_TRANSFER", "STRIPE_TRANSFER", "CASH", "OTHER"];
 
 export function PayOrganiserDialog({ event, f, bookingFeeBps, mode, onClose, onSaved }: { event: { id: string; name: string; organiserId: string; organiserName: string | null }; f: Fig; bookingFeeBps: number | null; mode: string; onClose: () => void; onSaved: () => void }) {
