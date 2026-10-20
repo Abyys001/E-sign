@@ -58,7 +58,7 @@ export async function getCallSettings(orgId: string) {
 
 // ---------- ElevenLabs (injectable for tests) ----------
 type Eleven = {
-  voice: (key: string, voiceId: string) => Promise<{ name: string }>;
+  voice: (key: string, voiceId: string) => Promise<{ name: string } | null>; // null = not in "My Voices"
   voices: (key: string) => Promise<Array<{ id: string; name: string; category: string | null; labels: string }>>;
   speak: (key: string, a: { voiceId: string; model: string; text: string; stability: number; similarity: number; speed: number }) => Promise<Response>;
 };
@@ -77,7 +77,11 @@ const elevenApi: Eleven = {
   async voice(key, voiceId) {
     const res = await fetch(`${EL}/v1/voices/${encodeURIComponent(voiceId)}`, { headers: { "xi-api-key": key }, signal: AbortSignal.timeout(15_000) }).catch(() => null);
     if (!res) throw new AppError("invalid_state", "Could not reach ElevenLabs.");
-    if (!res.ok) throw await elevenError(res, "voice check");
+    if (!res.ok) {
+      const b = await res.clone().json().catch(() => null) as { detail?: { status?: string; message?: string } } | null;
+      if (res.status === 404 || /not.?found/i.test(`${b?.detail?.status} ${b?.detail?.message}`)) return null;
+      throw await elevenError(res, "voice check");
+    }
     const b = await res.json() as { name?: string };
     return { name: b.name ?? voiceId };
   },
@@ -112,7 +116,7 @@ export async function updateCallSettings(a: Actor, input: z.infer<typeof CallSet
     if (!call.elevenVoiceId) throw new AppError("validation_failed", "Choose an ElevenLabs voice.", [{ path: "elevenVoiceId", message: "Choose a voice" }]);
   }
   // Check the key + voice with ElevenLabs before saving, so mistakes show up here rather than on the first call.
-  if (keyEnc && call.elevenVoiceId) call.elevenVoiceName = (await eleven().voice(decrypt(keyEnc), call.elevenVoiceId)).name;
+  if (keyEnc && call.elevenVoiceId) call.elevenVoiceName = await checkVoice(decrypt(keyEnc), call);
   if (call.enabled && !(s.enabled && s.apiKeyEnc)) throw new AppError("validation_failed", "Set up the AI accountant (OpenAI key) above first — it does the listening and thinking on calls.");
   const patch = { call, elevenKeyEnc: keyEnc, elevenKeyHint: keyHint };
   await db.transaction(async (tx) => {
@@ -121,6 +125,19 @@ export async function updateCallSettings(a: Actor, input: z.infer<typeof CallSet
     await acctAudit(tx, { ...a, action: "ai_call_settings.updated", entity: "settings", entityId: "ai_call", old: { call: brief(s.call), elevenKeyHint: s.elevenKeyHint ?? null }, new: { call: brief(call), elevenKeyHint: keyHint, keyChanged: elevenApiKey !== undefined } });
   });
   return getCallSettings(a.orgId);
+}
+
+/** Name of the voice. Voice Library voices are not listed under the account's own voices, so when the lookup does
+ * not find it, a two-word test sentence decides: if ElevenLabs can speak with it, it is usable. */
+async function checkVoice(key: string, call: CallSettingsT) {
+  const v = await eleven().voice(key, call.elevenVoiceId);
+  if (v) return v.name;
+  try { await eleven().speak(key, { voiceId: call.elevenVoiceId, model: call.elevenModel, text: "Hello.", stability: call.stability, similarity: call.similarity, speed: call.speed }).then((r) => r.body?.cancel()); }
+  catch (e) {
+    throw new AppError("validation_failed", `ElevenLabs cannot use voice ${call.elevenVoiceId} with this key${e instanceof AppError ? ` (${e.message})` : ""}. If it is from the Voice Library, open it on elevenlabs.io and choose "Add to my voices", then press "Load my voices" here.`.slice(0, 500),
+      [{ path: "elevenVoiceId", message: "Voice not available on this ElevenLabs account" }]);
+  }
+  return call.elevenVoiceName || `Voice Library ${call.elevenVoiceId}`;
 }
 
 /** Settings for the audit log: the (long) behaviour prompt is logged by length only. */

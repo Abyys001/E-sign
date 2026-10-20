@@ -13,9 +13,9 @@ afterAll(async () => { setAiChecker(null); setElevenApi(null); await stopBoss();
 
 const spoken: Array<{ key: string; voiceId: string; model: string; text: string }> = [];
 setElevenApi({
-  voice: async (key, voiceId) => { if (!key.startsWith("sk_good")) throw new Error("bad key"); if (voiceId !== "Voice123") throw new Error("no voice"); return { name: "Rachel" }; },
+  voice: async (key, voiceId) => { if (voiceId === "Missing7") return null; if (!key.startsWith("sk_good")) throw new Error("bad key"); if (voiceId === "Library9") return null; if (voiceId !== "Voice123") throw new Error("no voice"); return { name: "Rachel" }; },
   voices: async () => [{ id: "Voice123", name: "Rachel", category: "premade", labels: "british, calm" }],
-  speak: async (key, a) => { spoken.push({ key, voiceId: a.voiceId, model: a.model, text: a.text }); return new Response("mp3"); },
+  speak: async (key, a) => { if (a.voiceId === "Missing7") throw new Error("voice_not_found"); spoken.push({ key, voiceId: a.voiceId, model: a.model, text: a.text }); return new Response("mp3"); },
 });
 
 async function seed() {
@@ -39,6 +39,13 @@ describe("AI accountant voice call settings", () => {
     // the key is stored encrypted
     const [row] = await db.select({ v: schema.acctSettings.aiSettings }).from(schema.acctSettings).where(eq(schema.acctSettings.organisationId, a.orgId));
     expect(JSON.stringify(row!.v)).not.toContain("sk_good_0123456789abcdef");
+  });
+
+  it("accepts a Voice Library voice ElevenLabs can speak with, and explains how to add one it cannot", async () => {
+    const a = await seed();
+    const r = await updateCallSettings(a, { ...base, enabled: true, elevenVoiceId: "Library9", elevenApiKey: "sk_good_0123456789abcdef" });
+    expect(r.settings.elevenVoiceName).toBe("Voice Library Library9");
+    await expect(updateCallSettings(a, { ...base, enabled: true, elevenVoiceId: "Missing7" })).rejects.toThrow(/Add to my voices/);
   });
 
   it("saving the AI accountant card keeps the call settings and ElevenLabs key", async () => {
