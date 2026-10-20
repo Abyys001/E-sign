@@ -13,7 +13,7 @@ const csrf = () => document.cookie.split("; ").find((c) => c.startsWith("bes_csr
 /** Texts the call engine shows, from the translations. */
 export function useCallText() {
   const t = useTranslations("accounting.aicall");
-  return { failed: t("failed"), dropped: t("dropped"), unsupported: t("unsupported"), micDenied: t("micDenied"), voiceFailed: t("voiceFailed"), timeLimit: (n: number) => t("timeLimit", { n }), lookingUp: (what: string) => t("lookingUp", { what }) };
+  return { micLost: t("micLost"), failed: t("failed"), dropped: t("dropped"), unsupported: t("unsupported"), micDenied: t("micDenied"), voiceFailed: t("voiceFailed"), timeLimit: (n: number) => t("timeLimit", { n }), lookingUp: (what: string) => t("lookingUp", { what }) };
 }
 
 export function CallTranscript({ lines, className }: { lines: CallLine[]; className?: string }) {
@@ -65,7 +65,7 @@ export function AccountantCall() {
       {k.err && <Callout tone="warn" title={t("problem")}>{k.err}</Callout>}
       <CallTranscript lines={k.lines} className="max-h-[50vh] rounded-2xl border border-line bg-surface p-4" />
       <p className="text-xs text-muted">{t("privacy")}</p>
-      <audio ref={k.audioEl} autoPlay className="hidden" />
+      <audio ref={k.audioEl} autoPlay playsInline className="hidden" />
     </div>
   );
 }

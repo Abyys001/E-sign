@@ -3207,7 +3207,8 @@
       "startLanguage": "Greeting language",
       "startLanguageHint": "After the greeting the AI follows the language you speak.",
       "greetingFa": "Persian greeting"
-    }
+    },
+    "micLost": "The microphone was switched off by the phone. Hang up and call again."
   },
   "phone": {
     "loading": "Loading",

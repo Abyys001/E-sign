@@ -8,6 +8,10 @@ import { useEffect, useRef, useState } from "react";
  * on our server under the user's own session. With ElevenLabs the model answers in text and each sentence is voiced by
  * our server (the right voice for its language), played strictly one after another.
  *
+ * Playback uses one Web Audio context unlocked by the Call tap: iPhones block or stall <audio> elements started later,
+ * especially while the microphone is in use. Every sentence also has a watchdog, so a stalled sentence can never keep
+ * the microphone paused.
+ *
  * One voice at a time: OpenAI's own audio is ignored when ElevenLabs speaks; sentences are queued on a single player;
  * and unless interrupting is allowed the microphone stays paused from the moment the AI starts answering until it has
  * finished speaking (plus a short echo tail), so the AI never hears itself and starts a second answer over the first.
@@ -22,7 +26,7 @@ export type CallEndpoints = {
   /** POST {text} → audio/mpeg */ speak: string;
   headers: () => Record<string, string>;
 };
-export type CallText = { failed: string; dropped: string; unsupported: string; micDenied: string; voiceFailed: string; timeLimit: (n: number) => string; lookingUp: (what: string) => string };
+export type CallText = { micLost: string; failed: string; dropped: string; unsupported: string; micDenied: string; voiceFailed: string; timeLimit: (n: number) => string; lookingUp: (what: string) => string };
 
 export const CALL_STEP: Record<string, string> = { financial_position: "cash & liabilities", sales_summary: "sales", profit_and_loss: "profit and loss", compare_periods: "period comparison", events_breakdown: "events", organiser_settlements: "organiser balances", organiser_payments: "organiser payments", performance_series: "monthly figures", expenses: "expenses", stripe_fees: "Stripe fees", reconciliation_status: "reconciliation", unreconciled_transactions: "unreconciled transactions", cash_forecast: "cash forecast", calculate: "calculation" };
 /** End of a sentence worth voicing on its own (Latin and Persian punctuation). */
@@ -48,7 +52,8 @@ export function useAccountantCall(ep: CallEndpoints, tx: CallText) {
   const audioEl = useRef<HTMLAudioElement | null>(null); // OpenAI's own voice (WebRTC track)
   const c = useRef<{ pc: RTCPeerConnection; dc: RTCDataChannel; stream: MediaStream; s: Session; limit: ReturnType<typeof setTimeout> } | null>(null);
   const st = useRef({ userMuted: false, responding: false, openaiTalking: false, micTimer: null as ReturnType<typeof setTimeout> | null });
-  const tts = useRef({ queue: [] as Array<Promise<string | null>>, running: false, current: null as HTMLAudioElement | null, stop: null as (() => void) | null, buf: "", gen: 0 });
+  const tts = useRef({ queue: [] as Array<Promise<ArrayBuffer | null>>, running: false, stop: null as (() => void) | null, buf: "", gen: 0 });
+  const actx = useRef<AudioContext | null>(null);
   const epRef = useRef(ep); epRef.current = ep;
   const txRef = useRef(tx); txRef.current = tx;
 
@@ -77,24 +82,33 @@ export function useAccountantCall(ep: CallEndpoints, tx: CallText) {
     if (!clean) return;
     const q = tts.current, gen = q.gen;
     q.queue.push(fetch(epRef.current.speak, { method: "POST", credentials: "same-origin", headers: { ...epRef.current.headers(), "content-type": "application/json" }, body: JSON.stringify({ text: clean.slice(0, 2000) }) })
-      .then(async (r) => { if (!r.ok) { const b = await r.json().catch(() => null) as { error?: { message?: string } } | null; throw new Error(b?.error?.message ?? txRef.current.voiceFailed); } return URL.createObjectURL(await r.blob()); })
+      .then(async (r) => { if (!r.ok) { const b = await r.json().catch(() => null) as { error?: { message?: string } } | null; throw new Error(b?.error?.message ?? txRef.current.voiceFailed); } return r.arrayBuffer(); })
       .catch((e) => { if (gen === tts.current.gen) setErr(msg(e, txRef.current.voiceFailed)); return null; }));
     if (!q.running) void pump();
+  }
+  /** Play one MP3 through the shared audio context; resolves when it ends, is stopped, fails, or the watchdog fires. */
+  async function play(buf: ArrayBuffer) {
+    const ctx = actx.current; if (!ctx) return;
+    if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+    let audio: AudioBuffer;
+    try { audio = await ctx.decodeAudioData(buf); } catch { return; }
+    await new Promise<void>((done) => {
+      const src = ctx.createBufferSource(); src.buffer = audio; src.connect(ctx.destination);
+      let over = false;
+      const end = () => { if (over) return; over = true; clearTimeout(dog); tts.current.stop = null; try { src.disconnect(); } catch { /* gone */ } done(); };
+      const dog = setTimeout(end, Math.min(audio.duration * 1000 + 1500, 20_000)); // never wait forever
+      tts.current.stop = () => { try { src.stop(); } catch { /* not started */ } end(); };
+      src.onended = end;
+      try { src.start(); } catch { end(); }
+    });
   }
   async function pump() {
     const q = tts.current, gen = q.gen;
     q.running = true; setSpeaking(true); syncMic();
     while (q.queue.length && gen === q.gen) {
-      const url = await q.queue.shift()!;
-      if (gen !== q.gen) { if (url) URL.revokeObjectURL(url); return; }
-      if (!url) continue;
-      await new Promise<void>((done) => {
-        const el = new Audio(url); q.current = el;
-        const end = () => { URL.revokeObjectURL(url); q.current = null; q.stop = null; done(); };
-        q.stop = () => { el.pause(); end(); };
-        el.onended = end; el.onerror = end;
-        el.play().catch(end);
-      });
+      const buf = await q.queue.shift()!;
+      if (gen !== q.gen) return;
+      if (buf) await play(buf);
     }
     if (gen !== q.gen) return;
     q.running = false; setSpeaking(false); syncMic();
@@ -160,6 +174,12 @@ export function useAccountantCall(ep: CallEndpoints, tx: CallText) {
   }
 
   async function call() {
+    // Unlock audio inside the tap itself (before any await): iPhones only allow sound that a gesture started.
+    try {
+      const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (AC && (!actx.current || actx.current.state === "closed")) actx.current = new AC();
+      void actx.current?.resume().catch(() => {});
+    } catch { /* no Web Audio: ElevenLabs voice stays silent, the call still works */ }
     setErr(null); setLines([]); setSecs(0); setStatus("connecting"); setMuted(false);
     st.current = { userMuted: false, responding: false, openaiTalking: false, micTimer: null };
     let stream: MediaStream | null = null, pc: RTCPeerConnection | null = null;
@@ -171,7 +191,7 @@ export function useAccountantCall(ep: CallEndpoints, tx: CallText) {
       pc = new RTCPeerConnection();
       // With ElevenLabs the AI's voice is ours alone: never play OpenAI's audio track as well.
       pc.ontrack = (e) => { if (s.voiceProvider !== "elevenlabs" && audioEl.current) { audioEl.current.srcObject = e.streams[0]!; void audioEl.current.play().catch(() => {}); } };
-      stream.getTracks().forEach((tr) => pc!.addTrack(tr, stream!));
+      stream.getTracks().forEach((tr) => { pc!.addTrack(tr, stream!); tr.onended = () => { if (c.current) setErr(txRef.current.micLost); }; });
       const dc = pc.createDataChannel("oai-events");
       dc.onmessage = (m) => { try { onEvent(JSON.parse(m.data as string)); } catch { /* ignore malformed */ } };
       dc.onopen = () => {

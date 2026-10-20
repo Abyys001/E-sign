@@ -219,7 +219,7 @@ function CallScreen({ status, onLocked }: { status: Extract<Status, { enrolled: 
         )}
         <p className="text-center text-[11px] text-white/35">{t("footer")}</p>
       </footer>
-      <audio ref={k.audioEl} autoPlay className="hidden" />
+      <audio ref={k.audioEl} autoPlay playsInline className="hidden" />
     </Screen>
   );
 }
