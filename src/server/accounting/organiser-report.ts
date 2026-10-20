@@ -194,10 +194,16 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   heading("Refunds & chargebacks", d.refunds.some((x) => x.bookingFeePart) ? "Refunds on this organiser's events. Under the refund policy the booking fee is non-refundable, so the booking fee returned to customers is deducted from the organiser." : "Refunds on this organiser's events.");
   if (!d.refunds.length) { at("No refunds in this period.", M, doc.y, { size: 9.5 }); doc.y += 14; }
   else {
-    table([{ k: "Date", w: 60 }, { k: "Event", w: 130 }, { k: "Order", w: 60 }, { k: "Customer", w: 110 }, { k: "Type", w: 55 }, { k: "Refunded", w: 70, r: true }, { k: "Of which booking fee", w: 70, r: true }],
-      d.refunds.map((x) => [x.date, x.eventCode ? `${x.eventName} (${x.eventCode})` : "—", x.order ?? "—", x.customer ?? "—", x.kind === "DISPUTE" ? "Chargeback" : "Refund", money(x.amount, x.currency), x.bookingFeePart ? money(x.bookingFeePart, x.currency) : "—"]));
-    const byCur = new Map<string, { a: number; f: number }>(); for (const x of d.refunds) { const g = byCur.get(x.currency) ?? { a: 0, f: 0 }; g.a += x.amount; g.f += x.bookingFeePart; byCur.set(x.currency, g); }
-    for (const [c, g] of byCur) { ensure(14); const y = doc.y; at(`Total refunded (${c.toUpperCase()})${g.f ? ` · booking fee charged ${money(g.f, c)}` : ""}`, M, y, { bold: true, size: 9.5, width: W - 110 }); at(money(g.a, c), M + W - 110, y, { bold: true, size: 9.5, width: 110, align: "right" }); doc.y = y + 14; }
+    table([{ k: "Date", w: 56 }, { k: "Event", w: 110 }, { k: "Order", w: 52 }, { k: "Customer", w: 90 }, { k: "Type", w: 50 }, { k: "Refunded", w: 62, r: true }, { k: "Ticket price", w: 62, r: true }, { k: "Booking fee to Bilit", w: 62, r: true }],
+      d.refunds.map((x) => [x.date, x.eventCode ? `${x.eventName} (${x.eventCode})` : "—", x.order ?? "—", x.customer ?? "—", x.kind === "DISPUTE" ? "Chargeback" : "Refund", money(x.amount, x.currency), money(x.amount - x.bookingFeePart, x.currency), x.bookingFeePart ? money(x.bookingFeePart, x.currency) : "—"]));
+    const byCur = new Map<string, { a: number; f: number; n: number }>(); for (const x of d.refunds) { const g = byCur.get(x.currency) ?? { a: 0, f: 0, n: 0 }; g.a += x.amount; g.f += x.bookingFeePart; g.n++; byCur.set(x.currency, g); }
+    // Breakdown per currency: what customers got back, split into ticket price and the booking fee the organiser returns to Bilit.
+    for (const [c, g] of byCur) {
+      const rows: Array<[string, number, boolean?]> = [[`Refunded to customers (${g.n} refund${g.n === 1 ? "" : "s"})`, g.a], ["Of which ticket price", g.a - g.f], ["Of which booking fee", g.f], [`Booking fee to return to ${seller.name}`, g.f, true]];
+      ensure(24 + rows.length * 15); doc.y += 6; at(`Refund breakdown (${c.toUpperCase()})`, M, doc.y, { bold: true, size: 10 }); doc.y += 14;
+      for (const [k, v, bold] of rows) { const y = doc.y; if (bold) doc.moveTo(M, y - 2).lineTo(M + 330, y - 2).lineWidth(0.6).strokeColor(C.rule).stroke(); at(k, M, y, { size: 9.5, bold, width: 230 }); at(money(v, c), M + 230, y, { size: 9.5, bold, width: 100, align: "right" }); doc.y = y + 15; }
+      if (g.f) { at(`The booking fee is non-refundable, so the ${money(g.f, c)} returned to customers is deducted from the amount due to the organiser.`, M, doc.y, { size: 8.5, color: C.muted, width: W }); doc.y += 13; }
+    }
   }
 
   // Contracts
