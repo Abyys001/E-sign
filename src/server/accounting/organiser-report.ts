@@ -163,22 +163,10 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
     for (const [k, v, b] of rows) { const y = doc.y; if (b) doc.moveTo(M, y - 2).lineTo(M + 330, y - 2).lineWidth(0.6).strokeColor(C.rule).stroke(); at(k, M, y, { size: 9.5, bold: b, width: 230 }); at(money(v, c), M + 230, y, { size: 9.5, bold: b, width: 100, align: "right" }); doc.y = y + 15; }
     if (!evr && st?.find((x) => x.currency === c)?.paidOnAccount) { at(`Payments on account are applied to the events in this statement.`, M, doc.y, { size: 8.5, color: C.muted, width: W }); doc.y += 13; }
     if (f.cashback) { at(`Cashback = ${o.cashbackBps ? `${o.cashbackBps / 100}% of ` : ""}ticket sales after refunds, excluding booking fees, on finished events.`, M, doc.y, { size: 8.5, color: C.muted, width: W }); doc.y += 13; }
-    if (evr) { at("Payments on account are not included here. They are shown under Organiser account below.", M, doc.y, { size: 8.5, color: C.muted, width: W }); doc.y += 13; }
     if (f.bookingFeesRefunded) { at(`Refunds include ${money(f.bookingFeesRefunded, c)} of booking fees returned to customers, which is charged to the organiser.`, M, doc.y, { size: 8.5, color: C.muted, width: W }); doc.y += 13; }
     doc.y += 6;
   }
 
-  // Only the event's own currencies: other currencies belong to other events and only confuse an event report.
-  const acctTotals = evr ? d.accountTotals.filter((a) => d.events.some((e) => e.currency === a.currency)) : d.accountTotals;
-  if (evr && acctTotals.length) {
-    heading("Organiser account — all events", `Payments on account are not tied to one event, so they are shown against ${o.name}'s whole account rather than this event.`);
-    for (const a of acctTotals) {
-      const rows: Array<[string, number, boolean?]> = [["Due on all events", a.organiserDue], ["Paid to organiser (all payments)", -a.organiserPaid], [a.remaining >= 0 ? "Balance due to organiser (all events)" : `Overpaid — owed to ${seller.name}`, Math.abs(a.remaining), true]];
-      ensure(20 + rows.length * 15); at(a.currency.toUpperCase(), M, doc.y, { bold: true, size: 10 }); doc.y += 14;
-      for (const [k, v, b] of rows) { const y = doc.y; if (b) doc.moveTo(M, y - 2).lineTo(M + 330, y - 2).lineWidth(0.6).strokeColor(C.rule).stroke(); at(k, M, y, { size: 9.5, bold: b, width: 230 }); at(money(v, a.currency), M + 230, y, { size: 9.5, bold: b, width: 100, align: "right" }); doc.y = y + 15; }
-      doc.y += 6;
-    }
-  }
 
   // Settlement by event
   if (d.events.length && !evr) {
@@ -189,7 +177,8 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   }
 
   // Payments
-  const payments = d.payments.filter((p) => p.status !== "VOIDED");
+  // An event report covers that event only: payments on account (no event) and other events' payments are left out.
+  const payments = d.payments.filter((p) => p.status !== "VOIDED" && (!evr || d.events.some((e) => e.eventCode === p.eventCode)));
   heading("Payments to organiser", `${payments.length} payment(s).`);
   if (!payments.length) { at("No payments in this period.", M, doc.y, { size: 9.5 }); doc.y += 14; }
   else {
