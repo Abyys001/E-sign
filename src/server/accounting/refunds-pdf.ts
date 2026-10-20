@@ -9,7 +9,7 @@ import { getInvoiceSettings, registrationLines } from "./invoices";
 
 /**
  * Refunds statement (PDF): every refund/chargeback per event with the booking-fee part, and per event the totals the
- * organiser bears — refunded amount, booking fee to recover (non-refundable policy) and Stripe fees charged.
+ * organiser bears — refunded amount, booking fee kept (non-refundable policy) and Stripe fees charged.
  * For one organiser (to send to them) or for all organisers. Branded like the website (dark header and footer).
  */
 export async function refundsPdf(orgId: string, mode: Mode, f: { organiserId?: string | null; from?: string | null; to?: string | null }) {
@@ -89,7 +89,7 @@ export async function refundsPdf(orgId: string, mode: Mode, f: { organiserId?: s
     ensure(56); doc.y += 4;
     const line = (k: string, v: string, b = false) => { const y = doc.y; at(k, M + W - 330, y, { size: 9, bold: b, width: 225 }); at(v, M + W - 100, y, { size: 9, bold: b, width: 100, align: "right" }); doc.y = y + 14; };
     line("Total refunded to customers", formatMoney(refunded, cur, "en"));
-    line("Booking fee to recover from organiser", formatMoney(fee, cur, "en"), true);
+    line("Booking fee kept (charged to organiser)", formatMoney(fee, cur, "en"), true);
     if (stripe) line("Stripe fees charged to organiser (whole event)", formatMoney(stripe, cur, "en"));
     doc.y += 10;
   }
@@ -98,7 +98,7 @@ export async function refundsPdf(orgId: string, mode: Mode, f: { organiserId?: s
     at("Summary", M, doc.y + 4, { bold: true, size: 12, color: C.primary }); doc.y += 22;
     for (const [cur, g] of grand) {
       at(cur.toUpperCase(), M, doc.y, { bold: true, size: 9.5 });
-      at(`Refunded ${formatMoney(g.refunded, cur, "en")}  ·  Booking fee to recover ${formatMoney(g.fee, cur, "en")}${g.stripe ? `  ·  Stripe fees charged ${formatMoney(g.stripe, cur, "en")}` : ""}`, M + 40, doc.y, { size: 9.5, width: W - 40 });
+      at(`Refunded ${formatMoney(g.refunded, cur, "en")}  ·  Booking fee kept ${formatMoney(g.fee, cur, "en")}${g.stripe ? `  ·  Stripe fees charged ${formatMoney(g.stripe, cur, "en")}` : ""}`, M + 40, doc.y, { size: 9.5, width: W - 40 });
       doc.y += 15;
     }
   }
