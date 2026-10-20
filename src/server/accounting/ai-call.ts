@@ -7,6 +7,8 @@ import { AppError } from "../errors";
 import { stored } from "./ai";
 import { DEFAULT_CALL_PROMPT } from "./ai-call-prompt";
 import { detectLanguage } from "@/lib/lang";
+import { spokenMoney } from "./spoken-money";
+import { callCards } from "./ai-call-display";
 import { ACCOUNTANT_TOOL_NAMES, accountantCallSetup, runAccountantTool } from "./ai-accountant";
 import { acctAudit, type Mode } from "./core";
 
@@ -208,7 +210,7 @@ export async function callTool(a: Actor, mode: Mode, input: z.infer<typeof CallT
   try { const v = JSON.parse(input.arguments || "{}"); if (v && typeof v === "object") args = v; } catch { /* bad JSON from the model */ }
   const r = await runAccountantTool(a, mode, input.name, args);
   await db.transaction((tx) => acctAudit(tx, { ...a, action: "ai_accountant.call_lookup", entity: "ai_accountant", entityId: "voice_call", new: { mode, tool: input.name, period: r.evidence[0]?.period ?? null } }));
-  return { output: r.output };
+  return { output: r.output, cards: callCards(input.name, r.raw) }; // cards: the same verified figures, for the screen
 }
 
 /** One sentence of the AI's answer, voiced by ElevenLabs in the sentence's language. Streams MP3 back; nothing is
@@ -217,5 +219,6 @@ export async function speakCall(orgId: string, text: string, test = false) {
   const s = await stored(orgId);
   const call = test ? CallSettings.parse(s.call ?? {}) : (await readyCall(orgId)).call;
   if (!s.elevenKeyEnc || !call.elevenVoiceId) throw new AppError("invalid_state", "ElevenLabs is not set up (API key and voice) under Finance settings → AI accountant voice call.");
-  return eleven().speak(decrypt(s.elevenKeyEnc), { ...voiceFor(call, detectLanguage(text)), text, stability: call.stability, similarity: call.similarity, speed: call.speed });
+  const lang = detectLanguage(text);
+  return eleven().speak(decrypt(s.elevenKeyEnc), { ...voiceFor(call, lang), text: spokenMoney(text, lang), stability: call.stability, similarity: call.similarity, speed: call.speed });
 }

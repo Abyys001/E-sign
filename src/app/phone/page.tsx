@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Delete, Lock, Mic, MicOff, Phone, PhoneOff, QrCode, VolumeX } from "lucide-react";
 import { useCallText } from "@/components/accounting/ai-call";
+import { CallCards } from "@/components/accounting/call-cards";
 import { useAccountantCall } from "@/components/accounting/use-accountant-call";
 import { cn } from "@/components/ui/cn";
 
@@ -204,6 +205,7 @@ function CallScreen({ status, onLocked }: { status: Extract<Status, { enrolled: 
         <div><h1 className="text-2xl font-semibold">Bilit AI Accountant</h1><p className="mt-1 text-white/70" aria-live="polite">{label}</p>{live && <p className="mt-1 font-mono text-lg tabular-nums text-white/80">{clock}</p>}</div>
         {k.err && <p role="alert" className="mx-auto max-w-xs text-sm text-[#ff8a80]">{k.err}</p>}
       </section>
+      <CallCards cards={k.cards} dark className="max-h-[38dvh] overflow-y-auto" />
       <section className="min-h-28 space-y-2" aria-label={ta("transcript")}>
         {last.map((l) => <p key={l.id} dir="auto" className={cn("rounded-2xl px-4 py-2 text-sm", l.who === "you" ? "ms-auto max-w-[85%] bg-white/10 text-white/80" : "me-auto max-w-[90%] bg-[#20ac6a]/15 text-white")}>{l.text}</p>)}
       </section>

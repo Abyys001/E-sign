@@ -414,7 +414,11 @@ export async function runAccountantChat(a: Actor, mode: Mode, input: AccountantC
 
 // ---------- live voice call (OpenAI Realtime over WebRTC) ----------
 
-const CALL_RULE = `YOU ARE ON A LIVE VOICE CALL. Everything you say is spoken aloud, so: no markdown, tables, links or evidence ids; read amounts exactly as the tools give them, spoken naturally (e.g. "€9,808.18" as "nine thousand eight hundred and eight euros, eighteen cents"), and round only if the user asks; keep simple answers short and offer more detail rather than reading out long lists. Before a lookup that may take a moment, say a few words like "let me check". Reply in the language the user speaks — British English or natural Persian (Farsi). If you did not catch something, ask them to repeat it.`;
+const CALL_RULE = `YOU ARE ON A LIVE VOICE CALL. Everything you say is spoken aloud, so: no markdown, tables, links or evidence ids; keep simple answers short and offer more detail rather than reading out long lists. Before a lookup that may take a moment, say a few words like "let me check". Reply in the language the user speaks — British English or natural Persian (Farsi). If you did not catch something, ask them to repeat it.
+
+CURRENCY (mandatory): every amount's currency is the one written with it in the tool result (€ = euros, £ = pounds, US$ = US dollars; Bilit keeps separate books per currency). Never infer a currency from the language, the country or the organiser; never call a euro amount pounds or the other way round; never add amounts in different currencies. Write amounts exactly as the tools give them, with their symbol (e.g. "€9,808.18") — the voice reads them correctly as "9,808 euros and 18 cents" / «۹٬۸۰۸ یورو و ۱۸ سنت». Never round unless asked. Keep apart and name precisely: ticket sales, booking fee, Stripe fees, refunds, amount due, amount paid, remaining balance, and totals. If a currency is missing or unclear, say so instead of guessing.
+
+ON SCREEN: the caller sees cards with the verified figures of each lookup (event title, organiser, date, highlighted totals) while you speak. Say the key figure and its meaning; do not read every card line. What you say must match those figures exactly. When the conversation moves to another event or organiser, look it up again so the screen shows the right one.`;
 
 /** Session config for a live call: the call behaviour prompt + the same rules, tools and context as the chat, in the Realtime API's tool format. */
 export async function accountantCallSetup(a: Actor, mode: Mode, behaviour: string) {
@@ -435,5 +439,5 @@ export async function runAccountantTool(a: Actor, mode: Mode, name: string, args
   let out: unknown;
   try { out = await runTool(c, name, args); }
   catch (e) { out = { error: e instanceof AppError ? e.message : "This lookup failed." }; log.warn("accounting.accountant_tool_failed", { tool: name, error: String(e).slice(0, 300) }); }
-  return { output: cap(out), evidence: c.evidence };
+  return { output: cap(out), raw: out, evidence: c.evidence };
 }

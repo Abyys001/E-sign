@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { Loader2, Mic, MicOff, Phone, PhoneOff, Volume2 } from "lucide-react";
 import { useMode } from "@/components/accounting/kit";
+import { CallCards } from "@/components/accounting/call-cards";
 import { useAccountantCall, type CallLine } from "@/components/accounting/use-accountant-call";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/feedback";
@@ -63,6 +64,7 @@ export function AccountantCall() {
         </div>
       </div>
       {k.err && <Callout tone="warn" title={t("problem")}>{k.err}</Callout>}
+      <CallCards cards={k.cards} />
       <CallTranscript lines={k.lines} className="max-h-[50vh] rounded-2xl border border-line bg-surface p-4" />
       <p className="text-xs text-muted">{t("privacy")}</p>
       <audio ref={k.audioEl} autoPlay playsInline className="hidden" />

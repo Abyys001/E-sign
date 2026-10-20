@@ -1,5 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import type { CallCard } from "@/server/accounting/ai-call-display";
+
+export type { CallCard };
 
 /**
  * Live voice call with the AI Accountant — shared by the finance call page and the phone app.
@@ -49,6 +52,7 @@ export function useAccountantCall(ep: CallEndpoints, tx: CallText) {
   const [lines, setLines] = useState<CallLine[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [secs, setSecs] = useState(0);
+  const [cards, setCards] = useState<CallCard[]>([]); // verified figures of the latest lookups
   const audioEl = useRef<HTMLAudioElement | null>(null); // OpenAI's own voice (WebRTC track)
   const c = useRef<{ pc: RTCPeerConnection; dc: RTCDataChannel; stream: MediaStream; s: Session; limit: ReturnType<typeof setTimeout> } | null>(null);
   const st = useRef({ userMuted: false, responding: false, openaiTalking: false, micTimer: null as ReturnType<typeof setTimeout> | null });
@@ -125,15 +129,20 @@ export function useAccountantCall(ep: CallEndpoints, tx: CallText) {
   // ---------- realtime events ----------
   async function runTools(calls: Array<{ call_id?: string; name?: string; arguments?: string }>) {
     st.current.responding = true; syncMic(); // the follow-up answer is still coming
+    const shown: CallCard[] = [];
     for (const k of calls) {
       if (!k.call_id || !k.name) continue;
       const what = CALL_STEP[k.name] ?? k.name;
       setBusy(what); add({ id: `tool-${k.call_id}`, who: "tool", text: txRef.current.lookingUp(what) });
       let output: string;
-      try { output = (await post<{ output: string }>(epRef.current.tool, epRef.current.headers(), { name: k.name, arguments: k.arguments ?? "{}" })).output; }
+      try {
+        const r = await post<{ output: string; cards?: CallCard[] }>(epRef.current.tool, epRef.current.headers(), { name: k.name, arguments: k.arguments ?? "{}" });
+        output = r.output; shown.push(...(r.cards ?? []));
+      }
       catch (e) { output = JSON.stringify({ error: msg(e, "lookup failed") }); }
       send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: k.call_id, output } });
     }
+    if (shown.length) setCards(shown); // a new lookup replaces the previous topic's cards
     setBusy(null);
     send({ type: "response.create" });
   }
@@ -180,7 +189,7 @@ export function useAccountantCall(ep: CallEndpoints, tx: CallText) {
       if (AC && (!actx.current || actx.current.state === "closed")) actx.current = new AC();
       void actx.current?.resume().catch(() => {});
     } catch { /* no Web Audio: ElevenLabs voice stays silent, the call still works */ }
-    setErr(null); setLines([]); setSecs(0); setStatus("connecting"); setMuted(false);
+    setErr(null); setLines([]); setCards([]); setSecs(0); setStatus("connecting"); setMuted(false);
     st.current = { userMuted: false, responding: false, openaiTalking: false, micTimer: null };
     let stream: MediaStream | null = null, pc: RTCPeerConnection | null = null;
     try {
@@ -235,5 +244,5 @@ export function useAccountantCall(ep: CallEndpoints, tx: CallText) {
   }
   function interrupt() { stopSpeaking(); send({ type: "response.cancel" }); }
 
-  return { status, muted, speaking, err, lines, busy, secs, audioEl, call, hangUp, toggleMute, interrupt, clearError: () => setErr(null) };
+  return { status, muted, speaking, err, lines, cards, busy, secs, audioEl, call, hangUp, toggleMute, interrupt, clearError: () => setErr(null) };
 }

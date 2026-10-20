@@ -5,6 +5,8 @@ import { stopBoss } from "@/server/jobs";
 import { getAiSettings, setAiChecker, updateAiSettings } from "@/server/accounting/ai";
 import { CallSettings, CallToolInput, callTool, getCallSettings, setElevenApi, speakCall, updateCallSettings } from "@/server/accounting/ai-call";
 import { DEFAULT_CALL_PROMPT } from "@/server/accounting/ai-call-prompt";
+import { spokenMoney } from "@/server/accounting/spoken-money";
+import { callCards } from "@/server/accounting/ai-call-display";
 import { ACCOUNTANT_TOOL_NAMES, accountantCallSetup } from "@/server/accounting/ai-accountant";
 import { ctxFor, makeOrg } from "./helpers";
 
@@ -63,7 +65,7 @@ describe("AI accountant voice call settings", () => {
     await speakCall(a.orgId, "Test", true);
     await updateCallSettings(a, { ...(await getCallSettings(a.orgId)).settings, enabled: true });
     await speakCall(a.orgId, "Cash is £28.00.");
-    expect(spoken.slice(-2)).toEqual([{ key: "sk_good_0123456789abcdef", voiceId: "Voice123", model: "eleven_v3", text: "Test" }, { key: "sk_good_0123456789abcdef", voiceId: "Voice123", model: "eleven_v3", text: "Cash is £28.00." }]);
+    expect(spoken.slice(-2)).toEqual([{ key: "sk_good_0123456789abcdef", voiceId: "Voice123", model: "eleven_v3", text: "Test" }, { key: "sk_good_0123456789abcdef", voiceId: "Voice123", model: "eleven_v3", text: "Cash is 28 pounds." }]); // amounts are spoken in words
   });
 
   it("voices Persian sentences with the Persian voice and model, English with the English ones", async () => {
@@ -89,5 +91,28 @@ describe("AI accountant voice call settings", () => {
     await updateCallSettings(a, { ...base, voiceProvider: "openai", enabled: true });
     const r = await callTool(a, "test", { name: "calculate", arguments: JSON.stringify({ currency: "gbp", terms: [{ label: "a", amount: "1.10" }, { label: "b", amount: "2.20" }] }) });
     expect(JSON.parse(r.output).result).toBe("£3.30");
+    // the screen gets the same verified figure
+    expect(r.cards).toEqual([{ kind: "summary", title: "Calculation", highlight: { label: "Result", value: "£3.30" }, rows: [{ label: "a", value: "£1.10" }, { label: "b", value: "£2.20" }] }]);
+  });
+});
+
+describe("voice call — currency spoken exactly as written, screen cards from verified figures", () => {
+  it("never reads euros as pounds; decimals as cents/pence; Persian currency names", () => {
+    expect(spokenMoney("Epic Wave is owed €9,808.18 and was paid €25,000.00.", "en")).toBe("Epic Wave is owed 9,808 euros and 18 cents and was paid 25,000 euros.");
+    expect(spokenMoney("Ticket £45.00, fee £1.05, refund -£0.50", "en")).toBe("Ticket 45 pounds, fee 1 pound and 5 pence, refund minus 50 pence");
+    expect(spokenMoney("US$120.00 · SEK 1,500.00 · 1,500.00 EUR", "en")).toBe("120 US dollars · 1,500 Swedish kronor · 1,500 euros");
+    expect(spokenMoney("مانده €9,808.18 و £45.00", "fa")).toBe("مانده ۹٬۸۰۸ یورو و ۱۸ سنت و ۴۵ پوند");
+    expect(spokenMoney("Event B41-0091 had 1,234 tickets in 2026.", "en")).toBe("Event B41-0091 had 1,234 tickets in 2026.");
+  });
+
+  it("gives every event its own titled card with the figures exactly as the lookup returned them", () => {
+    const out = { period: { from: null, to: null }, count: 2, totalsPerCurrency: [{ currency: "eur", gross: "€2,000.00", bilitRevenue: "€200.00", contributionProfit: "€150.00", organiserRemaining: "€900.00" }],
+      events: [{ code: "B41-0084", name: "Hamburg Night", date: "2026-10-25", status: "ACTIVE", organiser: "Epic Wave", currency: "eur", gross: "€1,500.00", organiserRemaining: "€700.00", organiserDue: "€1,200.00", organiserPaid: "€500.00", contributionProfit: "€100.00", link: "/accounting/events/x" },
+        { code: "B41-0082", name: "Chamber Orchestra", date: "2026-09-01", organiser: "Epic Wave", currency: "eur", gross: "€500.00", organiserRemaining: "€200.00", contributionProfit: "€50.00" }] };
+    const cards = callCards("events_breakdown", out);
+    expect(cards.map((c) => c.title)).toEqual(["Hamburg Night", "Chamber Orchestra", "All 2 events — EUR"]);
+    expect(cards[0]).toMatchObject({ kind: "event", subtitle: "B41-0084", meta: ["25 Oct 2026", "Epic Wave", "ACTIVE"], highlight: { label: "Still owed to organiser", value: "€700.00" } });
+    expect(cards[0]!.rows).toContainEqual({ label: "Ticket sales (gross)", value: "€1,500.00", strong: true });
+    expect(callCards("events_breakdown", { error: "x" })).toEqual([]);
   });
 });
