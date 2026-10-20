@@ -3096,6 +3096,10 @@
       "PREVIEW": "Preview",
       "APPLIED": "Applied",
       "SUPERSEDED": "Replaced"
-    }
+    },
+    "drop": "Drag & drop the ticket export CSV here, or click to choose",
+    "dropNow": "Drop the file to read it",
+    "dropHint": "CSV from the ticket system — one row per ticket (Order ID, Ticket Price, Booking Fee). Nothing is posted until you click Apply.",
+    "notCsv": "That is not a CSV file."
   }
 }

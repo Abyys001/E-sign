@@ -32,6 +32,7 @@ export function TicketImportTab({ eventId, eventName, manage, onApplied }: { eve
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false); const [confirm, setConfirm] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const [over, setOver] = useState(false);
   const upload = async (file: File) => {
     setBusy(true);
     try { const form = new FormData(); form.append("file", file); setPreview(await api<Preview>(q(`/api/accounting/events/${eventId}/tickets`), { form })); await reload(); }
@@ -48,7 +49,17 @@ export function TicketImportTab({ eventId, eventName, manage, onApplied }: { eve
         <CardHeader title={t("title")} description={t("desc")} action={manage && <>
           <input ref={input} type="file" accept=".csv,text/csv" className="sr-only" aria-label={t("choose")} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); }} />
           <Button size="sm" variant="primary" disabled={busy} onClick={() => input.current?.click()}><Upload className="size-4" aria-hidden />{busy ? t("reading") : t("upload")}</Button></>} />
-        {loading && !data ? <div className="p-5"><Skeleton className="h-24" /></div> : !shown ? <EmptyState title={t("empty")} description={t("emptyDesc")} /> : (
+        {manage && <div className="px-5 pt-5">
+          <div role="button" tabIndex={0} aria-label={t("drop")} aria-busy={busy}
+            onClick={() => !busy && input.current?.click()} onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !busy) { e.preventDefault(); input.current?.click(); } }}
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setOver(true); }} onDragLeave={() => setOver(false)}
+            onDrop={(e) => { e.preventDefault(); setOver(false); const f = e.dataTransfer.files?.[0]; if (!f || busy) return; if (!/\.csv$/i.test(f.name) && f.type !== "text/csv") { toast("error", t("notCsv")); return; } void upload(f); }}
+            className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors ${over ? "border-accent bg-accent-soft" : "border-line-strong hover:bg-surface-2"}`}>
+            <FileSpreadsheet className="size-8 text-muted" aria-hidden />
+            <p className="font-medium">{busy ? t("reading") : over ? t("dropNow") : t("drop")}</p>
+            <p className="text-xs text-muted">{t("dropHint")}</p>
+          </div></div>}
+        {loading && !data ? <div className="p-5"><Skeleton className="h-24" /></div> : !shown ? (manage ? null : <EmptyState title={t("empty")} description={t("emptyDesc")} />) : (
           <div className="space-y-5 p-5">
             <div className="flex flex-wrap items-center gap-2 text-sm"><FileSpreadsheet className="size-4 text-muted" aria-hidden /><span className="font-medium">{shown.fileName ?? "CSV"}</span>
               <span className={shown.applied ? "rounded-full border border-accent bg-accent-soft px-2 py-0.5 text-xs" : "rounded-full border border-line-strong px-2 py-0.5 text-xs"}>{shown.applied ? t("applied") : t("preview")}</span></div>
