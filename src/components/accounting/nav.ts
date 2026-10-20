@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Banknote, BookOpen, Bot, CalendarDays, CheckCircle2, CreditCard, FileBarChart, HandCoins, Landmark, LayoutDashboard, Library, Link2, Scale, Send, Settings, TrendingUp, Undo2, Users, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, Banknote, BookOpen, Bot, CalendarDays, CheckCircle2, CreditCard, FileBarChart, HandCoins, Landmark, LayoutDashboard, Library, Link2, Phone, Scale, Send, Settings, TrendingUp, Undo2, Users, type LucideIcon } from "lucide-react";
 
 export type NavItem = { href: string; key: string; icon: LucideIcon; exact?: true; perm?: "accounting.admin" | "accounting.manage" | "treasury.admin" };
 /** Finance sections grouped the way accountants look for them. Routes are unchanged; only presentation is grouped. */
@@ -9,6 +9,7 @@ export const NAV_GROUPS: ReadonlyArray<{ key: string; items: ReadonlyArray<NavIt
     { href: "/accounting/overview", key: "overview", icon: TrendingUp },
     { href: "/accounting/reports", key: "reports", icon: FileBarChart },
     { href: "/accounting/ai", key: "ai", icon: Bot },
+    { href: "/accounting/call", key: "call", icon: Phone },
   ] },
   { key: "transactions", items: [
     { href: "/accounting/transactions", key: "transactions", icon: ArrowLeftRight },

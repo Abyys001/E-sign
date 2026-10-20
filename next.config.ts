@@ -51,6 +51,10 @@ const config: NextConfig = {
       source: "/accounting/:path*",
       headers: [{ key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), payment=()" }],
     }, {
+      // AI Accountant voice call: WebRTC signalling goes to OpenAI's Realtime API (audio itself flows over WebRTC).
+      source: "/accounting/call",
+      headers: [{ key: "Content-Security-Policy", value: csp.replace("connect-src 'self'", "connect-src 'self' https://api.openai.com") }],
+    }, {
       // Payment links: embedded Stripe checkout (Apple Pay / Google Pay need the Payment Request API inside Stripe's frame).
       source: "/pay/:path*",
       headers: [

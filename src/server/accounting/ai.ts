@@ -51,9 +51,10 @@ export const VoiceSettings = z.object({
 });
 export type AssistantSettingsT = z.infer<typeof AssistantSettings>;
 export type VoiceSettingsT = z.infer<typeof VoiceSettings>;
-type Stored = { enabled?: boolean; model?: string; apiKeyEnc?: string | null; keyHint?: string | null; instructions?: string | null; assistant?: Partial<AssistantSettingsT>; voice?: Partial<VoiceSettingsT> };
+export type Stored = { enabled?: boolean; model?: string; apiKeyEnc?: string | null; keyHint?: string | null; instructions?: string | null; assistant?: Partial<AssistantSettingsT>; voice?: Partial<VoiceSettingsT>;
+  call?: Record<string, unknown>; elevenKeyEnc?: string | null; elevenKeyHint?: string | null }; // live voice call settings: see ai-call.ts
 
-async function stored(orgId: string): Promise<Stored> {
+export async function stored(orgId: string): Promise<Stored> {
   await getAcctSettings(orgId);
   const [s] = await db.select({ v: schema.acctSettings.aiSettings }).from(schema.acctSettings).where(eq(schema.acctSettings.organisationId, orgId));
   return (s?.v ?? {}) as Stored;
@@ -67,7 +68,7 @@ export async function getAiSettings(orgId: string) {
 
 export async function updateAiSettings(a: Actor, input: z.infer<typeof AiSettingsInput>) {
   const s = await stored(a.orgId);
-  const next: Stored = { enabled: input.enabled, model: input.model, instructions: input.instructions ?? null, apiKeyEnc: s.apiKeyEnc ?? null, keyHint: s.keyHint ?? null, assistant: input.assistant ?? s.assistant, voice: input.voice ?? s.voice };
+  const next: Stored = { ...s, enabled: input.enabled, model: input.model, instructions: input.instructions ?? null, apiKeyEnc: s.apiKeyEnc ?? null, keyHint: s.keyHint ?? null, assistant: input.assistant ?? s.assistant, voice: input.voice ?? s.voice };
   if (input.apiKey === null) { next.apiKeyEnc = null; next.keyHint = null; }
   else if (input.apiKey) { next.apiKeyEnc = encrypt(input.apiKey); next.keyHint = `${input.apiKey.slice(0, 7)}…${input.apiKey.slice(-4)}`; }
   if (next.enabled && !next.apiKeyEnc) throw new AppError("validation_failed", "Add an OpenAI API key to enable the AI review.", [{ path: "apiKey", message: "Paste your OpenAI API key to enable the review" }]);

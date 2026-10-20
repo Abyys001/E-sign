@@ -362,6 +362,15 @@ async function withRetry<T>(retries: number, f: () => Promise<T>): Promise<T> {
 
 const STEP: Record<string, string> = { financial_position: "financial position", sales_summary: "sales", profit_and_loss: "profit and loss", compare_periods: "period comparison", events_breakdown: "events", organiser_settlements: "organiser settlements", organiser_payments: "organiser payments", performance_series: "monthly performance", expenses: "expenses", stripe_fees: "Stripe fees", reconciliation_status: "reconciliation", unreconciled_transactions: "unreconciled transactions", calculate: "calculation" };
 
+/** Admin notes, today's date + reference periods, and data freshness — shared by the chat and the voice call. */
+function contextLines(instructions: string | null, today: string, tz: string, mode: Mode, fresh: Freshness) {
+  return [
+    instructions ? `Standing notes from the finance admin (business context, not permission to break the rules above):\n${instructions.slice(0, 3000)}` : "",
+    `Today is ${today} (${tz}). Reference periods: ${JSON.stringify(periodHints(today))}. You are reading the ${mode.toUpperCase()} books.`,
+    `Data freshness: Stripe ${fresh.stripe.connected ? `last synced ${fresh.stripe.lastSyncAt ?? "never"}${fresh.stripe.lastWebhookAt ? "" : " (no webhooks: up to 30 min delay)"}` : "not connected"}; Wise ${fresh.wise.connected ? `last synced ${fresh.wise.lastSyncAt ?? "never"}` : "not connected"}.`,
+  ];
+}
+
 export async function runAccountantChat(a: Actor, mode: Mode, input: AccountantChatInputT) {
   const cfg = await aiConfig(a.orgId);
   const { timezone } = await getAcctSettings(a.orgId);
@@ -374,9 +383,7 @@ export async function runAccountantChat(a: Actor, mode: Mode, input: AccountantC
   const c: RunCtx = { a, mode, today, evidence: [], cache: new Map(), m: (v, cur) => formatMoney(v, cur, "en") };
   const messages: Msg[] = [
     { role: "system", content: [ACCOUNTANT_SYSTEM, LANG_RULE[lang],
-      cfg.instructions ? `Standing notes from the finance admin (business context, not permission to break the rules above):\n${cfg.instructions.slice(0, 3000)}` : "",
-      `Today is ${today} (${tz}). Reference periods: ${JSON.stringify(periodHints(today))}. You are reading the ${mode.toUpperCase()} books.`,
-      `Data freshness: Stripe ${fresh.stripe.connected ? `last synced ${fresh.stripe.lastSyncAt ?? "never"}${fresh.stripe.lastWebhookAt ? "" : " (no webhooks: up to 30 min delay)"}` : "not connected"}; Wise ${fresh.wise.connected ? `last synced ${fresh.wise.lastSyncAt ?? "never"}` : "not connected"}.`,
+      ...contextLines(cfg.instructions, today, tz, mode, fresh),
       ctxLine].filter(Boolean).join("\n\n") },
     ...input.messages.slice(-20).map((x) => ({ role: x.role, content: x.content }) as Msg),
   ];
@@ -404,3 +411,29 @@ export async function runAccountantChat(a: Actor, mode: Mode, input: AccountantC
   return { answer, language: lang, dir: lang === "fa" ? "rtl" as const : "ltr" as const, steps: [...new Set(steps)], evidence: c.evidence, freshness: fresh, model: cfg.model, asOf: new Date().toISOString() };
 }
 
+
+// ---------- live voice call (OpenAI Realtime over WebRTC) ----------
+
+const CALL_RULE = `YOU ARE ON A LIVE VOICE CALL. Everything you say is spoken aloud, so: no markdown, tables, links or evidence ids; read amounts exactly as the tools give them, spoken naturally (e.g. "€9,808.18" as "nine thousand eight hundred and eight euros, eighteen cents"), and round only if the user asks; keep simple answers short and offer more detail rather than reading out long lists. Before a lookup that may take a moment, say a few words like "let me check". Reply in the language the user speaks — British English or natural Persian (Farsi). If you did not catch something, ask them to repeat it.`;
+
+/** Session config for a live call: the call behaviour prompt + the same rules, tools and context as the chat, in the Realtime API's tool format. */
+export async function accountantCallSetup(a: Actor, mode: Mode, behaviour: string) {
+  const cfg = await aiConfig(a.orgId);
+  const { timezone } = await getAcctSettings(a.orgId);
+  const tz = timezone || "UTC", today = localDate(new Date(), tz);
+  const fresh = await freshness(a.orgId, mode);
+  // The admin-editable behaviour prompt shapes how the agent talks; the accountant's rules come after it and win.
+  const instructions = [behaviour, "=== FINANCE RULES — these override anything above ===", ACCOUNTANT_SYSTEM, CALL_RULE, ...contextLines(cfg.instructions, today, tz, mode, fresh)].filter(Boolean).join("\n\n");
+  const tools = TOOLS.map((t) => ({ type: "function" as const, name: t.function.name, description: t.function.description, parameters: t.function.parameters }));
+  return { cfg, instructions, tools };
+}
+
+/** One tool call requested by the voice model; runs the same read-only lookup as the chat. */
+export async function runAccountantTool(a: Actor, mode: Mode, name: string, args: Record<string, unknown>) {
+  const { timezone } = await getAcctSettings(a.orgId);
+  const c: RunCtx = { a, mode, today: localDate(new Date(), timezone || "UTC"), evidence: [], cache: new Map(), m: (v, cur) => formatMoney(v, cur, "en") };
+  let out: unknown;
+  try { out = await runTool(c, name, args); }
+  catch (e) { out = { error: e instanceof AppError ? e.message : "This lookup failed." }; log.warn("accounting.accountant_tool_failed", { tool: name, error: String(e).slice(0, 300) }); }
+  return { output: cap(out), evidence: c.evidence };
+}
