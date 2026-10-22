@@ -1440,7 +1440,23 @@
       "notEnough": "Not enough {c} available right now — part of the balance is still pending in Stripe, or move money in from another currency.",
       "note": "Nothing is paid or recorded until you press the button. Paying what is owed does not change Bilit's own money; only an overpayment does."
     },
-    "reportPdf": "Report PDF"
+    "reportPdf": "Report PDF",
+    "box": {
+      "title": "Payments for this box office",
+      "desc": "Every payment to {organiser} for this event, in date order, with what was still owed after each one.",
+      "manage": "Manage payments",
+      "due": "Due to organiser",
+      "paid": "Paid",
+      "left": "Still to pay",
+      "fullyPaid": "Fully paid",
+      "count": "{n, plural, =0 {no payments} one {# payment} other {# payments}}",
+      "leftAfter": "left",
+      "pctPaid": "{p}% paid",
+      "proof": "Proof",
+      "empty": "No payments yet.",
+      "showVoided": "Show {n, plural, one {# deleted payment} other {# deleted payments}}",
+      "hideVoided": "Hide deleted payments"
+    }
   },
   "books": {
     "nav": {

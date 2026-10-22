@@ -137,7 +137,24 @@ export async function listPayments(orgId: string, mode: Mode, f: { organiserId?:
       .where(where).orderBy(desc(p.paymentDate), desc(p.createdAt)).limit(page.limit).offset(page.offset),
     count(p, where),
   ]);
-  return { items: items.map((r) => ({ ...r.p, organiserName: r.organiserName, eventName: r.eventName, eventCode: r.eventCode, createdByName: r.createdByName })), total };
+  const payees = await paymentPayees(orgId, items.map((r) => r.p));
+  return { items: items.map((r) => ({ ...r.p, organiserName: r.organiserName, eventName: r.eventName, eventCode: r.eventCode, createdByName: r.createdByName, payee: payees.get(r.p.id) ?? null })), total };
+}
+
+/** Who actually received each payment: the Wise recipient, from the linked Wise row or the "Wise #123" reference. */
+async function paymentPayees(orgId: string, ps: Array<{ id: string; bankReference: string | null }>) {
+  const out = new Map<string, string>();
+  if (!ps.length) return out;
+  const w = schema.acctWiseTransactions;
+  const tid = (r: string | null) => r?.match(/wise\s*#?\s*(\d{5,15})/i)?.[1];
+  const refIds = [...new Set(ps.map((p) => tid(p.bankReference)).filter(Boolean).map((x) => `TRANSFER-${x}`))];
+  const rows = await db.select({ wiseId: w.wiseId, paymentId: w.organiserPaymentId, counterparty: w.counterparty }).from(w)
+    .where(and(eq(w.organisationId, orgId), or(inArray(w.organiserPaymentId, ps.map((p) => p.id)), refIds.length ? inArray(w.wiseId, refIds) : undefined)));
+  for (const p of ps) {
+    const r = rows.find((x) => x.paymentId === p.id) ?? rows.find((x) => x.wiseId === `TRANSFER-${tid(p.bankReference)}`);
+    if (r?.counterparty) out.set(p.id, r.counterparty);
+  }
+  return out;
 }
 
 export const LedgerFilter = z.object({ entryType: z.string().max(40).optional(), eventId: z.string().uuid().optional(), organiserId: z.string().uuid().optional(), accountId: z.string().uuid().optional(), from: IsoDate.optional(), to: IsoDate.optional(), q: z.string().trim().max(120).optional() });

@@ -8,6 +8,7 @@ import { useMe } from "@/components/app/me";
 import { AmountCard, Badge, Money, RangePicker, rangeFor, rangeQuery, useExport, useMode, type RangeKey } from "@/components/accounting/kit";
 import { AgreementFields, agreementFrom, agreementPayload, emptyAgreement, EventDialog, type AgreementValue } from "@/components/accounting/forms";
 import { AuditList, BookingFeeDialog, ExpenseDialog, moneyFlow, PayOrganiserDialog, PaymentEditDialog, PaymentViewDialog, marginOf, pct, profitAndLoss, SettlementBadge, SettlementSummary, Statement, type AuditItem, type ExpenseRow, type Fig, type PaymentRow } from "@/components/accounting/finance";
+import { BoxOfficePayments, type BoxPayment } from "@/components/accounting/box-office-payments";
 import { EventContractStatus } from "@/components/accounting/organiser-tabs";
 import { TicketImportTab } from "@/components/accounting/ticket-import";
 import { Button, LinkButton } from "@/components/ui/button";
@@ -87,11 +88,11 @@ function EventFinance({ id }: { id: string }) {
       <div>
         <Tabs tabs={tabs} value={tab} onChange={setTab} label={t("tabs.label")} />
         <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="pt-5">
-          {tab === "overview" && <Overview e={e} f={f} agreement={data.agreement} reload={reload} />}
+          {tab === "overview" && <Overview e={e} f={f} agreement={data.agreement} reload={reload} onPayments={() => setTab("payments")} />}
           {tab === "transactions" && <TxTab eventId={id} kinds={["SALE"]} />}
           {tab === "tickets" && <TicketImportTab eventId={id} eventName={e.name} manage={manage} onApplied={reload} />}
           {tab === "refunds" && <TxTab eventId={id} kinds={["REFUND", "DISPUTE", "DISPUTE_REVERSAL"]} />}
-          {tab === "payments" && <PaymentsTab e={e} onPay={() => setPay(true)} onChanged={reload} />}
+          {tab === "payments" && <PaymentsTab e={e} f={f} onPay={() => setPay(true)} onChanged={reload} />}
           {tab === "expenses" && <ExpensesTab e={e} onChanged={reload} />}
           {tab === "pl" && <PlTab f={f} e={e} />}
           {tab === "reports" && <ReportsTab e={e} />}
@@ -107,7 +108,7 @@ function EventFinance({ id }: { id: string }) {
 }
 
 // ---------- overview ----------
-function Overview({ e, f, agreement, reload }: { e: Ev; f: Fig; agreement: Ag | null; reload: () => Promise<void> }) {
+function Overview({ e, f, agreement, reload, onPayments }: { e: Ev; f: Fig; agreement: Ag | null; reload: () => Promise<void>; onPayments: () => void }) {
   const t = useTranslations("accounting.fin");
   const te = useTranslations("accounting.events");
   const locale = useLocale();
@@ -115,6 +116,8 @@ function Overview({ e, f, agreement, reload }: { e: Ev; f: Fig; agreement: Ag | 
   const { can } = useMe();
   const { mode, q } = useMode();
   const { data: ags, reload: reloadAgs } = useApi<{ agreements: Ag[] }>(q(`/api/accounting/events/${e.id}`));
+  const tb = useTranslations("accounting.fin.box");
+  const { data: pays } = useApi<{ items: BoxPayment[] }>(e.organiserId ? q(`/api/accounting/organiser-payments?eventId=${e.id}&pageSize=200`) : null);
   const [agOpen, setAgOpen] = useState(false);
   const [ag, setAg] = useState<AgreementValue>(emptyAgreement()); const [reason, setReason] = useState(""); const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   const saveAg = async () => {
@@ -138,6 +141,8 @@ function Overview({ e, f, agreement, reload }: { e: Ev; f: Fig; agreement: Ag | 
           </Card>
         </div>
       </div>
+      {e.organiserId && <Card><CardHeader title={tb("title")} description={tb("desc", { organiser: e.organiserName ?? "" })} action={<Button size="sm" onClick={onPayments}>{tb("manage")}</Button>} />
+        {pays ? <BoxOfficePayments items={pays.items} f={f} /> : <div className="p-4"><Skeleton className="h-24" /></div>}</Card>}
       <Card><CardHeader title={t("terms.title")} description={t("terms.desc")} action={can("accounting.manage") && <div className="flex flex-wrap gap-2">
           {agreement && agreement.fixedEventFee > 0 && <Button size="sm" onClick={postFee}>{te("postFee", { amount: formatMoney(agreement.fixedEventFee, e.currency, locale) })}</Button>}
           <Button size="sm" onClick={() => { setAg(agreement ? agreementFrom(agreement, e.currency) : emptyAgreement()); setAgOpen(true); }}><FilePlus2 className="size-4" aria-hidden />{te("newAgreement")}</Button></div>} />
@@ -178,7 +183,7 @@ function TxTab({ eventId, kinds }: { eventId: string; kinds: string[] }) {
 }
 
 // ---------- organiser payments ----------
-function PaymentsTab({ e, onPay, onChanged }: { e: Ev; onPay: () => void; onChanged: () => Promise<void> }) {
+function PaymentsTab({ e, f, onPay, onChanged }: { e: Ev; f: Fig; onPay: () => void; onChanged: () => Promise<void> }) {
   const t = useTranslations("accounting.fin");
   const tp = useTranslations("accounting.payments");
   const toast = useToast();
@@ -186,7 +191,7 @@ function PaymentsTab({ e, onPay, onChanged }: { e: Ev; onPay: () => void; onChan
   const doExport = useExport();
   const { can } = useMe();
   const { q } = useMode();
-  const { data, loading, reload } = useApi<{ items: PaymentRow[] }>(q(`/api/accounting/organiser-payments?eventId=${e.id}&pageSize=200`));
+  const { data, loading, reload } = useApi<{ items: BoxPayment[] }>(q(`/api/accounting/organiser-payments?eventId=${e.id}&pageSize=200`));
   const [view, setView] = useState<string | null>(null); const [edit, setEdit] = useState<PaymentRow | null>(null); const [del, setDel] = useState<PaymentRow | null>(null); const [reason, setReason] = useState("");
   const after = async () => { await Promise.all([reload(), onChanged()]); };
   const markPaid = async (p: PaymentRow) => { try { await api(`/api/accounting/organiser-payments/${p.id}`, { method: "PATCH", json: { status: "PAID" } }); toast("ok", tp("markedPaid")); await after(); } catch (x) { toast("error", errMsg(x)); } };
@@ -196,19 +201,14 @@ function PaymentsTab({ e, onPay, onChanged }: { e: Ev; onPay: () => void; onChan
       <CardHeader title={t("payments.title")} description={t("payments.desc")} action={<div className="flex flex-wrap gap-2">
         <Button size="sm" onClick={() => doExport(ensure, q(`/api/accounting/organiser-payments?eventId=${e.id}`))}><Download className="size-4" aria-hidden />{t("export")}</Button>
         {manage && e.organiserId && <Button size="sm" variant="primary" onClick={onPay}><Banknote className="size-4" aria-hidden />{t("payOrganiser")}</Button>}</div>} />
-      {loading && !data ? <div className="p-4"><Skeleton className="h-24" /></div> : !data?.items.length ? <EmptyState title={tp("empty")} description={tp("emptyDesc")} /> : (
-        <TableWrap><Table><thead><tr><Th>{tp("date")}</Th><Th className="text-end">{tp("amount")}</Th><Th>{tp("method")}</Th><Th>{tp("reference")}</Th><Th>{tp("status")}</Th><Th><span className="sr-only">{tp("actions")}</span></Th></tr></thead>
-          <tbody>{data.items.map((p) => <Tr key={p.id} className={p.status === "VOIDED" ? "text-muted line-through decoration-1" : ""}>
-            <Td className="whitespace-nowrap">{p.paymentDate}{p.notes && <span className="block max-w-xs truncate text-xs text-muted no-underline" title={p.notes}>{p.notes}</span>}</Td>
-            <Td className="text-end"><Money v={p.amount} c={p.currency} strong /></Td><Td>{tp(`m.${p.method}`)}</Td><Td><code className="text-xs">{p.bankReference ?? "—"}</code></Td>
-            <Td><Badge s={p.status} />{p.voidReason && <span className="block text-xs">{p.voidReason}</span>}</Td>
-            <Td className="text-end"><div className="flex justify-end gap-1">
-<a href={`/api/accounting/organiser-payments/${p.id}/receipt`} className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-sm hover:bg-surface-2" title={t("receipt")}><FileDown className="size-3.5" aria-hidden />{t("receipt")}</a>
-              <Button size="sm" variant="ghost" onClick={() => setView(p.id)} aria-label={t("view")}><Eye className="size-3.5" aria-hidden /></Button>
-              {manage && p.status === "PENDING" && <Button size="sm" onClick={() => markPaid(p)}><CheckCircle2 className="size-3.5" aria-hidden />{tp("markPaid")}</Button>}
-              {manage && p.status !== "VOIDED" && <><Button size="sm" variant="ghost" onClick={() => setEdit(p)} aria-label={t("editItem")}><Pencil className="size-3.5" aria-hidden /></Button>
-                <Button size="sm" variant="ghost" onClick={async () => { if (await ensure()) { setReason(""); setDel(p); } }} aria-label={t("deleteItem")}><Trash2 className="size-3.5" aria-hidden /></Button></>}
-            </div></Td></Tr>)}</tbody></Table></TableWrap>)}
+      {loading && !data ? <div className="p-4"><Skeleton className="h-24" /></div> : (
+        <BoxOfficePayments items={data?.items ?? []} f={f} empty={<EmptyState title={tp("empty")} description={tp("emptyDesc")} />} actions={(p) => <>
+          <a href={`/api/accounting/organiser-payments/${p.id}/receipt`} className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-sm hover:bg-surface-2" title={t("receipt")}><FileDown className="size-3.5" aria-hidden />{t("receipt")}</a>
+          <Button size="sm" variant="ghost" onClick={() => setView(p.id)} aria-label={t("view")}><Eye className="size-3.5" aria-hidden /></Button>
+          {manage && p.status === "PENDING" && <Button size="sm" onClick={() => markPaid(p)}><CheckCircle2 className="size-3.5" aria-hidden />{tp("markPaid")}</Button>}
+          {manage && p.status !== "VOIDED" && <><Button size="sm" variant="ghost" onClick={() => setEdit(p)} aria-label={t("editItem")}><Pencil className="size-3.5" aria-hidden /></Button>
+            <Button size="sm" variant="ghost" onClick={async () => { if (await ensure()) { setReason(""); setDel(p); } }} aria-label={t("deleteItem")}><Trash2 className="size-3.5" aria-hidden /></Button></>}
+        </>} />)}
       {view && <PaymentViewDialog id={view} onClose={() => setView(null)} />}
       {edit && <PaymentEditDialog p={edit} onClose={() => setEdit(null)} onSaved={() => void after()} />}
       <ConfirmDialog open={!!del} onClose={() => setDel(null)} title={t("payDelete.title")} description={t("payDelete.desc")} confirmLabel={t("deleteItem")}

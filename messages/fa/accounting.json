@@ -1440,7 +1440,23 @@
       "notEnough": "Not enough {c} available right now — part of the balance is still pending in Stripe, or move money in from another currency.",
       "note": "Nothing is paid or recorded until you press the button. Paying what is owed does not change Bilit's own money; only an overpayment does."
     },
-    "reportPdf": "Report PDF"
+    "reportPdf": "Report PDF",
+    "box": {
+      "title": "پرداخت‌های این باکس‌آفیس",
+      "desc": "همه پرداخت‌ها به {organiser} برای این رویداد، به ترتیب تاریخ، با مبلغ باقی‌مانده پس از هر پرداخت.",
+      "manage": "مدیریت پرداخت‌ها",
+      "due": "سهم برگزارکننده",
+      "paid": "پرداخت‌شده",
+      "left": "باقی‌مانده",
+      "fullyPaid": "کامل پرداخت شد",
+      "count": "{n, plural, =0 {بدون پرداخت} other {# پرداخت}}",
+      "leftAfter": "باقی‌مانده",
+      "pctPaid": "{p}٪ پرداخت شده",
+      "proof": "رسید",
+      "empty": "هنوز پرداختی ثبت نشده است.",
+      "showVoided": "نمایش {n} پرداخت حذف‌شده",
+      "hideVoided": "پنهان کردن پرداخت‌های حذف‌شده"
+    }
   },
   "books": {
     "nav": {
