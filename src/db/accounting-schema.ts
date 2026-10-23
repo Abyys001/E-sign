@@ -334,7 +334,7 @@ export const acctJournalEntries = pgTable("acct_journal_entries", {
   organiserId: uuid("organiser_id").references(() => acctOrganisers.id),
   stripeAccountRef: uuid("stripe_account_ref").references(() => stripeAccounts.id),
   stripeBalanceTransactionId: text("stripe_balance_transaction_id"),
-  sourceType: text("source_type"), // stripe_balance_transaction | stripe_payout | organiser_payment | adjustment | event_fee | reversal
+  sourceType: text("source_type"), // stripe_balance_transaction | stripe_payout | organiser_payment | adjustment | event_fee | reversal | ticket_import | manual_sale
   sourceId: text("source_id"),
   agreementId: uuid("agreement_id").references(() => acctAgreements.id),
   idempotencyKey: text("idempotency_key").notNull(),
