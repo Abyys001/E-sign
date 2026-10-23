@@ -4,6 +4,8 @@ import { currencyExponent, parseMajor } from "@/lib/money";
 import type { RequestContext } from "../audit";
 import { AppError } from "../errors";
 import { acctAudit, getAcctSettings, isLive, type Mode } from "./core";
+import { storage } from "../storage";
+import { objectKey } from "../storage/keys";
 import { postEntry, type Posting } from "./ledger";
 import { btPostings, type Agreement } from "./postings";
 import { parseCsv } from "./ticket-import";
@@ -170,4 +172,14 @@ export async function applyOtherStripe(a: Actor, mode: Mode, csv: string, fileNa
     } catch (e) { failed.push({ chargeId: ch.id, error: e instanceof Error ? e.message : String(e) }); }
   }
   return { booked: booked.length, failed, ...(await previewOtherStripe(a.orgId, mode, csv)) };
+}
+
+/** Keep every uploaded export (with who/when in the audit log), so the books can always be traced back to the file. */
+export async function saveOtherStripeFile(a: Actor, csv: string, fileName: string | null, applied: boolean) {
+  const key = objectKey(a.orgId, "stripe-import");
+  const put = await storage().put(key, Buffer.from(csv, "utf8"), "text/csv");
+  await db.transaction(async (tx) => {
+    const [obj] = await tx.insert(schema.storageObjects).values({ organisationId: a.orgId, key, provider: storage().name, sizeBytes: put.sizeBytes, sha256: put.sha256, contentType: "text/csv" }).returning();
+    await acctAudit(tx, { ...a, action: applied ? "other_stripe.file_applied" : "other_stripe.file_uploaded", entity: "storage_object", entityId: obj!.id, new: { fileName, sha256: put.sha256, bytes: put.sizeBytes } });
+  });
 }
