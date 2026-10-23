@@ -234,6 +234,17 @@ export async function financialPosition(orgId: string, mode: Mode, r: Range, opt
     if (st !== "VERIFIED") alerts.push({ id: "wise-stale", severity: "warning", title: "Wise balances are not current", detail: `Last Wise sync was ${Number.isFinite(ageH) ? `${Math.round(ageH)} hours` : "never"} ago${wc.lastError ? ` (${wc.lastError})` : ""}. Run a sync on the Wise page.`, href: "/accounting/wise" });
   } else if (live) alerts.push({ id: "wise-missing", severity: "info", title: "Wise is not connected", detail: "Bank money outside Stripe is not included." });
 
+  // ----- Stripe payouts on their way: left Stripe's balance, not yet landed in Wise (or anywhere we can see) -----
+  if (acc?.secretKeyEnc) {
+    const ways = await db.execute<{ payout_id: string; currency: string; amount: string; arrival: string | null; status: string }>(sql`
+      select p.payout_id, p.currency, p.amount::text, to_char(p.arrival_date, 'YYYY-MM-DD') as arrival, p.status from stripe_payouts p
+      where p.organisation_id = ${orgId} and p.livemode = ${live} and p.status in ('pending', 'in_transit')
+        and not exists (select 1 from acct_organiser_payments op where op.organisation_id = p.organisation_id and op.status <> 'VOIDED' and op.bank_reference ilike '%' || p.payout_id || '%')
+        and not exists (select 1 from acct_wise_transactions w where w.organisation_id = p.organisation_id and w.direction = 'IN' and (w.stripe_payout_id = p.payout_id
+          or (w.currency = p.currency and w.amount = p.amount and w.occurred_at between p.stripe_created_at - interval '1 day' and coalesce(p.arrival_date, p.stripe_created_at) + interval '6 days')))`);
+    for (const w of ways.rows) cash.push({ id: `stripe:payout:${w.payout_id}`, provider: "stripe", label: `Stripe payout on the way${w.arrival ? ` (arrives ${w.arrival})` : ""}`, currency: w.currency, amount: n(w.amount), availableNow: false, status: "REVIEW", source: `Stripe payout ${w.payout_id}`, asOf: null, note: "Paid out by Stripe, not yet seen arriving in Wise. Counted as Bilit's cash — if it is going straight to an organiser, record it as their payment instead." });
+  }
+
   // ----- organiser settlements -----
   const paymentRows = payments.rows;
   const eventPaid = new Map<string, number>(); // organiser|currency → paid against specific events
