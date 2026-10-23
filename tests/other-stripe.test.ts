@@ -58,3 +58,16 @@ describe("old Stripe account Payments export", () => {
     expect(entries.filter((e) => e.sourceType === "manual_refund")).toHaveLength(1);
   });
 });
+
+describe("fees in the settlement currency", () => {
+  it("converts the GBP fee of a SEK charge back to SEK with the payment's own rate", () => {
+    const H = "id,Created date (UTC),Amount,Amount Refunded,Currency,Captured,Converted Amount,Converted Currency,Description,Fee,Status";
+    const [c] = parseStripePaymentsCsv(`${H}\nch_1,2026-06-19 14:03:22,"1,792.00",0.00,sek,true,134.40,gbp,"Order (A) for event: X (B17-0073)",5.02,Paid`);
+    expect(c).toMatchObject({ amount: 179200, currency: "sek", fee: Math.round((502 * 179200) / 13440) }); // £5.02 ≈ SEK 66.93
+  });
+  it("reads a JPY charge whose fee is in GBP", () => {
+    const H = "id,Created date (UTC),Amount,Amount Refunded,Currency,Captured,Converted Amount,Converted Currency,Description,Fee,Status";
+    const [c] = parseStripePaymentsCsv(`${H}\nch_2,2026-06-19 14:03:22,1000,0,jpy,true,5.20,gbp,"x",0.50,Paid`);
+    expect(c).toMatchObject({ amount: 1000, fee: 96 });
+  });
+});

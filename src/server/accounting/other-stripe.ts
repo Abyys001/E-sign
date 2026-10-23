@@ -40,6 +40,7 @@ export function parseStripePaymentsCsv(text: string): OtherCharge[] {
     id: col("id", "charge id", "payment id"), created: col("created date utc", "created utc", "created date", "created"), amount: col("amount"),
     refunded: col("amount refunded"), fee: col("fee"), currency: col("currency"), status: col("status"), captured: col("captured"),
     description: col("description"), customer: col("customer description", "customer name", "customer email", "card name"),
+    converted: col("converted amount"), convertedCurrency: col("converted currency"),
   };
   const missing = (["id", "created", "amount", "currency", "description"] as const).filter((k) => c[k] < 0);
   if (missing.length) throw new AppError("validation_failed", `This does not look like a Stripe Payments export (missing column: ${missing.join(", ")}). In the old Stripe account open Payments → Export and choose CSV.`, [{ path: "file", message: "Wrong file" }]);
@@ -48,13 +49,19 @@ export function parseStripePaymentsCsv(text: string): OtherCharge[] {
     const get = (k: number) => (k >= 0 ? (r[k] ?? "").trim() : "");
     const id = get(c.id); if (!id) continue;
     const currency = get(c.currency).toLowerCase();
-    const money = (k: number) => { const v = get(k); if (!v) return 0; try { return parseMajor(v, currency); } catch { throw new AppError("validation_failed", `Row ${i + 2}: "${v}" is not an amount.`, [{ path: "file", message: "Bad amount" }]); } };
+    const money = (k: number, cur = currency) => { const v = get(k); if (!v) return 0; try { return parseMajor(v, cur); } catch { throw new AppError("validation_failed", `Row ${i + 2}: "${v}" is not an amount in ${cur.toUpperCase() || "this currency"}.`, [{ path: "file", message: "Bad amount" }]); } };
+    // Stripe states the fee in the account's settlement currency ("Converted Currency"), not the charge currency:
+    // turn it back into the charge currency with the payment's own conversion (amount ÷ converted amount).
+    const settle = get(c.convertedCurrency).toLowerCase() || currency;
+    const amount = money(c.amount);
+    let fee = money(c.fee, settle);
+    if (settle !== currency) { const conv = money(c.converted, settle); fee = conv > 0 ? Math.round((fee * amount) / conv) : 0; }
     const createdRaw = get(c.created);
     const created = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(createdRaw) ? createdRaw : `${createdRaw.replace(" ", "T")}Z`);
     if (Number.isNaN(created.getTime())) throw new AppError("validation_failed", `Row ${i + 2}: "${createdRaw}" is not a date.`, [{ path: "file", message: "Bad date" }]);
     const captured = get(c.captured).toLowerCase();
     const status = (get(c.status) || (captured === "false" ? "uncaptured" : "paid")).toLowerCase();
-    out.push({ id, created, amount: money(c.amount), refunded: money(c.refunded), fee: money(c.fee), currency, status, description: get(c.description), customer: get(c.customer) || null });
+    out.push({ id, created, amount, refunded: money(c.refunded), fee, currency, status, description: get(c.description), customer: get(c.customer) || null });
   }
   if (!out.length) throw new AppError("validation_failed", "The file has no payment rows.", [{ path: "file", message: "Empty file" }]);
   return out;
