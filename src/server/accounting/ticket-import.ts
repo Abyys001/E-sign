@@ -160,7 +160,18 @@ async function eventSales(orgId: string, mode: Mode, eventId: string): Promise<S
       exists (select 1 from stripe_balance_transactions r where r.stripe_account_ref = bt.stripe_account_ref and r.charge_id = bt.charge_id and r.kind in ('REFUND', 'DISPUTE')) as refunded
     from stripe_balance_transactions bt left join stripe_charges c on c.stripe_account_ref = bt.stripe_account_ref and c.charge_id = bt.charge_id
     where bt.organisation_id = ${orgId} and bt.livemode = ${isLive(mode)} and bt.event_id = ${eventId} and bt.kind = 'SALE' and bt.match_status = 'MATCHED'`);
-  return r.rows.map((x) => ({ order: x.order, orders: x.orders ?? [], amount: Number(x.amount), commission: Number(x.commission), refunded: x.refunded }));
+  // Sales paid outside the connected account (Bilit's other Stripe, or booked by hand) count as paid orders too.
+  const m = await db.execute<{ order: string | null; amount: string; commission: string; refunded: boolean }>(sql`
+    select e.reference as "order",
+      sum(case when a.system_key = 'ticket_sales' then l.credit - l.debit else 0 end)::text as amount,
+      sum(case when a.system_key = 'ticket_sales' then l.credit - l.debit when a.system_key = 'organiser_share' then l.credit - l.debit else 0 end)::text as commission,
+      exists (select 1 from acct_journal_entries r where r.organisation_id = e.organisation_id and r.source_type = 'manual_refund' and r.reference = e.reference and r.event_id = e.event_id) as refunded
+    from acct_journal_entries e join acct_journal_lines l on l.entry_id = e.id join acct_accounts a on a.id = l.account_id
+    where e.organisation_id = ${orgId} and e.livemode = ${isLive(mode)} and e.event_id = ${eventId} and e.source_type = 'manual_sale' and e.entry_type <> 'REVERSAL'
+      and not exists (select 1 from acct_journal_entries v where v.organisation_id = e.organisation_id and v.entry_type = 'REVERSAL' and v.source_type = 'manual_sale' and v.reference = e.reference and v.event_id = e.event_id)
+    group by e.id, e.reference`);
+  return [...r.rows.map((x) => ({ order: x.order, orders: x.orders ?? [], amount: Number(x.amount), commission: Number(x.commission), refunded: x.refunded })),
+    ...m.rows.map((x) => ({ order: x.order, orders: x.order ? [x.order] : [], amount: Number(x.amount), commission: Number(x.commission), refunded: x.refunded }))];
 }
 
 async function loadEvent(orgId: string, eventId: string) {
