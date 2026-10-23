@@ -71,3 +71,12 @@ describe("fees in the settlement currency", () => {
     expect(c).toMatchObject({ amount: 1000, fee: 96 });
   });
 });
+
+describe("odd rows", () => {
+  it("never stops the file: odd decimals are rounded, garbage is flagged", () => {
+    const H = "id,Created date (UTC),Amount,Amount Refunded,Currency,Captured,Description,Fee,Status";
+    const cs = parseStripePaymentsCsv(`${H}\nch_1,2026-06-19 14:03:22,1000,0,jpy,true,"x",5.02,Paid\nch_2,nonsense,abc,0,sek,true,"y",0,Paid`);
+    expect(cs[0]).toMatchObject({ amount: 1000, fee: 5, status: "paid" });
+    expect(cs[1]!.status).toBe("unreadable");
+  });
+});

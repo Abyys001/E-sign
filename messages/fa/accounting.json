@@ -3306,7 +3306,8 @@
       "NO_EVENT": "No matching event",
       "NO_AGREEMENT": "Event has no organiser or booking fee terms",
       "CURRENCY_MISMATCH": "Currency differs from event",
-      "NOT_PAID": "Not paid"
+      "NOT_PAID": "Not paid",
+      "UNREADABLE": "Could not read this row"
     },
     "howTitle": "How it is booked",
     "how": "Ticket sales and Bilit's booking fee go on the event, the organiser's share is added to what Bilit owes them, and Stripe fees are Bilit's cost (as on the main account). The money is booked into Bilit's bank, because the old account pays out there. Orders already in the main Stripe account or already booked by hand are skipped."

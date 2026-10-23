@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { parseMajor } from "@/lib/money";
+import { currencyExponent, parseMajor } from "@/lib/money";
 import type { RequestContext } from "../audit";
 import { AppError } from "../errors";
 import { acctAudit, getAcctSettings, isLive, type Mode } from "./core";
@@ -20,7 +20,7 @@ import { parseCsv } from "./ticket-import";
 type Actor = { orgId: string; userId: string; ctx: RequestContext };
 
 export type OtherCharge = { id: string; created: Date; amount: number; refunded: number; fee: number; currency: string; status: string; description: string; customer: string | null };
-export type LineStatus = "NEW" | "ALREADY_IMPORTED" | "IN_MAIN_STRIPE" | "BOOKED_BY_HAND" | "NO_EVENT" | "NO_AGREEMENT" | "CURRENCY_MISMATCH" | "NOT_PAID";
+export type LineStatus = "UNREADABLE" | "NEW" | "ALREADY_IMPORTED" | "IN_MAIN_STRIPE" | "BOOKED_BY_HAND" | "NO_EVENT" | "NO_AGREEMENT" | "CURRENCY_MISMATCH" | "NOT_PAID";
 export type PreviewLine = {
   chargeId: string; date: string; order: string | null; eventCode: string | null; eventId: string | null; eventName: string | null; customer: string | null;
   currency: string; amount: number; refunded: number; fee: number; bookingFee: number | null; organiserShare: number | null; status: LineStatus;
@@ -45,11 +45,19 @@ export function parseStripePaymentsCsv(text: string): OtherCharge[] {
   const missing = (["id", "created", "amount", "currency", "description"] as const).filter((k) => c[k] < 0);
   if (missing.length) throw new AppError("validation_failed", `This does not look like a Stripe Payments export (missing column: ${missing.join(", ")}). In the old Stripe account open Payments → Export and choose CSV.`, [{ path: "file", message: "Wrong file" }]);
   const out: OtherCharge[] = [];
-  for (const [i, r] of rows.slice(1).entries()) {
+  for (const r of rows.slice(1)) {
     const get = (k: number) => (k >= 0 ? (r[k] ?? "").trim() : "");
     const id = get(c.id); if (!id) continue;
     const currency = get(c.currency).toLowerCase();
-    const money = (k: number, cur = currency) => { const v = get(k); if (!v) return 0; try { return parseMajor(v, cur); } catch { throw new AppError("validation_failed", `Row ${i + 2}: "${v}" is not an amount in ${cur.toUpperCase() || "this currency"}.`, [{ path: "file", message: "Bad amount" }]); } };
+    // Lenient on purpose: one odd row (an unusual currency, "1 234,50", a symbol) must not stop a file of thousands.
+    let unreadable = false;
+    const money = (k: number, cur = currency) => {
+      const v = get(k); if (!v) return 0;
+      try { return parseMajor(v, cur); } catch { /* fall through */ }
+      const x = Number(v.replace(/[^\d.,-]/g, "").replace(/,(?=\d{3}(\D|$))/g, "").replace(",", "."));
+      if (!Number.isFinite(x)) { unreadable = true; return 0; }
+      return Math.round(x * 10 ** currencyExponent(cur || "gbp"));
+    };
     // Stripe states the fee in the account's settlement currency ("Converted Currency"), not the charge currency:
     // turn it back into the charge currency with the payment's own conversion (amount ÷ converted amount).
     const settle = get(c.convertedCurrency).toLowerCase() || currency;
@@ -58,10 +66,10 @@ export function parseStripePaymentsCsv(text: string): OtherCharge[] {
     if (settle !== currency) { const conv = money(c.converted, settle); fee = conv > 0 ? Math.round((fee * amount) / conv) : 0; }
     const createdRaw = get(c.created);
     const created = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(createdRaw) ? createdRaw : `${createdRaw.replace(" ", "T")}Z`);
-    if (Number.isNaN(created.getTime())) throw new AppError("validation_failed", `Row ${i + 2}: "${createdRaw}" is not a date.`, [{ path: "file", message: "Bad date" }]);
+    if (Number.isNaN(created.getTime())) unreadable = true;
     const captured = get(c.captured).toLowerCase();
-    const status = (get(c.status) || (captured === "false" ? "uncaptured" : "paid")).toLowerCase();
-    out.push({ id, created, amount, refunded: money(c.refunded), fee, currency, status, description: get(c.description), customer: get(c.customer) || null });
+    const status = unreadable ? "unreadable" : (get(c.status) || (captured === "false" ? "uncaptured" : "paid")).toLowerCase();
+    out.push({ id, created: Number.isNaN(created.getTime()) ? new Date(0) : created, amount, refunded: money(c.refunded), fee, currency, status, description: get(c.description), customer: get(c.customer) || null });
   }
   if (!out.length) throw new AppError("validation_failed", "The file has no payment rows.", [{ path: "file", message: "Empty file" }]);
   return out;
@@ -99,6 +107,7 @@ function plan(ch: OtherCharge, ctx: Awaited<ReturnType<typeof context>>, tz: str
   const base: PreviewLine = { chargeId: ch.id, date: localDate(ch.created, tz), order, eventCode: ev?.e.code ?? code, eventId: ev?.e.id ?? null, eventName: ev?.e.name ?? null, customer: ch.customer,
     currency: ch.currency, amount: ch.amount, refunded: ch.refunded, fee: ch.fee, bookingFee: null, organiserShare: null, status: "NEW" };
   const st = (status: LineStatus) => ({ line: { ...base, status }, sale: null as null | ReturnType<typeof btPostings>, refund: null as null | ReturnType<typeof btPostings>, ev });
+  if (ch.status === "unreadable") return st("UNREADABLE");
   if (!paid(ch.status) || ch.amount <= 0) return st("NOT_PAID");
   if (ctx.imported.has(`other_stripe:${ch.id}`)) return st("ALREADY_IMPORTED");
   if (order && ctx.main.has(order)) return st("IN_MAIN_STRIPE");
@@ -131,7 +140,7 @@ export async function previewOtherStripe(orgId: string, mode: Mode, csv: string)
   const { timezone } = await getAcctSettings(orgId);
   const ctx = await context(orgId, mode, charges);
   const lines = charges.map((c) => plan(c, ctx, timezone).line).sort((a, b) => a.date.localeCompare(b.date));
-  return { lines, totals: totals(lines), counts: Object.fromEntries((["NEW", "ALREADY_IMPORTED", "IN_MAIN_STRIPE", "BOOKED_BY_HAND", "NO_EVENT", "NO_AGREEMENT", "CURRENCY_MISMATCH", "NOT_PAID"] as LineStatus[]).map((s) => [s, lines.filter((l) => l.status === s).length])) };
+  return { lines, totals: totals(lines), counts: Object.fromEntries((["NEW", "UNREADABLE", "ALREADY_IMPORTED", "IN_MAIN_STRIPE", "BOOKED_BY_HAND", "NO_EVENT", "NO_AGREEMENT", "CURRENCY_MISMATCH", "NOT_PAID"] as LineStatus[]).map((s) => [s, lines.filter((l) => l.status === s).length])) };
 }
 
 /** Book every NEW payment of the export (sale + refund). Re-running is safe: each charge has its own idempotency key. */
