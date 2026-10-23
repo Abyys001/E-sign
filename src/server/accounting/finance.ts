@@ -58,7 +58,7 @@ function fold(ledger: LedgerRow[], bts: BtRow[], pending: Array<{ dim: string; c
     // Settlement is cumulative (everything up to the end of the range), the rest is period activity.
     if (r.key === "organiser_payable") {
       if (r.src === "organiser_payment") f.organiserPaid += dr; else f.organiserDue += cr;
-      if (r.src !== "organiser_payment" && r.src !== "stripe_balance_transaction" && r.src !== "organiser_cashback" && r.src !== "ticket_import" && r.src !== "manual_sale" && r.inp) f.deductions += dr;
+      if (r.src !== "organiser_payment" && r.src !== "stripe_balance_transaction" && r.src !== "organiser_cashback" && r.src !== "ticket_import" && r.src !== "manual_sale" && r.src !== "manual_refund" && r.inp) f.deductions += dr;
       if (r.src === "event_expense" && r.inp) f.expensesOrganiser += dr;
     }
     if (!r.inp) continue;

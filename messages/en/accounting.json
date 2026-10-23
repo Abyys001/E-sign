@@ -631,7 +631,8 @@
       "payouts": "Payouts",
       "disputes": "Disputes",
       "sync": "Sync",
-      "payments": "Payments"
+      "payments": "Payments",
+      "other": "Old Stripe account"
     },
     "conn": {
       "title": "Stripe integration — {mode}",
@@ -3264,5 +3265,50 @@
       "copy": "Copy link",
       "copied": "Link copied"
     }
+  },
+  "otherStripe": {
+    "title": "Old Stripe account",
+    "sub": "Book sales that were paid on Bilit's other Stripe account, which is not connected to the books.",
+    "uploadTitle": "Upload the Payments export",
+    "uploadDesc": "Each payment is matched to its event by the code in its description and booked with that event's booking fee. Nothing is booked until you confirm.",
+    "step1": "In the old Stripe account open Payments → Export.",
+    "step2": "Choose all time (or the dates you need), all columns, and download the CSV.",
+    "step3": "Drop the file here, check the preview, then press Book.",
+    "choose": "Choose a CSV file",
+    "drop": "Drop the Stripe Payments CSV here, or click to choose it",
+    "dropHint": "Stripe Dashboard → Payments → Export (CSV). Uploading the same file again books nothing twice.",
+    "reading": "Reading…",
+    "notCsv": "Choose a .csv file.",
+    "noPermission": "You need finance manage access to import payments.",
+    "toBook": "{n, plural, one {# payment} other {# payments}} to book · {c}",
+    "nothingNew": "Nothing new to book in this file.",
+    "failedTitle": "Some payments could not be booked",
+    "apply": "Book {n, plural, one {# payment} other {# payments}}",
+    "confirmTitle": "Book {n, plural, one {# payment} other {# payments}}?",
+    "confirmDesc": "Each sale is added to its event: ticket sales, Bilit's booking fee and the amount owed to the organiser. The money is booked as received in Bilit's bank. Refunds in the file are booked too.",
+    "booked": "{n, plural, =0 {Nothing booked} one {# payment booked} other {# payments booked}}{failed, plural, =0 {} other {, # failed}}.",
+    "col": {
+      "date": "Date",
+      "order": "Order",
+      "event": "Event",
+      "amount": "Paid",
+      "bookingFee": "Booking fee",
+      "organiser": "To organiser",
+      "refunded": "Refunded",
+      "fee": "Stripe fees (Bilit)",
+      "status": "Status"
+    },
+    "s": {
+      "NEW": "Will be booked",
+      "ALREADY_IMPORTED": "Already imported",
+      "IN_MAIN_STRIPE": "Already in main Stripe",
+      "BOOKED_BY_HAND": "Already booked by hand",
+      "NO_EVENT": "No matching event",
+      "NO_AGREEMENT": "Event has no organiser or booking fee terms",
+      "CURRENCY_MISMATCH": "Currency differs from event",
+      "NOT_PAID": "Not paid"
+    },
+    "howTitle": "How it is booked",
+    "how": "Ticket sales and Bilit's booking fee go on the event, the organiser's share is added to what Bilit owes them, and Stripe fees are Bilit's cost (as on the main account). The money is booked into Bilit's bank, because the old account pays out there. Orders already in the main Stripe account or already booked by hand are skipped."
   }
 }
