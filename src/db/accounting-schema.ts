@@ -915,3 +915,50 @@ export const acctPhonePairings = pgTable("acct_phone_pairings", {
   deviceId: uuid("device_id").references(() => acctPhoneDevices.id),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("acct_phone_pairings_code_uq").on(t.codeHash)]);
+
+/**
+ * Telegram finance assistant: a Telegram account linked to a Bilit user (paired with a one-time code from Settings).
+ * Only linked, non-revoked accounts are served; the Bilit user's finance permissions apply to everything they ask.
+ */
+export const acctTelegramUsers = pgTable("acct_telegram_users", {
+  id: id(),
+  organisationId: org(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  telegramUserId: bigint("telegram_user_id", { mode: "number" }).notNull(),
+  chatId: bigint("chat_id", { mode: "number" }).notNull(),
+  username: text("username"),
+  voiceReplies: boolean("voice_replies"), // null = organisation default
+  language: text("language"), // null = auto
+  createdAt: createdAt(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+}, (t) => [uniqueIndex("acct_telegram_users_tg_uq").on(t.organisationId, t.telegramUserId)]);
+
+/** One-time pairing code ("/link CODE"), shown in Settings to a re-authenticated user; only its hash is stored. */
+export const acctTelegramPairings = pgTable("acct_telegram_pairings", {
+  id: id(),
+  organisationId: org(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  codeHash: text("code_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("acct_telegram_pairings_code_uq").on(t.codeHash)]);
+
+/** Conversation + workflow state per Telegram account: recent messages, proposals waiting for "yes", an uploaded document. */
+export const acctTelegramSessions = pgTable("acct_telegram_sessions", {
+  id: id(),
+  organisationId: org(),
+  telegramUserId: bigint("telegram_user_id", { mode: "number" }).notNull(),
+  messages: jsonb("messages").notNull().default(sql`'[]'::jsonb`),
+  pending: jsonb("pending").notNull().default(sql`'{}'::jsonb`),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex("acct_telegram_sessions_uq").on(t.organisationId, t.telegramUserId)]);
+
+/** Telegram update ids already handled — Telegram re-sends on timeouts; a retry must never act twice. */
+export const acctTelegramUpdates = pgTable("acct_telegram_updates", {
+  id: id(),
+  organisationId: org(),
+  updateId: bigint("update_id", { mode: "number" }).notNull(),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("acct_telegram_updates_uq").on(t.organisationId, t.updateId)]);

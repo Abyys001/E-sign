@@ -41,6 +41,9 @@ export const LIMITS = {
   treasuryLoginIp: { limit: 20, windowSec: 900 }, // staff portal login attempts, per IP
   treasuryLoginEmail: { limit: 6, windowSec: 900 }, // staff portal login attempts, per email
   treasuryStaff: { limit: 240, windowSec: 60 }, // authenticated staff portal requests
+  telegramMsg: { limit: 60, windowSec: 600 }, // messages to the Telegram finance assistant, per Telegram account
+  telegramPair: { limit: 10, windowSec: 600 }, // /link attempts, per Telegram account
+  telegramHook: { limit: 600, windowSec: 60 }, // Telegram webhook calls, per organisation
   payCheckout: { limit: 30, windowSec: 600 }, // public payment-link checkouts / confirmations, per IP
 } as const;
 export type LimitName = keyof typeof LIMITS;

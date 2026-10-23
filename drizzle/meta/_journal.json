@@ -204,6 +204,13 @@
       "when": 1792700000000,
       "tag": "0028_phone_devices",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1792800000000,
+      "tag": "0029_telegram",
+      "breakpoints": true
     }
   ]
 }
