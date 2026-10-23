@@ -44,6 +44,8 @@ export const AgentAction = z.discriminatedUnion("kind", [
 export type AgentActionT = z.infer<typeof AgentAction>;
 const parseAs = <K extends AgentActionT["kind"]>(kind: K, v: Record<string, unknown>) => AgentAction.parse({ kind, ...v }) as Extract<AgentActionT, { kind: K }>;
 export type Proposal = { id: string; summary: string; action: AgentActionT; needsElevation: boolean };
+/** A report PDF the agent chose to hand over (same PDFs as the Report buttons); the channel delivers it (Telegram sends the file, the web shows a link). */
+export type ReportFile = { title: string; organiserId: string; eventIds?: string[]; eventReport: boolean; internal: boolean; url: string };
 
 export const AGENT_SYSTEM = `You are Bilit's in-house senior accountant, working inside the Finance section of Bilit's own system. You talk with the finance admin (the owner) like a trusted colleague: concise, precise, practical. You can look things up yourself with tools, and you can propose changes to the books, which the admin confirms with a button.
 
@@ -80,6 +82,7 @@ const TOOLS = [
   fn("propose_partner_payment", "Propose recording a payment Bilit made to a profit-share partner (reduces what is owed). Amount in major units, in the currency of the share being paid off.", { partnerId: { type: "string" }, amount: { type: "number" }, currency: { type: "string" }, paymentDate: { type: "string" }, method: { type: "string", enum: ["BANK_TRANSFER", "STRIPE_TRANSFER", "CASH", "OTHER"] }, bankReference: { type: ["string", "null"] }, notes: { type: ["string", "null"] } }, ["partnerId", "amount", "currency", "paymentDate"]),
   fn("expense_categories", "Expense categories (chart of accounts) to book supplier invoices / expenses against.", {}),
   fn("propose_record_expense", "Propose booking a payment Bilit made to a supplier as an EXPENSE (paid, no invoice to track) or a supplier invoice BILL (already paid). Amounts in major units; total = net + vat. For Wise movements use bankReference \"Wise #<number>\" so it links to the Wise transaction.", { docKind: { type: "string", enum: ["EXPENSE", "BILL"] }, supplierName: { type: "string" }, invoiceNumber: { type: ["string", "null"] }, date: { type: "string" }, currency: { type: "string" }, total: { type: "number" }, vat: { type: ["number", "null"] }, accountId: { type: "string" }, eventId: { type: ["string", "null"] }, description: { type: ["string", "null"] }, paidFrom: { type: "string", enum: ["BANK", "CARD", "CASH", "EMPLOYEE"] }, bankReference: { type: ["string", "null"] }, paid: { type: "boolean", description: "false = supplier invoice not paid yet (BILL only)" }, dueDate: { type: ["string", "null"] } }, ["docKind", "supplierName", "date", "currency", "total", "accountId"]),
+  fn("report_pdf", "Hand the user a report PDF (same as the app's Report buttons). kind: event = one event's report (organiser copy unless internal), organiser = organiser account report, settlement = settlement statement for chosen events. Use ids from list_events / search_organisers. Say in your answer that the PDF is attached.", { kind: { type: "string", enum: ["event", "organiser", "settlement"] }, eventId: { type: "string" }, organiserId: { type: "string" }, eventIds: { type: "array", items: { type: "string" } }, internal: { type: "boolean", description: "true = Bilit's internal copy (shows booking fees / Stripe fees); default organiser copy" } }, ["kind"]),
   fn("search_bills", "Supplier invoices (BILL) and expenses (EXPENSE) in the books: supplier, number, dates, net/VAT/total, status (UNPAID/PAID/OVERDUE), category, event, file attached. Filters optional; totals per currency included.", { query: { type: "string", description: "supplier, invoice number or description text" }, status: { type: "string", enum: ["UNPAID", "PAID", "OVERDUE"] }, kind: { type: "string", enum: ["BILL", "EXPENSE"] }, eventId: { type: "string" }, from: { type: "string", description: "YYYY-MM-DD invoice date from" }, to: { type: "string" } }),
   fn("expense_summary", "Bilit's own costs and income per currency for a period, by category (chart of accounts), plus unpaid / overdue supplier invoices and input VAT. Use for 'how much did we spend on X'.", { from: { type: "string" }, to: { type: "string" } }),
   fn("propose_pay_bill", "Propose marking an UNPAID supplier invoice as paid.", { billId: { type: "string" }, paidDate: { type: "string" }, paidFrom: { type: "string", enum: ["BANK", "CARD", "CASH", "EMPLOYEE"] }, paymentReference: { type: ["string", "null"] } }, ["billId", "paidDate"]),
@@ -95,7 +98,7 @@ const D = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v
 const cap = (o: unknown, n = 14_000) => { const s = JSON.stringify(o); return s.length > n ? `${s.slice(0, n)}…(truncated — narrow the filter)` : s; };
 const toMinor = (v: number, cur: string) => parseMajor(Number(v).toFixed(currencyExponent(cur)), cur);
 
-type Ctx = { a: Actor; mode: Mode; proposals: Proposal[]; m: (v: number, c: string) => string };
+type Ctx = { a: Actor; mode: Mode; proposals: Proposal[]; files: ReportFile[]; m: (v: number, c: string) => string };
 
 async function runTool(c: Ctx, name: string, args: Record<string, unknown>): Promise<unknown> {
   const { a, mode, m } = c;
@@ -217,6 +220,27 @@ async function runTool(c: Ctx, name: string, args: Record<string, unknown>): Pro
       if (action.unpaid) action.docKind = "BILL";
       return propose(c, `Book ${action.docKind === "BILL" ? `supplier invoice (${action.unpaid ? `NOT paid yet${action.dueDate ? `, due ${action.dueDate}` : ""}` : "paid"})` : "expense"}: ${action.supplierName} ${m(total, currency)}${vat ? ` incl. VAT ${m(vat, currency)}` : ""} on ${action.date}, category ${acc.code} ${acc.name}${action.paymentReference ? `, ref ${action.paymentReference}` : ""} — ${mode.toUpperCase()} books`, action, false);
     }
+    case "report_pdf": {
+      const internal = args.internal === true, kind = String(args.kind ?? "");
+      if (c.files.length >= 3) return { error: "At most 3 PDFs per answer." };
+      if (kind === "event") {
+        const [e] = await db.select().from(schema.acctEvents).where(and(eq(schema.acctEvents.id, String(args.eventId ?? "")), eq(schema.acctEvents.organisationId, a.orgId)));
+        if (!e) return { error: "Event not found — use list_events." };
+        if (!e.organiserId) return { error: "This event has no organiser, so there is no event report." };
+        c.files.push({ title: `${e.code} ${e.name}${internal ? " (internal)" : ""}`, organiserId: e.organiserId, eventIds: [e.id], eventReport: true, internal, url: `/api/accounting/events/${e.id}/report${internal ? "?internal=1" : ""}` });
+        return { attached: `Event report PDF for ${e.code} ${e.name}${internal ? " (internal copy)" : ""}` };
+      }
+      const oid = String(args.organiserId ?? "");
+      const name = await orgName(oid); if (!name) return { error: "Organiser not found — use search_organisers." };
+      const ids = kind === "settlement" ? (Array.isArray(args.eventIds) ? args.eventIds.map(String) : []) : undefined;
+      if (kind === "settlement") {
+        if (!ids!.length) return { error: "Give the eventIds for the settlement statement." };
+        const evs = await db.select({ id: schema.acctEvents.id }).from(schema.acctEvents).where(and(eq(schema.acctEvents.organisationId, a.orgId), eq(schema.acctEvents.organiserId, oid)));
+        if (ids!.some((x) => !evs.some((e) => e.id === x))) return { error: "Every event must belong to this organiser." };
+      } else if (kind !== "organiser") return { error: "kind must be event, organiser or settlement." };
+      c.files.push({ title: `${name} — ${kind === "settlement" ? "settlement statement" : "account report"}${internal ? " (internal)" : ""}`, organiserId: oid, eventIds: ids, eventReport: false, internal, url: `/api/accounting/organisers/${oid}/report?format=pdf${internal ? "&internal=1" : ""}${ids ? `&events=${ids.join(",")}` : ""}` });
+      return { attached: `${kind === "settlement" ? "Settlement statement" : "Account report"} PDF for ${name}` };
+    }
     case "search_bills": {
       const status = (["UNPAID", "PAID", "OVERDUE"] as const).find((x) => x === args.status), kind = (["BILL", "EXPENSE"] as const).find((x) => x === args.kind);
       const r = await listBills(a.orgId, mode, { q: S(args.query)?.slice(0, 120), status, kind, eventId: S(args.eventId), from: D(args.from), to: D(args.to) }, { limit: 60, offset: 0 });
@@ -291,7 +315,7 @@ export async function runAgentChat(a: Actor, mode: Mode, input: z.infer<typeof A
   const cfg = await aiConfig(a.orgId);
   const { timezone } = await getAcctSettings(a.orgId);
   const today = localDate(new Date(), timezone || "UTC");
-  const c: Ctx = { a, mode, proposals: [], m: (v, cur) => formatMoney(v, cur, "en") };
+  const c: Ctx = { a, mode, proposals: [], files: [], m: (v, cur) => formatMoney(v, cur, "en") };
   const messages: Msg[] = [
     { role: "system", content: `${AGENT_SYSTEM}${cfg.instructions ? `\n\nStanding instructions from the finance admin:\n${cfg.instructions}` : ""}\n\nToday is ${today} (${timezone || "UTC"}). You are working in the ${mode.toUpperCase()} books.${opts.channel ? `\n\n${opts.channel}` : ""}` },
     ...input.messages.map((x) => ({ role: x.role, content: x.content }) as Msg),
@@ -304,7 +328,7 @@ export async function runAgentChat(a: Actor, mode: Mode, input: z.infer<typeof A
     messages.push({ role: "assistant", content: message.content ?? null, tool_calls: message.tool_calls });
     if (!message.tool_calls?.length) {
       await db.transaction((tx) => acctAudit(tx, { ...a, action: "ai_agent.asked", entity: "ai_agent", entityId: "chat", new: { question: input.messages[input.messages.length - 1]!.content.slice(0, 500), steps, proposals: c.proposals.map((p) => p.summary), model: cfg.model, tokens } }));
-      return { answer: (message.content ?? "").trim() || "(no answer)", steps: [...new Set(steps)], proposals: c.proposals, model: cfg.model };
+      return { answer: (message.content ?? "").trim() || "(no answer)", steps: [...new Set(steps)], proposals: c.proposals, files: c.files, model: cfg.model };
     }
     for (const call of message.tool_calls) {
       let args: Record<string, unknown> = {};
@@ -316,7 +340,7 @@ export async function runAgentChat(a: Actor, mode: Mode, input: z.infer<typeof A
       messages.push({ role: "tool", tool_call_id: call.id, content: cap(out) });
     }
   }
-  return { answer: "I looked at a lot of data but could not finish — please narrow the question.", steps: [...new Set(steps)], proposals: c.proposals, model: cfg.model };
+  return { answer: "I looked at a lot of data but could not finish — please narrow the question.", steps: [...new Set(steps)], proposals: c.proposals, files: c.files, model: cfg.model };
 }
 
 /** Run a proposal the admin confirmed. Same functions, permissions and audit as the normal screens. */

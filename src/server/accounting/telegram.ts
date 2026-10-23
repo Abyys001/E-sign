@@ -16,7 +16,11 @@ import { executeAction, runAgentChat, type Proposal } from "./agent";
 import { aiConfig, stored as aiStored } from "./ai";
 import { speakCall } from "./ai-call";
 import { attachBillFile } from "./books";
+import { organiserReportPdf } from "./organiser-report";
 import { acctAudit, getAcctSettings, type Mode } from "./core";
+import { eventFinancials, organiserBalances } from "./finance";
+import { listPayments } from "./queries";
+import { formatMoney } from "@/lib/money";
 
 /**
  * Telegram finance assistant — another channel for the SAME finance agent (agent.ts: tools, propose → confirm,
@@ -64,7 +68,7 @@ async function noteError(orgId: string, where: string, e: unknown) {
 // ---------- Telegram Bot API (injectable for tests) ----------
 export type TgApi = {
   call<T = unknown>(token: string, method: string, body: Record<string, unknown>): Promise<T>;
-  upload(token: string, method: "sendVoice", fields: Record<string, string>, file: { field: string; name: string; type: string; bytes: Buffer }): Promise<unknown>;
+  upload(token: string, method: "sendVoice" | "sendDocument", fields: Record<string, string>, file: { field: string; name: string; type: string; bytes: Buffer }): Promise<unknown>;
   download(token: string, fileId: string, maxBytes: number): Promise<{ bytes: Buffer; path: string }>;
 };
 const API = "https://api.telegram.org";
@@ -157,9 +161,9 @@ function toOggOpus(mp3: Buffer): Promise<Buffer> {
 // ---------- settings ----------
 export const webhookUrl = (orgId: string) => `${env().APP_URL.replace(/\/$/, "")}/api/webhooks/telegram/${orgId}`;
 export const COMMANDS = [
-  ["start", "Start the assistant"], ["help", "What I can do"], ["voice", "Voice replies on/off"], ["language", "Reply language: auto, en or fa"],
+  ["menu", "Menu: organisers, box offices, reports"], ["start", "Start the assistant"], ["help", "What I can do"], ["voice", "Voice replies on/off"], ["language", "Reply language: auto, en or fa"],
   ["upload", "Send an invoice or receipt"], ["expenses", "Recent expenses"], ["invoices", "Search supplier invoices"], ["pending", "Unpaid invoices"],
-  ["summary", "Financial summary"], ["status", "Assistant status"], ["cancel", "Cancel the current task"],
+  ["summary", "Financial summary"], ["report", "Report PDF for an event or organiser"], ["status", "Assistant status"], ["cancel", "Cancel the current task"],
 ] as const;
 
 export async function getTelegramSettings(orgId: string) {
@@ -297,7 +301,10 @@ async function handleUpdate(orgId: string, s: TgStored, u: TgUpdate) {
     const me = await linkedUser(orgId, q.from.id);
     if (!me) return send(chatId, "This Telegram account is not linked to Bilit.");
     const m = /^([cx]):(P\d+)$/.exec(q.data ?? "");
-    if (!m) return;
+    if (!m) {
+      const fa = (me.row.language ?? settings.language) === "fa" || (!me.row.language && settings.language === "auto" && q.from.language_code === "fa");
+      return menu(orgId, settings, token, me, chatId, q.data ?? "", fa, q.message?.message_id);
+    }
     await decide(orgId, settings, token, me, chatId, m[2]!, m[1] === "c", (me.row.language ?? settings.language) === "fa" || q.from.language_code === "fa");
     return;
   }
@@ -311,6 +318,7 @@ async function handleUpdate(orgId: string, s: TgStored, u: TgUpdate) {
   if (link) { await rateLimit("telegramPair", `${orgId}:${tgId}`); return pair(orgId, token, msg, link[1]!); }
 
   const me = await linkedUser(orgId, tgId);
+  if (me && /^(📋\s*)?(menu|منو)$/i.test(text)) return menu(orgId, settings, token, me, chatId, "n:home", FA.test(text) || me.row.language === "fa");
   if (!me) return send(chatId, `This bot is private to Bilit finance.\nTo use it, open Finance → Settings → Telegram assistant, press "Link my Telegram" and send the code here as /link CODE.\nYour Telegram id: ${tgId}`);
   if (!settings.enabled) return send(chatId, "The Telegram assistant is switched off in Finance settings.");
   try { await rateLimit("telegramMsg", `${orgId}:${tgId}`); } catch { return send(chatId, "Too many messages — please wait a few minutes."); }
@@ -325,9 +333,11 @@ async function handleUpdate(orgId: string, s: TgStored, u: TgUpdate) {
   if (cmd) {
     const [, name, argRaw] = cmd; const arg = (argRaw ?? "").trim();
     switch (name) {
+      case "menu": return menu(orgId, settings, token, me, chatId, "n:home", faUser);
       case "start": case "help":
-        return send(chatId, t(faUser, `Hi! I'm Bilit's finance assistant. Talk to me by voice or text, in Persian or English.\n\n• Ask about organisers, events, payments, Wise, Stripe, profit\n• Send a photo or PDF of an invoice or receipt and tell me what it is — I read it and book it after you confirm\n• "Show unpaid invoices", "How much did we spend on marketing this month?"\n\nNothing changes in the books until you press Confirm (or say "yes").\n\n/voice — voice replies on/off (now ${voiceOn ? "on" : "off"})\n/language auto|en|fa\n/pending /invoices /expenses /summary /status /cancel`,
-          `سلام! من دستیار مالی بیلیت هستم. با صدا یا متن، فارسی یا انگلیسی با من حرف بزن.\n\n• درباره برگزارکننده‌ها، ایونت‌ها، پرداخت‌ها، وایز، استرایپ و سود بپرس\n• عکس یا PDF فاکتور یا رسید رو بفرست و بگو مربوط به چیه — می‌خونمش و بعد از تأیید تو ثبتش می‌کنم\n\nتا وقتی تأیید نکنی هیچ چیزی در حساب‌ها تغییر نمی‌کنه.\n\n/voice — پاسخ صوتی روشن/خاموش (الان ${voiceOn ? "روشن" : "خاموش"})\n/language auto|en|fa\n/pending /invoices /expenses /summary /status /cancel`));
+        await menu(orgId, settings, token, me, chatId, "n:home", faUser);
+        return send(chatId, t(faUser, `Hi! I'm Bilit's finance assistant. Talk to me by voice or text, in Persian or English.\n\n• Ask about organisers, events, payments, Wise, Stripe, profit\n• Send a photo or PDF of an invoice or receipt and tell me what it is — I read it and book it after you confirm\n• "Show unpaid invoices", "How much did we spend on marketing this month?"\n\nNothing changes in the books until you press Confirm (or say "yes").\n\n/voice — voice replies on/off (now ${voiceOn ? "on" : "off"})\n/language auto|en|fa\n/report /pending /invoices /expenses /summary /status /cancel`,
+          `سلام! من دستیار مالی بیلیت هستم. با صدا یا متن، فارسی یا انگلیسی با من حرف بزن.\n\n• درباره برگزارکننده‌ها، ایونت‌ها، پرداخت‌ها، وایز، استرایپ و سود بپرس\n• عکس یا PDF فاکتور یا رسید رو بفرست و بگو مربوط به چیه — می‌خونمش و بعد از تأیید تو ثبتش می‌کنم\n\nتا وقتی تأیید نکنی هیچ چیزی در حساب‌ها تغییر نمی‌کنه.\n\n/voice — پاسخ صوتی روشن/خاموش (الان ${voiceOn ? "روشن" : "خاموش"})\n/language auto|en|fa\n/report /pending /invoices /expenses /summary /status /cancel`));
       case "voice": {
         const next = !voiceOn;
         await db.update(schema.acctTelegramUsers).set({ voiceReplies: next }).where(eq(schema.acctTelegramUsers.id, me.row.id));
@@ -350,6 +360,7 @@ async function handleUpdate(orgId: string, s: TgStored, u: TgUpdate) {
       case "pending": return converse(orgId, settings, token, me, chatId, sess, faUser ? "فاکتورهای پرداخت‌نشده تأمین‌کننده‌ها رو نشون بده (شامل سررسید گذشته)." : "Show all unpaid supplier invoices, including overdue ones, with totals per currency.", false, lang);
       case "invoices": return converse(orgId, settings, token, me, chatId, sess, arg ? `Find supplier invoices matching: ${arg}` : "Show the latest supplier invoices.", false, lang);
       case "expenses": return converse(orgId, settings, token, me, chatId, sess, "Show Bilit's expenses for this month by category, with totals per currency.", false, lang);
+      case "report": return converse(orgId, settings, token, me, chatId, sess, arg ? `Send me the report PDF for: ${arg}` : (faUser ? "گزارش PDF کدوم ایونت یا برگزارکننده رو می‌خوای؟ لیست ایونت‌ها رو کوتاه نشونم بده." : "Which event or organiser do you want a report PDF for? Show me a short list of events."), false, lang);
       case "summary": return converse(orgId, settings, token, me, chatId, sess, arg ? `Give me a short financial summary for: ${arg}` : "Give me a short financial summary for this month: sales, booking fees, profit, expenses, unpaid invoices, and what Bilit still owes organisers — per currency.", false, lang);
       default: return send(chatId, "Unknown command. /help");
     }
@@ -425,6 +436,14 @@ async function converse(orgId: string, settings: TelegramSettingsT, token: strin
   const keyboard = proposals.length ? { reply_markup: { inline_keyboard: proposals.map((p) => [{ text: `✅ ${fa ? "تأیید" : "Confirm"} ${proposals.length > 1 ? p.id : ""}`.trim(), callback_data: `c:${p.id}` }, { text: `✖ ${fa ? "لغو" : "Cancel"}`, callback_data: `x:${p.id}` }]) } } : {};
   const body = `${r.answer}${proposals.length ? `\n\n${proposals.map((p) => `🟡 ${p.summary}`).join("\n")}` : ""}`;
   await api().call(token, "sendMessage", { chat_id: chatId, text: body.slice(0, 4000), disable_web_page_preview: true, ...keyboard });
+  for (const f of r.files ?? []) {
+    try {
+      await api().call(token, "sendChatAction", { chat_id: chatId, action: "upload_document" }).catch(() => undefined);
+      const pdf = await organiserReportPdf(orgId, me.mode, f.organiserId, { eventIds: f.eventIds, eventReport: f.eventReport, internal: f.internal });
+      await api().upload(token, "sendDocument", { chat_id: String(chatId), caption: `📄 ${f.title}`.slice(0, 1000) }, { field: "document", name: pdf.name, type: "application/pdf", bytes: pdf.bytes });
+      await db.transaction((tx) => acctAudit(tx, { ...me.actor, action: "telegram.report_sent", entity: "acct_organiser", entityId: f.organiserId, new: { title: f.title, internal: f.internal, eventIds: f.eventIds ?? null } }));
+    } catch (e) { await noteError(orgId, "report", e); await api().call(token, "sendMessage", { chat_id: chatId, text: `Could not make the PDF "${f.title}": ${e instanceof Error ? e.message.slice(0, 200) : "error"}` }); }
+  }
   if (speak) await voiceReply(orgId, token, chatId, r.answer);
 }
 
@@ -478,4 +497,115 @@ async function pair(orgId: string, token: string, msg: TgMessage, code: string) 
     .onConflictDoUpdate({ target: [schema.acctTelegramUsers.organisationId, schema.acctTelegramUsers.telegramUserId], set: { userId: p.userId, chatId: msg.chat.id, username: msg.from!.username ?? null, revokedAt: null, createdAt: now } });
   await db.transaction((tx) => acctAudit(tx, { orgId, userId: p.userId, ctx: ctxFor(tgId), action: "telegram.user_linked", entity: "user", entityId: p.userId, new: { telegramUserId: tgId, username: msg.from!.username ?? null } }));
   return api().call(token, "sendMessage", { chat_id: msg.chat.id, text: "✅ Linked to your Bilit account. Send /help to see what I can do — talk to me by voice or text, in Persian or English.\n✅ به حساب بیلیت وصل شدی. با صدا یا متن، فارسی یا انگلیسی بپرس." });
+}
+
+// ---------- button menu (exact figures from the books, no AI) ----------
+type Btn = { text: string; callback_data: string };
+const money = (v: number, c: string) => formatMoney(v, c, "en");
+const MENU_KEYBOARD = { keyboard: [[{ text: "📋 Menu" }]], resize_keyboard: true, is_persistent: true };
+
+async function menu(orgId: string, settings: TelegramSettingsT, token: string, me: Linked, chatId: number, data: string, fa: boolean, editId?: number) {
+  const show = async (text: string, buttons: Btn[][]) => {
+    const body = { chat_id: chatId, text: text.slice(0, 4000), disable_web_page_preview: true, reply_markup: { inline_keyboard: buttons } };
+    if (editId) { try { return await api().call(token, "editMessageText", { ...body, message_id: editId }); } catch { /* too old / unchanged: send a new one */ } }
+    return api().call(token, "sendMessage", body);
+  };
+  const L = (en: string, faText: string) => (fa ? faText : en);
+  const home: Btn = { text: L("🏠 Menu", "🏠 منو"), callback_data: "n:home" };
+  const [, kind, id, extra] = /^(n:\w+|r:[eo])(?::([0-9a-f-]{36}))?(?::(\w+))?$/.exec(data) ?? [];
+  switch (kind) {
+    case "n:home": {
+      const voiceOn = me.row.voiceReplies ?? settings.voiceReplies;
+      if (!editId) await api().call(token, "sendMessage", { chat_id: chatId, text: L("Bilit finance", "مالی بیلیت"), reply_markup: MENU_KEYBOARD }).catch(() => undefined);
+      return show(L("What would you like to see?", "چی رو می‌خوای ببینی؟"), [
+        [{ text: L("👥 Organisers", "👥 برگزارکننده‌ها"), callback_data: "n:orgs" }, { text: L("🎟 Box offices", "🎟 باکس‌آفیس‌ها"), callback_data: "n:evs" }],
+        [{ text: L("🧾 Unpaid invoices", "🧾 فاکتورهای پرداخت‌نشده"), callback_data: "n:pending" }, { text: L("💸 Expenses", "💸 هزینه‌ها"), callback_data: "n:expenses" }],
+        [{ text: L("📊 Summary", "📊 خلاصه مالی"), callback_data: "n:summary" }, { text: L("🏦 Cash position", "🏦 موجودی و بدهی‌ها"), callback_data: "n:cash" }],
+        [{ text: voiceOn ? L("🔊 Voice replies: on", "🔊 پاسخ صوتی: روشن") : L("🔇 Voice replies: off", "🔇 پاسخ صوتی: خاموش"), callback_data: "n:voice" }, { text: L("❓ Help", "❓ راهنما"), callback_data: "n:help" }],
+      ]);
+    }
+    case "n:voice": {
+      const next = !(me.row.voiceReplies ?? settings.voiceReplies);
+      await db.update(schema.acctTelegramUsers).set({ voiceReplies: next }).where(eq(schema.acctTelegramUsers.id, me.row.id));
+      me.row.voiceReplies = next;
+      return menu(orgId, settings, token, me, chatId, "n:home", fa, editId);
+    }
+    case "n:help": return show(L("Talk to me by voice or text (Persian or English), or send an invoice photo/PDF. Nothing is booked until you confirm. Use the buttons for organisers, box offices and report PDFs.", "با صدا یا متن (فارسی یا انگلیسی) با من حرف بزن یا عکس/PDF فاکتور بفرست. تا تأیید نکنی چیزی ثبت نمی‌شه. با دکمه‌ها برگزارکننده‌ها، باکس‌آفیس‌ها و گزارش‌های PDF رو ببین."), [[home]]);
+    case "n:orgs": {
+      const [orgs, bal] = await Promise.all([db.select().from(schema.acctOrganisers).where(and(eq(schema.acctOrganisers.organisationId, orgId), eq(schema.acctOrganisers.active, true))), organiserBalances(orgId, me.mode)]);
+      const line = (oid: string) => bal.filter((b) => b.organiserId === oid && b.remaining !== 0).map((b) => money(b.remaining, b.currency)).join(" · ");
+      const list = orgs.map((o) => ({ o, left: line(o.id) })).sort((a, b) => (b.left ? 1 : 0) - (a.left ? 1 : 0) || a.o.name.localeCompare(b.o.name)).slice(0, 40);
+      return show(L("👥 Organisers — what Bilit still owes each (tap for details and reports):", "👥 برگزارکننده‌ها — مبلغی که بیلیت هنوز به هر کدوم بدهکاره (برای جزئیات و گزارش بزن):"),
+        [...list.map(({ o, left }) => [{ text: `${o.name}${left ? ` — ${left}` : " — ✓"}`.slice(0, 64), callback_data: `n:o:${o.id}` }]), [home]]);
+    }
+    case "n:o": {
+      const [o] = await db.select().from(schema.acctOrganisers).where(and(eq(schema.acctOrganisers.id, id ?? ""), eq(schema.acctOrganisers.organisationId, orgId)));
+      if (!o) return show(L("Organiser not found.", "برگزارکننده پیدا نشد."), [[home]]);
+      const evs = await eventFinancials(orgId, me.mode, { organiserId: o.id });
+      const by = new Map<string, { due: number; paid: number; left: number }>();
+      for (const e of evs) { const x = by.get(e.currency) ?? { due: 0, paid: 0, left: 0 }; x.due += e.organiserDue; x.paid += e.organiserPaid; x.left += e.remaining; by.set(e.currency, x); }
+      const text = [`👥 ${o.name}`, "", ...[...by].map(([c, x]) => `${c.toUpperCase()}: ${L("due", "سهم")} ${money(x.due, c)} · ${L("paid", "پرداخت‌شده")} ${money(x.paid, c)} · ${L("left", "مانده")} ${money(x.left, c)}`), "", L(`${evs.length} box offices`, `${evs.length} باکس‌آفیس`)].join("\n");
+      return show(text, [
+        [{ text: L("🎟 Box offices", "🎟 باکس‌آفیس‌ها"), callback_data: `n:evs:${o.id}` }],
+        [{ text: L("📄 Account report", "📄 گزارش حساب"), callback_data: `r:o:${o.id}:org` }, { text: L("📄 Internal copy", "📄 نسخه داخلی"), callback_data: `r:o:${o.id}:int` }],
+        [{ text: L("⬅ Organisers", "⬅ برگزارکننده‌ها"), callback_data: "n:orgs" }, home],
+      ]);
+    }
+    case "n:evs": {
+      const evs = (await eventFinancials(orgId, me.mode, id ? { organiserId: id } : {})).filter((e) => e.eventStatus !== "ARCHIVED")
+        .sort((a, b) => (b.remaining !== 0 ? 1 : 0) - (a.remaining !== 0 ? 1 : 0) || String(b.startsOn ?? "").localeCompare(String(a.startsOn ?? ""))).slice(0, 45);
+      const mark = (s: string) => (s === "COMPLETED" ? "🏁" : s === "CANCELLED" ? "✖" : "🟢");
+      return show(L("🎟 Box offices — 🟢 on sale · 🏁 finished · amount = still to pay the organiser:", "🎟 باکس‌آفیس‌ها — 🟢 در حال فروش · 🏁 تمام‌شده · مبلغ = مانده پرداخت به برگزارکننده:"),
+        [...evs.map((e) => [{ text: `${mark(e.eventStatus)} ${e.eventCode} ${e.eventName.replace(/^Chris D'Elia - Go For It! The Tour - /i, "Chris D'Elia · ")} — ${e.remaining ? money(e.remaining, e.currency) : "✓"}`.slice(0, 64), callback_data: `n:e:${e.eventId}` }]),
+          id ? [{ text: L("⬅ Organiser", "⬅ برگزارکننده"), callback_data: `n:o:${id}` }, home] : [home]]);
+    }
+    case "n:e": {
+      const [e] = await eventFinancials(orgId, me.mode, { eventIds: [id ?? ""] });
+      if (!e) return show(L("Box office not found.", "باکس‌آفیس پیدا نشد."), [[home]]);
+      const pays = (await listPaymentsFor(orgId, me.mode, e.eventId)).slice(0, 10);
+      const c = e.currency;
+      const text = [`🎟 ${e.eventName}`, `${e.eventCode}${e.startsOn ? ` · ${e.startsOn}` : ""} · ${e.eventStatus === "COMPLETED" ? L("finished", "تمام‌شده") : e.eventStatus === "ACTIVE" ? L("on sale", "در حال فروش") : e.eventStatus}${e.organiserName ? ` · ${e.organiserName}` : ""}`, "",
+        `${L("Tickets", "بلیت")}: ${e.tickets}`, `${L("Ticket sales", "فروش بلیت")}: ${money(e.grossSales, c)}`, ...(e.refunds ? [`${L("Refunds", "بازپرداخت")}: −${money(e.refunds, c)}`] : []),
+        `${L("Bilit booking fees", "کارمزد بیلیت")}: ${money(e.bookingFees, c)}`, `${L("Due to organiser", "سهم برگزارکننده")}: ${money(e.organiserDue, c)}`, `${L("Paid", "پرداخت‌شده")}: ${money(e.organiserPaid, c)}`,
+        `${e.remaining < 0 ? L("Paid ahead", "پیش‌پرداخت") : L("Still to pay", "مانده پرداخت")}: ${money(Math.abs(e.remaining), c)}${e.remaining === 0 ? " ✅" : ""}`,
+        ...(pays.length ? ["", L("Payments:", "پرداخت‌ها:"), ...pays.map((p) => `• ${p.paymentDate} ${money(p.amount, p.currency)} ${p.bankReference ?? ""}`.trim())] : [])].join("\n");
+      return show(text, [
+        [{ text: L("📄 Event report", "📄 گزارش ایونت"), callback_data: `r:e:${e.eventId}:org` }, { text: L("📄 Internal report", "📄 گزارش داخلی"), callback_data: `r:e:${e.eventId}:int` }],
+        [...(e.organiserId ? [{ text: L("⬅ Box offices", "⬅ باکس‌آفیس‌ها"), callback_data: `n:evs:${e.organiserId}` }] : [{ text: L("⬅ Box offices", "⬅ باکس‌آفیس‌ها"), callback_data: "n:evs" }]), home],
+      ]);
+    }
+    case "r:e": case "r:o": {
+      let organiserId = id ?? "", eventIds: string[] | undefined, title = "";
+      if (kind === "r:e") {
+        const [e] = await db.select().from(schema.acctEvents).where(and(eq(schema.acctEvents.id, id ?? ""), eq(schema.acctEvents.organisationId, orgId)));
+        if (!e?.organiserId) return api().call(token, "sendMessage", { chat_id: chatId, text: L("This event has no organiser, so there is no report.", "این ایونت برگزارکننده نداره، پس گزارشی نداره.") });
+        organiserId = e.organiserId; eventIds = [e.id]; title = `${e.code} ${e.name}`;
+      } else {
+        const [o] = await db.select().from(schema.acctOrganisers).where(and(eq(schema.acctOrganisers.id, organiserId), eq(schema.acctOrganisers.organisationId, orgId)));
+        if (!o) return api().call(token, "sendMessage", { chat_id: chatId, text: L("Organiser not found.", "برگزارکننده پیدا نشد.") });
+        title = `${o.name} — ${L("account report", "گزارش حساب")}`;
+      }
+      const internal = extra === "int";
+      await api().call(token, "sendChatAction", { chat_id: chatId, action: "upload_document" }).catch(() => undefined);
+      try {
+        const pdf = await organiserReportPdf(orgId, me.mode, organiserId, { eventIds, eventReport: kind === "r:e", internal });
+        await api().upload(token, "sendDocument", { chat_id: String(chatId), caption: `📄 ${title}${internal ? L(" (internal)", " (داخلی)") : ""}`.slice(0, 1000) }, { field: "document", name: pdf.name, type: "application/pdf", bytes: pdf.bytes });
+        await db.transaction((tx) => acctAudit(tx, { ...me.actor, action: "telegram.report_sent", entity: "acct_organiser", entityId: organiserId, new: { title, internal, eventIds: eventIds ?? null } }));
+      } catch (e) { await noteError(orgId, "report", e); await api().call(token, "sendMessage", { chat_id: chatId, text: `${L("Could not make the PDF", "ساخت PDF انجام نشد")}: ${e instanceof Error ? e.message.slice(0, 200) : "error"}` }); }
+      return;
+    }
+    case "n:pending": case "n:expenses": case "n:summary": case "n:cash": {
+      const sess = await session(orgId, me.row.telegramUserId, settings.sessionMinutes);
+      const ask = { "n:pending": L("Show all unpaid supplier invoices, including overdue ones, with totals per currency.", "فاکتورهای پرداخت‌نشده تأمین‌کننده‌ها رو با جمع هر ارز نشون بده."),
+        "n:expenses": L("Show Bilit's expenses for this month by category, with totals per currency.", "هزینه‌های بیلیت در این ماه رو به تفکیک دسته و ارز نشون بده."),
+        "n:summary": L("Give me a short financial summary for this month per currency: sales, booking fees, profit, expenses, unpaid invoices.", "خلاصه مالی این ماه رو به تفکیک ارز بگو: فروش، کارمزد، سود، هزینه‌ها، فاکتورهای پرداخت‌نشده."),
+        "n:cash": L("What is Bilit's cash position now: cash in Stripe and Wise per currency, what is owed to organisers and others, and what is left?", "وضعیت نقدی بیلیت الان چیه: موجودی استرایپ و وایز به تفکیک ارز، بدهی به برگزارکننده‌ها و بقیه، و چقدر می‌مونه؟") }[kind];
+      return converse(orgId, settings, token, me, chatId, sess, ask, false, (me.row.language ?? settings.language) as "auto" | "en" | "fa");
+    }
+    default: return;
+  }
+}
+
+async function listPaymentsFor(orgId: string, mode: Mode, eventId: string) {
+  return (await listPayments(orgId, mode, { eventId }, { limit: 50, offset: 0 })).items.filter((p) => p.status !== "VOIDED").sort((a, b) => b.paymentDate.localeCompare(a.paymentDate));
 }
