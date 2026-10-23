@@ -128,6 +128,8 @@ function Overview({ e, f, agreement, reload, onPayments }: { e: Ev; f: Fig; agre
   const postFee = async () => { try { await api(`/api/accounting/events/${e.id}/event-fee`, { json: { mode, date: new Date().toISOString().slice(0, 10) } }); toast("ok", te("feePosted")); await reload(); } catch (x) { toast("error", errMsg(x)); } };
   return (
     <div className="space-y-6">
+      {e.organiserId && <Card><CardHeader title={tb("title")} description={tb("desc", { organiser: e.organiserName ?? "" })} action={<Button size="sm" onClick={onPayments}>{tb("manage")}</Button>} />
+        {pays ? <BoxOfficePayments items={pays.items} f={f} /> : <div className="p-4"><Skeleton className="h-24" /></div>}</Card>}
       <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
         <Card><CardHeader title={t("flow.title")} description={t("flow.desc")} /><div className="px-5 pb-4"><Statement lines={moneyFlow(f, t)} currency={f.currency} caption={t("flow.title")} /></div></Card>
         <div className="space-y-6">
@@ -141,8 +143,6 @@ function Overview({ e, f, agreement, reload, onPayments }: { e: Ev; f: Fig; agre
           </Card>
         </div>
       </div>
-      {e.organiserId && <Card><CardHeader title={tb("title")} description={tb("desc", { organiser: e.organiserName ?? "" })} action={<Button size="sm" onClick={onPayments}>{tb("manage")}</Button>} />
-        {pays ? <BoxOfficePayments items={pays.items} f={f} /> : <div className="p-4"><Skeleton className="h-24" /></div>}</Card>}
       <Card><CardHeader title={t("terms.title")} description={t("terms.desc")} action={can("accounting.manage") && <div className="flex flex-wrap gap-2">
           {agreement && agreement.fixedEventFee > 0 && <Button size="sm" onClick={postFee}>{te("postFee", { amount: formatMoney(agreement.fixedEventFee, e.currency, locale) })}</Button>}
           <Button size="sm" onClick={() => { setAg(agreement ? agreementFrom(agreement, e.currency) : emptyAgreement()); setAgOpen(true); }}><FilePlus2 className="size-4" aria-hidden />{te("newAgreement")}</Button></div>} />

@@ -142,7 +142,7 @@ export async function listPayments(orgId: string, mode: Mode, f: { organiserId?:
 }
 
 /** Who actually received each payment: the Wise recipient, from the linked Wise row or the "Wise #123" reference. */
-async function paymentPayees(orgId: string, ps: Array<{ id: string; bankReference: string | null }>) {
+async function paymentPayees(orgId: string, ps: Array<{ id: string; bankReference: string | null; notes: string | null }>) {
   const out = new Map<string, string>();
   if (!ps.length) return out;
   const w = schema.acctWiseTransactions;
@@ -152,7 +152,8 @@ async function paymentPayees(orgId: string, ps: Array<{ id: string; bankReferenc
     .where(and(eq(w.organisationId, orgId), or(inArray(w.organiserPaymentId, ps.map((p) => p.id)), refIds.length ? inArray(w.wiseId, refIds) : undefined)));
   for (const p of ps) {
     const r = rows.find((x) => x.paymentId === p.id) ?? rows.find((x) => x.wiseId === `TRANSFER-${tid(p.bankReference)}`);
-    if (r?.counterparty) out.set(p.id, r.counterparty);
+    const fromNote = p.notes?.match(/\bto ([A-Z][^(),.]*?)(?: \(|,)/)?.[1]?.trim(); // until Wise syncs: "… to Adam Holmberg (SEB …"
+    if (r?.counterparty || fromNote) out.set(p.id, (r?.counterparty || fromNote)!);
   }
   return out;
 }
