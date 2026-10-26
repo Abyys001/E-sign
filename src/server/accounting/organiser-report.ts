@@ -59,6 +59,12 @@ export async function organiserReportData(orgId: string, mode: Mode, organiserId
       order by r.stripe_created_at`),
     organiserContracts(orgId, organiserId),
   ]);
+  // Expenses Bilit paid for the organiser (deducted from what they are owed): listed by name on the report.
+  const x = schema.acctEventExpenses;
+  const orgExpenses = await db.select({ id: x.id, date: x.expenseDate, name: x.name, category: x.category, amount: x.amount, currency: x.currency, description: x.description, eventCode: schema.acctEvents.code, eventName: schema.acctEvents.name })
+    .from(x).innerJoin(schema.acctEvents, eq(schema.acctEvents.id, x.eventId))
+    .where(and(eq(x.organisationId, orgId), eq(x.organiserId, organiserId), eq(x.livemode, live), eq(x.borneBy, "ORGANISER"), eq(x.status, "ACTIVE"), r.from ? gte(x.expenseDate, r.from) : undefined, r.to ? lte(x.expenseDate, r.to) : undefined))
+    .orderBy(asc(x.expenseDate), asc(x.createdAt));
   const n = (v: unknown) => Number(v ?? 0);
   const sel = r.eventIds?.length ? new Set(r.eventIds) : null;
   const events = sel ? fin.events.filter((e) => sel.has(e.eventId)) : fin.events;
@@ -73,6 +79,7 @@ export async function organiserReportData(orgId: string, mode: Mode, organiserId
   return {
     organiser: o, totals: sel ? totalsByCurrency(events) : fin.totals, accountTotals: fin.totals, events, eventCount: sel ? events.length : fin.eventCount, contracts, statement,
     payments: pay,
+    expenses: orgExpenses.filter((e) => !sel || selCodes.has(e.eventCode)).map((e) => ({ ...e, amount: Number(e.amount) })),
     refunds: refunds.rows.filter((x) => !sel || (x.event_code && selCodes.has(x.event_code))).map((x) => {
       const ticket = n(x.sale_amount) - n(x.sale_fee), so = n(x.refunded_so_far), amt = n(x.amount);
       return { id: x.id, date: (x.date instanceof Date ? x.date.toISOString() : String(x.date)).slice(0, 10), amount: amt, currency: x.currency, kind: x.kind, eventName: x.event_name, eventCode: x.event_code,
@@ -181,11 +188,13 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
       doc.y = hy + 92;
       // Worked sum
       heading("How this is worked out");
-      const adj = -(f.deductions ?? 0), signed = (v: number) => `${v >= 0 ? "+" : "−"}${money(Math.abs(v), c)}`;
+      const exps = d.expenses.filter((e) => e.currency === c);
+      const adj = -((f.deductions ?? 0) - exps.reduce((a, e) => a + e.amount, 0)), signed = (v: number) => `${v >= 0 ? "+" : "−"}${money(Math.abs(v), c)}`;
       const lines: Array<[string, string, boolean?]> = [
         [`Ticket sales (${f.orders} order${f.orders === 1 ? "" : "s"})`, money(f.grossSales - f.bookingFees, c)],
         ...(f.refunds + f.chargebacks ? [["Refunds to customers", signed(-(f.refunds + f.chargebacks))] as [string, string]] : []),
         ...(f.feesRecharged ? [["Card processing fees", signed(-f.feesRecharged)] as [string, string]] : []),
+        ...exps.map((e) => [e.name, signed(-e.amount)] as [string, string]),
         ...(adj ? [[adj > 0 ? "Correction in your favour" : "Correction", signed(adj)] as [string, string]] : []),
         ...(f.cashback ? [["Cashback", signed(f.cashback)] as [string, string]] : []),
         ["Event total", money(due, c), true],
@@ -232,12 +241,13 @@ export async function organiserReportPdf(orgId: string, mode: Mode, organiserId:
   heading("Account summary", internal ? "Ticket sales include booking fees. Bilit profit is after Stripe fees and platform expenses." : "A negative balance means the amount is owed to " + seller.name + ".");
   if (!d.totals.length) { at("No activity in this period.", M, doc.y, { size: 10 }); doc.y += 16; }
   for (const f of d.totals) {
-    const c = f.currency;
+    const c = f.currency, exps = d.expenses.filter((e) => e.currency === c), otherDeductions = f.deductions - exps.reduce((a, e) => a + e.amount, 0);
     const rows: Array<[string, number, boolean?]> = [
       ...(internal ? [["Gross sales (incl. booking fees)", f.grossSales], ["Booking fees", -f.bookingFees]] as Array<[string, number]> : [["Ticket sales", f.grossSales - f.bookingFees]] as Array<[string, number]>),
       ["Refunds & chargebacks", -(f.refunds + f.chargebacks)],
       ...(f.feesRecharged ? [["Payment processing fees charged", -f.feesRecharged] as [string, number]] : []),
-      ...(f.deductions ? [["Other deductions", -f.deductions] as [string, number]] : []),
+      ...exps.map((e) => [`${e.name}${evr ? "" : ` (${e.eventCode})`}`, -e.amount] as [string, number]),
+      ...(otherDeductions ? [["Other deductions", -otherDeductions] as [string, number]] : []),
       ...(f.cashback ? [[`Cashback${o.cashbackBps ? ` (${o.cashbackBps / 100}%)` : ""}`, f.cashback] as [string, number]] : []),
       ...(() => {
         const l = st?.find((x) => x.currency === c);
